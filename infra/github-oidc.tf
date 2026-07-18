@@ -67,6 +67,14 @@ data "aws_iam_policy_document" "deploy" {
     actions   = ["s3:GetObject"]
     resources = ["${aws_s3_bucket.originals.arn}/*"]
   }
+
+  # CI's persistent image-encode cache — writable, but only this prefix, so
+  # the albums/ archive stays read-only from CI's perspective.
+  statement {
+    sid       = "ImageCache"
+    actions   = ["s3:PutObject", "s3:DeleteObject"]
+    resources = ["${aws_s3_bucket.originals.arn}/cache/*"]
+  }
 }
 
 resource "aws_iam_role_policy" "deploy" {

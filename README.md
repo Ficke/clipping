@@ -105,9 +105,11 @@ HTML/CSS/JS and is fully disposable.
   frame-deny), a viewer-request function for pretty URLs and www→apex redirect
 - **GitHub Actions** (`.github/workflows/deploy.yml`): on push to `main` —
   `bun install --frozen-lockfile`, assume the AWS role via OIDC (no stored
-  keys), pull originals, build, sync, invalidate. Two moving caches keep it
-  incremental: the pulled originals, and `node_modules/.astro` so sharp only
-  encodes new photos. Repo variables: `AWS_DEPLOY_ROLE_ARN`, `SITE_BUCKET`,
+  keys), pull originals, build, sync, invalidate. Builds stay incremental:
+  the sharp encode cache persists at `s3://adamficke-com-originals/cache/`
+  (S3, so it never evicts — GitHub's cache drops entries idle >7 days) and
+  the pulled originals ride a best-effort actions/cache. Only new photos get
+  encoded. Repo variables: `AWS_DEPLOY_ROLE_ARN`, `SITE_BUCKET`,
   `CLOUDFRONT_DISTRIBUTION_ID`
 - **Terraform** (`infra/`, state in S3): everything above plus a $10/month
   AWS budget alert and the currently-disabled Route 53 / ACM resources for

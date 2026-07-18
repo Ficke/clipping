@@ -46,12 +46,10 @@ jobs:
           key: originals-${{ github.run_id }}
           restore-keys: originals-
 
-      - name: Restore image-transform cache
-        uses: actions/cache@v4
-        with:
-          path: node_modules/.astro
-          key: astro-images-${{ github.run_id }}
-          restore-keys: astro-images-
+      # Encode cache lives in S3, not actions/cache: GitHub evicts caches idle
+      # for 7 days, which a monthly-post cadence would miss every time.
+      - name: Pull image-transform cache
+        run: aws s3 sync s3://adamficke-com-originals/cache/astro node_modules/.astro --size-only
 
       # --delete here (not in the local script) so photos removed from the
       # archive drop out of the cached copy; markdown is outside the filters.
@@ -62,6 +60,10 @@ jobs:
             --include '*.webp' --include '*.avif'
 
       - run: bun run build
+
+      # --delete prunes entries for photos/settings that no longer exist.
+      - name: Push image-transform cache
+        run: aws s3 sync node_modules/.astro s3://adamficke-com-originals/cache/astro --size-only --delete
 
       # Hashed assets are immutable; everything else gets a short TTL.
       - name: Sync to S3
