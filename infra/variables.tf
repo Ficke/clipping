@@ -16,6 +16,15 @@ variable "github_repository" {
   default     = "Ficke/clipping"
 }
 
+# GitHub now embeds immutable account/repo IDs in the OIDC sub claim
+# (e.g. repo:Owner@<owner_id>/repo@<repo_id>:ref:...). Find them via:
+#   gh api repos/<owner>/<repo> --jq '{owner_id: .owner.id, repo_id: .id}'
+variable "github_repository_id_qualified" {
+  description = "Owner@id/repo@id form of github_repository, as issued in OIDC sub claims"
+  type        = string
+  default     = "Ficke@6045217/clipping@1304655366"
+}
+
 variable "domain_name" {
   description = "Apex domain for the site"
   type        = string
