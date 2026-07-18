@@ -1,0 +1,179 @@
+---
+import { getImage, Image } from 'astro:assets';
+import { render } from 'astro:content';
+import Layout from '../../layouts/Layout.astro';
+import { coverOf, formatDate, getAlbums, photosOf, slugOf } from '../../lib/albums';
+
+export async function getStaticPaths() {
+  const albums = await getAlbums();
+  return albums.map((album) => ({ params: { slug: slugOf(album) }, props: { album } }));
+}
+
+const { album } = Astro.props;
+const { Content } = await render(album);
+const photos = await photosOf(album);
+const hasIntro = album.body && album.body.trim().length > 0;
+
+const cover = await getImage({ src: coverOf(album), width: 1200, format: 'jpg' });
+const fullsized = await Promise.all(
+  photos.map((p) => getImage({ src: p.image, width: 2000, format: 'webp', quality: 85 }))
+);
+---
+
+<Layout
+  title={`${album.data.title} — Adam Ficke`}
+  description={album.data.description ?? `${album.data.title}, ${formatDate(album.data.date)}. Photographs by Adam Ficke.`}
+  ogImage={cover.src}
+>
+  <article>
+    <header class="album-header rise">
+      <p class="kicker">
+        <a href="/">Photography</a>
+        <span aria-hidden="true"> / </span>
+        {formatDate(album.data.date)}
+      </p>
+      <h1>{album.data.title}</h1>
+      {
+        hasIntro && (
+          <div class="intro">
+            <Content />
+          </div>
+        )
+      }
+    </header>
+
+    <div class="photos">
+      {
+        photos.map((photo, i) => (
+          <figure class="rise" style={`animation-delay: ${Math.min(120 + i * 60, 420)}ms`}>
+            <a href={fullsized[i]!.src} class="zoom" data-lightbox aria-label={`View ${photo.file} fullsize`}>
+              <Image
+                src={photo.image}
+                alt={photo.caption ?? `${album.data.title}, photograph ${i + 1}`}
+                widths={[640, 1080, 1600, 2000]}
+                sizes="(min-width: 1200px) 1040px, 94vw"
+                loading={i < 2 ? 'eager' : 'lazy'}
+              />
+            </a>
+            {(photo.caption || photo.exif) && (
+              <figcaption>
+                {photo.caption && <span class="caption">{photo.caption}</span>}
+                {photo.exif && <span class="exif">{photo.exif}</span>}
+              </figcaption>
+            )}
+          </figure>
+        ))
+      }
+    </div>
+  </article>
+
+  <dialog id="lightbox" aria-label="Fullsize photograph">
+    <button id="lightbox-close" class="kicker" autofocus>Close</button>
+    <img alt="" />
+  </dialog>
+</Layout>
+
+<script>
+  const dialog = document.getElementById('lightbox') as HTMLDialogElement;
+  const img = dialog.querySelector('img')!;
+  document.querySelectorAll<HTMLAnchorElement>('a[data-lightbox]').forEach((a) => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      img.src = a.href;
+      dialog.showModal();
+    });
+  });
+  dialog.addEventListener('click', (e) => {
+    if (e.target !== img) dialog.close();
+  });
+  document.getElementById('lightbox-close')!.addEventListener('click', () => dialog.close());
+  dialog.addEventListener('close', () => {
+    img.removeAttribute('src');
+  });
+</script>
+
+<style>
+  .album-header {
+    margin: clamp(1rem, 4vw, 3rem) 0 clamp(2.2rem, 5vw, 3.4rem);
+  }
+
+  .album-header h1 {
+    font-size: clamp(2rem, 6vw, 3.4rem);
+    margin: 0.3rem 0 0;
+  }
+
+  .album-header .kicker a:hover {
+    color: var(--accent);
+  }
+
+  .intro {
+    max-width: var(--measure);
+    margin-top: 1.3rem;
+    color: color-mix(in srgb, var(--ink) 88%, var(--muted));
+  }
+
+  .intro :global(p + p) {
+    margin-top: 0.8em;
+  }
+
+  .photos {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(2.6rem, 6vw, 4rem);
+  }
+
+  .zoom {
+    display: block;
+    cursor: zoom-in;
+  }
+
+  .photos img {
+    width: 100%;
+    border-radius: 2px;
+  }
+
+  figcaption {
+    margin-top: 0.55rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.2rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  figcaption .exif {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.03em;
+  }
+
+  dialog {
+    border: none;
+    padding: 0;
+    background: transparent;
+    max-width: 96vw;
+    max-height: 96vh;
+  }
+
+  dialog::backdrop {
+    background: rgba(10, 9, 8, 0.92);
+  }
+
+  dialog img {
+    max-width: 96vw;
+    max-height: 92vh;
+    width: auto;
+    height: auto;
+    cursor: zoom-out;
+  }
+
+  #lightbox-close {
+    position: fixed;
+    top: 0.6rem;
+    right: 0.8rem;
+    background: none;
+    border: none;
+    color: #f7f4ee;
+    cursor: pointer;
+    padding: 0.5rem;
+  }
+</style>

@@ -1,0 +1,14 @@
+import { defineConfig } from 'astro/config';
+
+export default defineConfig({
+  site: 'https://adamficke.com',
+  output: 'static',
+  trailingSlash: 'always',
+  build: {
+    format: 'directory',
+  },
+  image: {
+    // photos are pre-sized originals in content/; sharp generates responsive variants
+    responsiveStyles: true,
+  },
+});

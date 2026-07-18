@@ -1,0 +1,27 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="About — Adam Ficke" description="About Adam Ficke.">
+  <section class="about rise">
+    <p class="kicker">About</p>
+    <h1>Adam Ficke</h1>
+    <p>
+      Landscape photographs, mostly from California — the Sierra, the coast, and
+      around San Francisco. Shot on a Fujifilm X-T5.
+    </p>
+    <!-- Edit this page at src/pages/about.astro -->
+  </section>
+</Layout>
+
+<style>
+  .about {
+    margin-top: clamp(1rem, 4vw, 3rem);
+    max-width: var(--measure);
+  }
+
+  .about h1 {
+    font-size: clamp(2rem, 6vw, 3.4rem);
+    margin: 0.3rem 0 1.2rem;
+  }
+</style>

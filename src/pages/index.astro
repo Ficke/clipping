@@ -1,0 +1,72 @@
+---
+import { Image } from 'astro:assets';
+import Layout from '../layouts/Layout.astro';
+import { coverOf, formatDate, getAlbums, slugOf } from '../lib/albums';
+
+const albums = await getAlbums();
+---
+
+<Layout title="Adam Ficke — Photography">
+  <h1 class="visually-hidden">Photography</h1>
+  <ol class="albums">
+    {
+      albums.map((album, i) => {
+        const cover = coverOf(album);
+        return (
+          <li class="album rise" style={`animation-delay: ${Math.min(i * 90, 360)}ms`}>
+            <a href={`/photography/${slugOf(album)}/`}>
+              <p class="kicker">{formatDate(album.data.date)}</p>
+              <h2>{album.data.title}</h2>
+              <Image
+                src={cover}
+                alt={album.data.title}
+                widths={[480, 800, 1200, 1600]}
+                sizes="(min-width: 1200px) 1040px, 94vw"
+                loading={i < 2 ? 'eager' : 'lazy'}
+              />
+            </a>
+          </li>
+        );
+      })
+    }
+  </ol>
+</Layout>
+
+<style>
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .albums {
+    list-style: none;
+    padding: 0;
+    margin: clamp(1rem, 4vw, 3rem) 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(3.2rem, 8vw, 5.5rem);
+  }
+
+  .album a {
+    display: block;
+  }
+
+  .album h2 {
+    font-size: clamp(1.7rem, 4.5vw, 2.7rem);
+    margin: 0.25rem 0 1rem;
+    transition: color 0.25s ease;
+  }
+
+  .album a:hover h2,
+  .album a:focus-visible h2 {
+    color: var(--accent);
+  }
+
+  .album img {
+    width: 100%;
+    border-radius: 2px;
+  }
+</style>

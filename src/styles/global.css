@@ -1,0 +1,150 @@
+:root {
+  --paper: #f7f4ee;
+  --ink: #211e1a;
+  --muted: #837b6e;
+  --hairline: rgba(33, 30, 26, 0.14);
+  --accent: #a34f26;
+  --surface: #fffdf9;
+  --measure: 62ch;
+  --frame: 1120px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #141312;
+    --ink: #e9e4db;
+    --muted: #948c7e;
+    --hairline: rgba(233, 228, 219, 0.16);
+    --accent: #d0703f;
+    --surface: #1b1a18;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Figtree Variable', system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--frame);
+  margin: 0 auto;
+  padding: 0 clamp(1.1rem, 4vw, 2.5rem);
+}
+
+h1,
+h2,
+h3 {
+  font-family: 'Fraunces Variable', Georgia, serif;
+  font-variation-settings: 'opsz' 72, 'SOFT' 40, 'WONK' 0;
+  font-weight: 460;
+  line-height: 1.08;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--paper);
+}
+
+/* --- shared bits --- */
+
+.kicker {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.kicker a:hover,
+a.kicker:hover {
+  color: var(--accent);
+}
+
+.site-header {
+  width: 100%;
+  max-width: var(--frame);
+  margin: 0 auto;
+  padding: clamp(1.4rem, 3.5vw, 2.4rem) clamp(1.1rem, 4vw, 2.5rem);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.site-header .wordmark {
+  font-family: 'Fraunces Variable', Georgia, serif;
+  font-variation-settings: 'opsz' 40, 'SOFT' 60;
+  font-size: 1.35rem;
+  font-weight: 520;
+}
+
+.site-header .wordmark em {
+  font-style: italic;
+  color: var(--accent);
+}
+
+.site-header nav {
+  display: flex;
+  gap: 1.6rem;
+}
+
+.site-footer {
+  width: 100%;
+  max-width: var(--frame);
+  margin: 4rem auto 0;
+  padding: 1.6rem clamp(1.1rem, 4vw, 2.5rem) 2.2rem;
+  border-top: 1px solid var(--hairline);
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rise {
+    animation: rise 0.7s cubic-bezier(0.2, 0.6, 0.2, 1) both;
+  }
+
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}

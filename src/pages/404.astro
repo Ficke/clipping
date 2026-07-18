@@ -1,0 +1,26 @@
+---
+import Layout from '../layouts/Layout.astro';
+---
+
+<Layout title="Not found — Adam Ficke">
+  <section class="nf rise">
+    <p class="kicker">404</p>
+    <h1>Nothing here</h1>
+    <p><a href="/">Back to the photographs →</a></p>
+  </section>
+</Layout>
+
+<style>
+  .nf {
+    margin-top: clamp(2rem, 8vw, 5rem);
+  }
+
+  .nf h1 {
+    font-size: clamp(2rem, 6vw, 3.4rem);
+    margin: 0.3rem 0 1rem;
+  }
+
+  .nf a:hover {
+    color: var(--accent);
+  }
+</style>
