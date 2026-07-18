@@ -28,13 +28,17 @@ jobs:
 
       - run: npm run build
 
+      # Deploy steps no-op until the AWS role variable is wired up
+      # (see infra/wire-aws.sh); the build above still validates every push.
       - uses: aws-actions/configure-aws-credentials@v4
+        if: vars.AWS_DEPLOY_ROLE_ARN != ''
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
       # Hashed assets are immutable; everything else gets a short TTL.
       - name: Sync to S3
+        if: vars.AWS_DEPLOY_ROLE_ARN != ''
         run: |
           aws s3 sync dist/_astro "s3://$BUCKET/_astro" --size-only \
             --cache-control "public, max-age=31536000, immutable"
@@ -44,6 +48,7 @@ jobs:
           BUCKET: ${{ vars.SITE_BUCKET }}
 
       - name: Invalidate CloudFront
+        if: vars.AWS_DEPLOY_ROLE_ARN != ''
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \

@@ -1,7 +1,9 @@
+import sitemap from '@astrojs/sitemap';
 import { defineConfig } from 'astro/config';
 
 export default defineConfig({
   site: 'https://adamficke.com',
+  integrations: [sitemap()],
   output: 'static',
   trailingSlash: 'always',
   build: {

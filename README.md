@@ -56,6 +56,19 @@ Local preview: `npm install`, then `npm run dev`.
 
 Costs ≈ $0.50–1.50/month once the domain moves to Route 53.
 
+## First-time AWS bootstrap
+
+With AWS credentials active (`aws login`) and `gh` authenticated:
+
+```sh
+./infra/wire-aws.sh
+```
+
+It terraform-applies the stack, points the GitHub Actions variables at the
+resulting role/bucket/distribution, runs a deploy, and smoke-tests the
+CloudFront URL (including a legacy-URL redirect). Until this has run, CI
+builds every push but skips the deploy steps.
+
 ## Domain cutover (when ready)
 
 The domain is still registered at Squarespace. Two independent steps, in

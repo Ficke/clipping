@@ -83,6 +83,24 @@ resource "aws_cloudfront_function" "rewrite" {
       var request = event.request;
       var host = request.headers.host ? request.headers.host.value : '';
 
+      // Album URLs from the old Squarespace site
+      var legacy = {
+        '/photography/salt-point-state-park': '/photography/salt-point/',
+        '/photography/grand-canyon-of-the-tuolumne': '/photography/tuolumne/',
+        '/photography/yosemite-april-25': '/photography/yosemite/',
+        '/photography/desolation-wilderness-july-4th-24': '/photography/desolation-wilderness/',
+        '/photography/great-highway-amp-dolores-june-24': '/photography/great-highway-dolores/',
+        '/photography/yj638n83sg6fcdguko5uqv6ih70ngf': '/photography/crissy-field/'
+      };
+      var path = request.uri.endsWith('/') ? request.uri.slice(0, -1) : request.uri;
+      if (legacy[path]) {
+        return {
+          statusCode: 301,
+          statusDescription: 'Moved Permanently',
+          headers: { location: { value: legacy[path] } }
+        };
+      }
+
       if (host.startsWith('www.')) {
         return {
           statusCode: 301,
