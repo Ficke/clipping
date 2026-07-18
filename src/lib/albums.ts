@@ -37,11 +37,11 @@ function imagesIn(album: Album): [string, ImageMetadata][] {
 }
 
 export function coverOf(album: Album): ImageMetadata {
-  const images = imagesIn(album);
-  const hit = images.find(([file]) => file === album.data.cover);
-  if (hit) return hit[1];
-  if (images.length === 0) throw new Error(`Album ${album.id} has no images`);
-  return images[0]![1];
+  const hit = imagesIn(album).find(([file]) => file === album.data.cover);
+  if (!hit) {
+    throw new Error(`Album ${album.id}: cover "${album.data.cover}" matches no image in the folder`);
+  }
+  return hit[1];
 }
 
 /** Photos in filename order, with frontmatter captions and EXIF (when present). */

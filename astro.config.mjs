@@ -10,8 +10,6 @@ export default defineConfig({
     format: 'directory',
   },
   image: {
-    // photos are full-quality originals synced from S3 into content/;
-    // sharp generates responsive AVIF/WebP variants at build time
     responsiveStyles: true,
     service: sharpImageService({
       // AVIF ~q60 is perceptually on par with WebP ~q80 at smaller sizes
