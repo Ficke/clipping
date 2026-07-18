@@ -71,23 +71,44 @@ const fullsized = await Promise.all(
 
   <dialog id="lightbox" aria-label="Fullsize photograph">
     <button id="lightbox-close" class="kicker" autofocus>Close</button>
+    <button id="lightbox-prev" class="lightbox-nav" aria-label="Previous photograph">‹</button>
     <img alt="" />
+    <button id="lightbox-next" class="lightbox-nav" aria-label="Next photograph">›</button>
   </dialog>
 </Layout>
 
 <script>
   const dialog = document.getElementById('lightbox') as HTMLDialogElement;
   const img = dialog.querySelector('img')!;
-  document.querySelectorAll<HTMLAnchorElement>('a[data-lightbox]').forEach((a) => {
+  const links = [...document.querySelectorAll<HTMLAnchorElement>('a[data-lightbox]')];
+  let current = 0;
+
+  function show(i: number) {
+    current = (i + links.length) % links.length;
+    img.src = links[current]!.href;
+    // warm the neighbors so arrowing through feels instant
+    for (const n of [current + 1, current - 1]) {
+      new Image().src = links[(n + links.length) % links.length]!.href;
+    }
+  }
+
+  links.forEach((a, i) => {
     a.addEventListener('click', (e) => {
       e.preventDefault();
-      img.src = a.href;
+      show(i);
       dialog.showModal();
     });
   });
-  dialog.addEventListener('click', (e) => {
-    if (e.target !== img) dialog.close();
+  document.getElementById('lightbox-prev')!.addEventListener('click', () => show(current - 1));
+  document.getElementById('lightbox-next')!.addEventListener('click', () => show(current + 1));
+  dialog.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') show(current - 1);
+    if (e.key === 'ArrowRight') show(current + 1);
   });
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close();
+  });
+  img.addEventListener('click', () => dialog.close());
   document.getElementById('lightbox-close')!.addEventListener('click', () => dialog.close());
   dialog.addEventListener('close', () => {
     img.removeAttribute('src');
@@ -179,5 +200,33 @@ const fullsized = await Promise.all(
     color: #f7f4ee;
     cursor: pointer;
     padding: 0.5rem;
+  }
+
+  .lightbox-nav {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #f7f4ee;
+    font-size: 2.4rem;
+    line-height: 1;
+    padding: 1.2rem 0.9rem;
+    cursor: pointer;
+    opacity: 0.65;
+    transition: opacity 0.2s ease;
+  }
+
+  .lightbox-nav:hover,
+  .lightbox-nav:focus-visible {
+    opacity: 1;
+  }
+
+  #lightbox-prev {
+    left: 0.4rem;
+  }
+
+  #lightbox-next {
+    right: 0.4rem;
   }
 </style>
