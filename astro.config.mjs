@@ -11,4 +11,10 @@ export default defineConfig({
     // photos are pre-sized originals in content/; sharp generates responsive variants
     responsiveStyles: true,
   },
+  vite: {
+    build: {
+      // keep scripts/styles as external files so CloudFront can serve a strict CSP
+      assetsInlineLimit: 0,
+    },
+  },
 });
