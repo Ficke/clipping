@@ -10,17 +10,12 @@ variable "bucket_name" {
   default     = "adamficke-com-site"
 }
 
-variable "github_repository" {
-  description = "GitHub org/repo allowed to deploy via OIDC"
-  type        = string
-  default     = "Ficke/clipping"
-}
-
-# GitHub now embeds immutable account/repo IDs in the OIDC sub claim
-# (e.g. repo:Owner@<owner_id>/repo@<repo_id>:ref:...). Find them via:
+# GitHub embeds immutable account/repo IDs in the OIDC sub claim for repos
+# created after 2026-07-15 (repo:Owner@<owner_id>/repo@<repo_id>:ref:...),
+# so trust survives account/repo name recycling. Find the IDs via:
 #   gh api repos/<owner>/<repo> --jq '{owner_id: .owner.id, repo_id: .id}'
-variable "github_repository_id_qualified" {
-  description = "Owner@id/repo@id form of github_repository, as issued in OIDC sub claims"
+variable "github_repository" {
+  description = "Owner@id/repo@id allowed to deploy via OIDC, as issued in sub claims"
   type        = string
   default     = "Ficke@6045217/clipping@1304655366"
 }

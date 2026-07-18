@@ -25,12 +25,7 @@ data "aws_iam_policy_document" "github_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values = [
-        # Legacy and ID-qualified sub formats — GitHub issues the latter now,
-        # but accept both so a format rollback doesn't break deploys.
-        "repo:${var.github_repository}:ref:refs/heads/main",
-        "repo:${var.github_repository_id_qualified}:ref:refs/heads/main",
-      ]
+      values   = ["repo:${var.github_repository}:ref:refs/heads/main"]
     }
   }
 }

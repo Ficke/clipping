@@ -32,13 +32,49 @@ draft: true               # optional: hide until ready
 Trip notes go here — regular markdown, shown above the photos.
 ```
 
-Push to `main`. CI builds responsive AVIF/WebP variants and deploys.
+Push to `main`. CI builds responsive variants and deploys — nothing else to do.
 EXIF (camera, focal length, aperture, shutter, ISO) is read from the files at
 build time and shown under each photo automatically — no need to type it.
 (The photos migrated from Squarespace had their EXIF stripped, so those use
 hand captions.)
 
+Captions and text, in one place:
+
+- **Trip notes**: the markdown body of `index.md`, rendered above the photos
+- **Per-photo captions**: the `captions:` map in frontmatter, keyed by exact
+  filename — photos without an entry just show their EXIF line (or nothing)
+- **EXIF line**: automatic from the file; nothing to write
+- **`description:`** (optional frontmatter): overrides the auto-generated
+  `<meta>` description for the album page
+
 Local preview: `npm install`, then `npm run dev`.
+
+## Where the high-quality files live
+
+**Git is the archive.** The full-quality JPEGs are committed in
+`content/albums/` alongside their markdown — the repo is the single source of
+truth, and everything on the web is derived from it.
+
+The originals are never uploaded to S3. At build time, Astro feeds each one
+through sharp and emits content-hashed derivatives into `dist/_astro/`:
+
+- WebP at 640 / 1080 / 1600 / 2000 px wide for the responsive `<img srcset>`
+  on album pages (the browser picks one by viewport)
+- a 2000 px WebP (q85) that the lightbox opens as "fullsize"
+- a 1200 px JPEG used as the album's Open Graph / social-preview image
+
+`deploy.yml` syncs `dist/` to S3, so the bucket only ever holds those
+derivatives plus HTML/CSS/JS. It is fully disposable — any checkout of the
+repo can regenerate and redeploy it with a push.
+
+Sizing guidance for new albums: export at whatever quality you like — bigger
+originals are simply downscaled at build, and the site serves at most 2000 px
+wide (bump the `widths` / `getImage` calls in
+`src/pages/photography/[slug].astro` if you ever want larger). Full-res
+40 MP exports are fine but grow the repo ~15–25 MB per photo; a ~3000 px
+long-edge export at high quality is a good balance of archive value and repo
+size. (The Squarespace-era photos are 2000 px because that's the largest
+Squarespace would give back.)
 
 ## Architecture
 
