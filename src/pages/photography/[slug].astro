@@ -149,6 +149,8 @@ const fullsized = await Promise.all(
   }
 
   dialog {
+    /* the global `* { margin: 0 }` reset kills the UA's centering margin */
+    margin: auto;
     border: none;
     padding: 0;
     background: transparent;
