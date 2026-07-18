@@ -54,6 +54,19 @@ data "aws_iam_policy_document" "deploy" {
     actions   = ["cloudfront:CreateInvalidation"]
     resources = [aws_cloudfront_distribution.site.arn]
   }
+
+  # Read-only: CI pulls originals to build from but can never alter the archive.
+  statement {
+    sid       = "ListOriginals"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.originals.arn]
+  }
+
+  statement {
+    sid       = "ReadOriginals"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.originals.arn}/*"]
+  }
 }
 
 resource "aws_iam_role_policy" "deploy" {

@@ -1,5 +1,5 @@
 ---
-import { Image } from 'astro:assets';
+import { Picture } from 'astro:assets';
 import Layout from '../layouts/Layout.astro';
 import { coverOf, formatDate, getAlbums, slugOf } from '../lib/albums';
 
@@ -17,12 +17,14 @@ const albums = await getAlbums();
             <a href={`/photography/${slugOf(album)}/`}>
               <p class="kicker">{formatDate(album.data.date)}</p>
               <h2>{album.data.title}</h2>
-              <Image
+              <Picture
                 src={cover}
                 alt={album.data.title}
+                formats={['avif', 'webp']}
                 widths={[480, 800, 1200, 1600]}
                 sizes="(min-width: 1200px) 1040px, 94vw"
                 loading={i < 2 ? 'eager' : 'lazy'}
+                fetchpriority={i === 0 ? 'high' : 'auto'}
               />
             </a>
           </li>

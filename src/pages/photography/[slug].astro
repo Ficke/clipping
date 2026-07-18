@@ -1,5 +1,5 @@
 ---
-import { getImage, Image } from 'astro:assets';
+import { getImage, Picture } from 'astro:assets';
 import { render } from 'astro:content';
 import Layout from '../../layouts/Layout.astro';
 import { coverOf, formatDate, getAlbums, photosOf, slugOf } from '../../lib/albums';
@@ -16,7 +16,7 @@ const hasIntro = album.body && album.body.trim().length > 0;
 
 const cover = await getImage({ src: coverOf(album), width: 1200, format: 'jpg' });
 const fullsized = await Promise.all(
-  photos.map((p) => getImage({ src: p.image, width: 2000, format: 'webp', quality: 85 }))
+  photos.map((p) => getImage({ src: p.image, width: 2000, format: 'webp', quality: 90 }))
 );
 ---
 
@@ -47,12 +47,14 @@ const fullsized = await Promise.all(
         photos.map((photo, i) => (
           <figure class="rise" style={`animation-delay: ${Math.min(120 + i * 60, 420)}ms`}>
             <a href={fullsized[i]!.src} class="zoom" data-lightbox aria-label={`View ${photo.file} fullsize`}>
-              <Image
+              <Picture
                 src={photo.image}
                 alt={photo.caption ?? `${album.data.title}, photograph ${i + 1}`}
+                formats={['avif', 'webp']}
                 widths={[640, 1080, 1600, 2000]}
                 sizes="(min-width: 1200px) 1040px, 94vw"
                 loading={i < 2 ? 'eager' : 'lazy'}
+                fetchpriority={i === 0 ? 'high' : 'auto'}
               />
             </a>
             {(photo.caption || photo.exif) && (

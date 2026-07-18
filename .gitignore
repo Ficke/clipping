@@ -4,8 +4,15 @@ dist/
 .DS_Store
 *.log
 
-# Terraform
+# Photo originals live in S3 (adamficke-com-originals), not git.
+# `bun run photos:pull` hydrates them; markdown stays in git.
+content/albums/**/*.jpg
+content/albums/**/*.jpeg
+content/albums/**/*.png
+content/albums/**/*.webp
+content/albums/**/*.avif
+
+# Terraform (the .terraform.lock.hcl provider lockfile IS committed)
 infra/.terraform/
 infra/*.tfstate*
-infra/.terraform.lock.hcl
 infra/tfplan

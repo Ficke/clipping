@@ -32,6 +32,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
     <meta property="og:url" content={canonical} />
     {ogImage && <meta property="og:image" content={new URL(ogImage, Astro.site)} />}
     <meta name="generator" content={Astro.generator} />
+    <link rel="alternate" type="application/rss+xml" title="Adam Ficke — Photography" href="/rss.xml" />
   </head>
   <body>
     <header class="site-header">
