@@ -69,8 +69,8 @@ const fullsized = await Promise.all(
     </div>
   </article>
 
-  <dialog id="lightbox" aria-label="Fullsize photograph">
-    <button id="lightbox-close" class="kicker" autofocus>Close</button>
+  <dialog id="lightbox" aria-label="Fullsize photograph" tabindex="-1">
+    <button id="lightbox-close" class="kicker">Close</button>
     <button id="lightbox-prev" class="lightbox-nav" aria-label="Previous photograph">‹</button>
     <img alt="" />
     <button id="lightbox-next" class="lightbox-nav" aria-label="Next photograph">›</button>
@@ -97,6 +97,7 @@ const fullsized = await Promise.all(
       e.preventDefault();
       show(i);
       dialog.showModal();
+      dialog.focus();
     });
   });
   document.getElementById('lightbox-prev')!.addEventListener('click', () => show(current - 1));
@@ -172,6 +173,7 @@ const fullsized = await Promise.all(
   dialog {
     /* the global `* { margin: 0 }` reset kills the UA's centering margin */
     margin: auto;
+    outline: none;
     border: none;
     padding: 0;
     background: transparent;
