@@ -109,11 +109,6 @@ a.kicker:hover {
   font-weight: 520;
 }
 
-.site-header .wordmark em {
-  font-style: italic;
-  color: var(--accent);
-}
-
 .site-header nav {
   display: flex;
   gap: 1.6rem;

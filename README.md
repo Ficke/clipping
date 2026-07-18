@@ -32,16 +32,19 @@ Photos are gitignored — a fresh clone has the markdown but no images until
 
    ```markdown
    ---
-   title: "Lost Coast Trail"
-   date: 2026-08-14          # controls ordering on the index page
+   title: "Lost Coast"       # the place, nothing else — no dates
+   date: 2026-08-14          # controls ordering; rendered above the title
    cover: 01-DSCF1234.jpg    # image shown on the index page
-   captions:                 # optional, per-photo
-     02-DSCF1250.jpg: "Fog coming over Punta Gorda"
+   captions:                 # optional: one descriptive sentence per photo
+     02-DSCF1250.jpg: "Fog coming over Punta Gorda."
    draft: true               # optional: hide until ready
    ---
 
-   Trip notes go here — regular markdown, shown above the photos.
+   Optional album text — the story of the trip, shown above the photos.
    ```
+
+   Full conventions live in `content/albums/TEMPLATE.md` — copy from there
+   so every album keeps the same voice and structure.
 
 2. Push the photos to the archive, then the markdown to git:
 
