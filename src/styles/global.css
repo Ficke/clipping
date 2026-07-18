@@ -1,7 +1,7 @@
 :root {
   --paper: #f7f4ee;
   --ink: #211e1a;
-  --muted: #837b6e;
+  --muted: #6f695e; /* ≥4.5:1 on --paper (WCAG AA for small text) */
   --hairline: rgba(33, 30, 26, 0.14);
   --accent: #a34f26;
   --surface: #fffdf9;

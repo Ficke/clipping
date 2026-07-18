@@ -150,6 +150,14 @@ resource "aws_cloudfront_response_headers_policy" "security" {
       override                = true
     }
   }
+
+  custom_headers_config {
+    items {
+      header   = "Permissions-Policy"
+      value    = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+      override = true
+    }
+  }
 }
 
 resource "aws_cloudfront_distribution" "site" {

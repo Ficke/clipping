@@ -16,3 +16,6 @@ content/albums/**/*.avif
 infra/.terraform/
 infra/*.tfstate*
 infra/tfplan
+
+# preview-check screenshots
+.claude/skills/preview-check/shots/
