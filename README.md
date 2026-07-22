@@ -150,14 +150,15 @@ mutating published assets.
   with public access blocked
 - **CloudFront**: HTTPS-only, HTTP/2+3, security headers (HSTS, strict CSP,
   frame-deny), and a viewer-request function for pretty URLs, legacy-URL
-  redirects, and www → apex
+  redirects, and www → apex. Deploys invalidate mutable site paths without
+  evicting immutable `/_astro/*` or `/media/*` assets
 - **GitHub Actions** (`.github/workflows/deploy.yml`): on push to `main`,
   assumes the AWS role via OIDC, uploads the git source archive, and waits for
   the site CodeBuild job
 - **CodeBuild**: `adamficke-com-media` processes one changed album at upload
   time; `adamficke-com-site` builds and deploys the lightweight Astro site.
-  Bun's cold install is faster than transferring a dependency cache for this
-  small project
+  Both use the current Ubuntu `standard:8.0` image. Bun's cold install is
+  faster than transferring a dependency cache for this small project
 - **Terraform** (`infra/`, state in S3): all of the above, plus a $10/month
   AWS budget alert and the Route 53 hosted zone. ACM and the CloudFront domain
   aliases remain inert until `enable_custom_domain = true`

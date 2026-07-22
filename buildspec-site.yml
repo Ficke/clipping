@@ -19,5 +19,7 @@ phases:
           set -e
           aws s3 sync dist/_astro "s3://$SITE_BUCKET/_astro" --size-only --cache-control "public, max-age=31536000, immutable"
           aws s3 sync dist "s3://$SITE_BUCKET" --delete --exclude "_astro/*" --cache-control "public, max-age=300"
-          aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
+          aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/" "/index.html" "/404.html" "/about*" "/photography*" "/rss.xml" "/robots.txt" "/favicon.svg" "/sitemap*"
         fi
