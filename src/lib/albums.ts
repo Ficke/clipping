@@ -17,6 +17,8 @@ export interface AlbumPhoto {
   exif: string | undefined;
 }
 
+const filenameCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+
 /** URL slug: album folder name without the YYYY-MM- ordering prefix. */
 export function slugOf(album: Album): string {
   return album.id.replace(/^\d{4}-\d{2}-/, '');
@@ -30,10 +32,30 @@ export async function getAlbums(): Promise<Album[]> {
 
 function imagesIn(album: Album): [string, ImageMetadata][] {
   const prefix = `/content/albums/${album.id}/`;
-  return Object.entries(imageModules)
+  const images = Object.entries(imageModules)
     .filter(([p]) => p.startsWith(prefix))
     .map(([p, mod]) => [p.slice(prefix.length), mod.default] as [string, ImageMetadata])
-    .sort(([a], [b]) => a.localeCompare(b));
+    .sort(([a], [b]) => filenameCollator.compare(a, b) || a.localeCompare(b));
+
+  if (!album.data.order) return images;
+
+  const files = new Set(images.map(([file]) => file));
+  const ordered = new Set(album.data.order);
+  const duplicates = album.data.order.filter((file, index) => album.data.order!.indexOf(file) !== index);
+  const unknown = album.data.order.filter((file) => !files.has(file));
+  const missing = images.map(([file]) => file).filter((file) => !ordered.has(file));
+
+  if (duplicates.length || unknown.length || missing.length) {
+    const problems = [
+      duplicates.length && `duplicates: ${[...new Set(duplicates)].join(', ')}`,
+      unknown.length && `unknown: ${unknown.join(', ')}`,
+      missing.length && `missing: ${missing.join(', ')}`,
+    ].filter(Boolean);
+    throw new Error(`Album ${album.id}: invalid order (${problems.join('; ')})`);
+  }
+
+  const byFile = new Map(images);
+  return album.data.order.map((file) => [file, byFile.get(file)!] as [string, ImageMetadata]);
 }
 
 export function coverOf(album: Album): ImageMetadata {
@@ -44,7 +66,7 @@ export function coverOf(album: Album): ImageMetadata {
   return hit[1];
 }
 
-/** Photos in filename order, with frontmatter captions and EXIF (when present). */
+/** Photos in natural filename order, or explicit frontmatter order when set. */
 export async function photosOf(album: Album): Promise<AlbumPhoto[]> {
   return Promise.all(
     imagesIn(album).map(async ([file, image]) => ({

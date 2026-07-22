@@ -7,6 +7,7 @@ const albums = defineCollection({
     title: z.string(),
     date: z.coerce.date(),
     cover: z.string(),
+    order: z.array(z.string()).optional(),
     description: z.string().optional(),
     captions: z.record(z.string()).default({}),
     draft: z.boolean().default(false),

@@ -15,43 +15,65 @@ bun run dev            # local preview
 ```
 
 Photos are gitignored — a fresh clone has the markdown but no images until
-`photos:pull`.
+`photos:pull`. Running `photos:push` without an album path checks and
+incrementally uploads every local album.
 
 ## Adding an album
 
-1. Create `content/albums/YYYY-MM-slug/` and drop in your JPEGs plus an
-   `index.md`. Photos display in filename order — keep the `01-`/`02-`
-   prefix — and extensions are lowercase:
+1. Create `content/albums/YYYY-MM-slug/` and drop in your exports. JPEG,
+   PNG, WebP, and AVIF are supported. Photos display in natural filename
+   order, so a camera sequence like `DSCF9.jpg`, `DSCF10.jpg`, `DSCF11.jpg`
+   needs no manual numbering:
 
    ```
    content/albums/2026-08-lost-coast/
-   ├── index.md
-   ├── 01-DSCF1234.jpg
-   ├── 02-DSCF1250.jpg
+   ├── DSCF1234.jpg
+   ├── DSCF1250.jpg
    └── ...
    ```
 
+2. Preview, then prepare and upload that album:
+
+   ```sh
+   bun run photos:push -- content/albums/2026-08-lost-coast --dry-run
+   bun run photos:push -- content/albums/2026-08-lost-coast
+   ```
+
+   The command lowercases image extensions, rejects unsupported photo
+   formats or nested image folders, creates `index.md` when it is missing,
+   and incrementally uploads the originals to S3. The generated title comes
+   from the folder slug (`lost-coast` becomes `Lost Coast`), the date comes
+   from the first photo's EXIF (falling back to the folder month), and the
+   cover is the first photo.
+
+3. The generated `index.md` is ready to publish without changes, or you can
+   edit its title and add optional details:
+
    ```markdown
    ---
-   title: "Lost Coast"       # the place, nothing else — no dates
+   title: "Lost Coast"       # editable; defaults from the folder slug
    date: 2026-08-14          # controls ordering; rendered above the title
-   cover: 01-DSCF1234.jpg    # image shown on the index page
+   cover: DSCF1234.jpg       # image shown on the index page
+   order:                    # optional: override natural filename order
+     - DSCF1250.jpg
+     - DSCF1234.jpg
    captions:                 # optional: one descriptive sentence per photo
-     02-DSCF1250.jpg: "Fog coming over Punta Gorda."
+     DSCF1250.jpg: "Fog coming over Punta Gorda."
    draft: true               # optional: hide until ready
    ---
 
    Optional album text — the story of the trip, shown above the photos.
    ```
 
-   Full conventions live in `content/albums/TEMPLATE.md` — copy from there
-   so every album keeps the same voice and structure.
+   If `order:` is present, it must list every photo exactly once. Full
+   conventions live in `content/albums/TEMPLATE.md`.
 
-2. Push the photos to the archive, then the markdown to git:
+4. Commit the generated markdown to publish:
 
    ```sh
-   bun run photos:push
-   git add . && git commit -m "Lost Coast" && git push
+   git add content/albums/2026-08-lost-coast/index.md
+   git commit -m "Lost Coast"
+   git push
    ```
 
 CI pulls the originals, builds, and deploys.

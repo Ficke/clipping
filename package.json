@@ -7,7 +7,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "photos:push": "aws s3 sync content/albums s3://adamficke-com-originals/albums --exclude '*' --include '*.jpg' --include '*.jpeg' --include '*.png' --include '*.webp' --include '*.avif'",
+    "photos:push": "bun scripts/photos-push.mjs",
     "photos:pull": "aws s3 sync s3://adamficke-com-originals/albums content/albums --exclude '*' --include '*.jpg' --include '*.jpeg' --include '*.png' --include '*.webp' --include '*.avif'"
   },
   "dependencies": {
