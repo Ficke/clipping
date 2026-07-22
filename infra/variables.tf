@@ -26,10 +26,10 @@ variable "domain_name" {
   default     = "adamficke.com"
 }
 
-# Flip to true once the Route 53 hosted zone can become authoritative
-# (i.e. when the domain's nameservers point at it). See README: Domain cutover.
+# Flip to true once the domain's nameservers point at the Route 53 hosted zone.
+# The zone itself exists before cutover so Terraform can output its nameservers.
 variable "enable_custom_domain" {
-  description = "Create Route 53 zone + ACM cert and attach the domain to CloudFront"
+  description = "Create the ACM certificate and attach the domain to CloudFront"
   type        = bool
   default     = false
 }

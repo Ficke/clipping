@@ -158,8 +158,8 @@ mutating published assets.
   time; `adamficke-com-site` builds and deploys the lightweight Astro site
   with a native S3 dependency cache
 - **Terraform** (`infra/`, state in S3): all of the above, plus a $10/month
-  AWS budget alert and the Route 53 / ACM resources for the custom domain
-  (inert until `enable_custom_domain = true`)
+  AWS budget alert and the Route 53 hosted zone. ACM and the CloudFront domain
+  aliases remain inert until `enable_custom_domain = true`
 - **RSS** at `/rss.xml`
 
 Runs ≈ $0.50–1.50/month once the domain is on Route 53.
@@ -178,12 +178,12 @@ The domain is registered at Squarespace. Two independent steps, in either
 order:
 
 1. **Serve the site from adamficke.com**
-   - In `infra/`: set `enable_custom_domain = true`, `terraform apply`
+   - In `infra/`, run `terraform apply` with the default configuration
    - Take the `nameservers` output and set those four as the domain's
      nameservers at the registrar
-   - Once DNS propagates, ACM validates automatically; if the first apply
-     timed out waiting, re-run `terraform apply` to attach the cert and
-     aliases to CloudFront
+   - Once delegation propagates, run
+     `terraform apply -var='enable_custom_domain=true'`; ACM validates and
+     Terraform attaches the certificate and aliases to CloudFront
 2. **Transfer registration to Route 53**
    - Squarespace: unlock the domain, request the transfer auth code
    - Route 53 console → Registered domains → Transfer in, paste the code

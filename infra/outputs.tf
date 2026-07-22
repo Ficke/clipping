@@ -15,6 +15,6 @@ output "deploy_role_arn" {
 }
 
 output "nameservers" {
-  description = "Point the registrar at these once enable_custom_domain = true"
-  value       = var.enable_custom_domain ? aws_route53_zone.site[0].name_servers : null
+  description = "Route 53 nameservers to set at the registrar"
+  value       = aws_route53_zone.site.name_servers
 }
