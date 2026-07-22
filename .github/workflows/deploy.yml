@@ -34,6 +34,11 @@ jobs:
             --source-location-override "adamficke-com-builds/source/${GITHUB_SHA}.zip" \
             --query 'build.id' --output text)
           echo "CodeBuild: ${BUILD_ID}"
-          aws codebuild wait build-complete --ids "${BUILD_ID}"
-          STATUS=$(aws codebuild batch-get-builds --ids "${BUILD_ID}" --query 'builds[0].buildStatus' --output text)
-          test "${STATUS}" = "SUCCEEDED"
+          while true; do
+            STATUS=$(aws codebuild batch-get-builds --ids "${BUILD_ID}" --query 'builds[0].buildStatus' --output text)
+            case "${STATUS}" in
+              SUCCEEDED) break ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT) exit 1 ;;
+            esac
+            sleep 5
+          done
