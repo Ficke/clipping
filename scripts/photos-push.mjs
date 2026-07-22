@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
 import exifr from 'exifr';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -11,6 +12,8 @@ const archiveRoot = 's3://adamficke-com-originals/albums';
 const manifestRoot = 's3://adamficke-com-originals/manifests';
 const buildBucket = 'adamficke-com-builds';
 const mediaProject = 'adamficke-com-media';
+const buildPollInterval = Number.parseInt(process.env.PHOTO_BUILD_POLL_INTERVAL_MS ?? '5000', 10);
+const terminalBuildStatuses = new Set(['FAILED', 'FAULT', 'STOPPED', 'SUCCEEDED', 'TIMED_OUT']);
 const supportedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
 const unsupportedPhotoExtensions = new Set([
   '.bmp', '.dng', '.gif', '.heic', '.heif', '.raf', '.raw', '.tif', '.tiff',
@@ -67,7 +70,7 @@ for (const { albumDirectory, images } of preparedAlbums) {
   }
 
   sourceBundle ??= createSourceBundle();
-  publishMedia(album, sourceBundle);
+  await publishMedia(album, sourceBundle);
 }
 
 if (sourceBundle) rmSync(sourceBundle.directory, { recursive: true, force: true });
@@ -155,7 +158,7 @@ function createSourceBundle() {
   return { directory, key };
 }
 
-function publishMedia(album, sourceBundle) {
+async function publishMedia(album, sourceBundle) {
   console.log(`Starting ${mediaProject} for ${album}`);
   const buildId = runCapture('aws', [
     'codebuild', 'start-build',
@@ -166,11 +169,7 @@ function publishMedia(album, sourceBundle) {
     '--query', 'build.id', '--output', 'text',
   ]);
   console.log(`Waiting for ${buildId}`);
-  run('aws', ['codebuild', 'wait', 'build-complete', '--ids', buildId]);
-  const status = runCapture('aws', [
-    'codebuild', 'batch-get-builds', '--ids', buildId,
-    '--query', 'builds[0].buildStatus', '--output', 'text',
-  ]);
+  const status = await waitForBuild(buildId);
   if (status !== 'SUCCEEDED') fail(`Media build ${buildId} finished with ${status}`);
 
   const manifestPath = path.join(albumsRoot, album, 'photos.json');
@@ -179,6 +178,17 @@ function publishMedia(album, sourceBundle) {
     '--only-show-errors',
   ]);
   console.log(`Created ${manifestPath}`);
+}
+
+async function waitForBuild(buildId) {
+  while (true) {
+    const status = runCapture('aws', [
+      'codebuild', 'batch-get-builds', '--ids', buildId,
+      '--query', 'builds[0].buildStatus', '--output', 'text',
+    ]);
+    if (terminalBuildStatuses.has(status)) return status;
+    await delay(buildPollInterval);
+  }
 }
 
 function renameCaseSafely(directory, sourceName, destinationName) {
