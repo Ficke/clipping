@@ -443,7 +443,7 @@
           "avif": [
             {
               "width": 640,
-              "height": 427,
+              "height": 426,
               "src": "/media/photo-v1/56/56a6c2d237a516dd0c36f21beb0acd524b4f9b71acaa25300b2c0fe074f9e8d4/responsive-640-q60.avif"
             },
             {
@@ -465,7 +465,7 @@
           "webp": [
             {
               "width": 640,
-              "height": 427,
+              "height": 426,
               "src": "/media/photo-v1/56/56a6c2d237a516dd0c36f21beb0acd524b4f9b71acaa25300b2c0fe074f9e8d4/responsive-640-q80.webp"
             },
             {
@@ -487,7 +487,7 @@
           "jpeg": [
             {
               "width": 640,
-              "height": 427,
+              "height": 426,
               "src": "/media/photo-v1/56/56a6c2d237a516dd0c36f21beb0acd524b4f9b71acaa25300b2c0fe074f9e8d4/responsive-640-q85.jpg"
             },
             {
