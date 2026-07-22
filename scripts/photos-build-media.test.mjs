@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -73,6 +82,66 @@ describe('media manifest builder', () => {
     expect(updated.photos.map((photo) => photo.file)).toEqual(['one.jpg']);
     expect(updated.photos[0].sourceHash).not.toBe(initialHash);
   });
+
+  test('reuses actual dimensions from the published manifest', async () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), 'photo-media-reuse-test-'));
+    temporaryDirectories.push(directory);
+    const source = path.join(directory, 'album');
+    const initialManifest = path.join(directory, 'initial.json');
+    const reusedManifest = path.join(directory, 'reused.json');
+    const initialOutput = path.join(directory, 'initial-output');
+    const reusedOutput = path.join(directory, 'reused-output');
+    const bin = path.join(directory, 'bin');
+    const keys = path.join(directory, 'keys.json');
+    mkdirSync(source);
+    mkdirSync(bin);
+    await sharp({ create: { width: 2000, height: 1333, channels: 3, background: '#abcdef' } })
+      .jpeg().toFile(path.join(source, 'photo.jpg'));
+
+    const initial = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-build-media.mjs'),
+      '--source', source,
+      '--album', '2026-08-test',
+      '--manifest', initialManifest,
+      '--output', initialOutput,
+      '--no-upload',
+    ], { encoding: 'utf8' });
+    expect(initial.status).toBe(0);
+    const parsed = JSON.parse(readFileSync(initialManifest, 'utf8'));
+    const variants = allVariants(parsed.photos[0]);
+    writeFileSync(keys, JSON.stringify(variants.map((variant) => variant.src.slice(1))));
+
+    const fakeAws = path.join(bin, 'aws');
+    writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3 cp" ] && printf '%s' "$3" | grep -q '/manifests/'; then
+  cp ${JSON.stringify(initialManifest)} "$4"
+elif [ "$1 $2" = "s3api list-objects-v2" ]; then
+  cat ${JSON.stringify(keys)}
+fi
+`);
+    chmodSync(fakeAws, 0o755);
+
+    const reused = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-build-media.mjs'),
+      '--source', source,
+      '--album', '2026-08-test',
+      '--manifest', reusedManifest,
+      '--output', reusedOutput,
+    ], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        MEDIA_BUCKET: 'media-bucket',
+        MANIFEST_BUCKET: 'manifest-bucket',
+      },
+    });
+
+    expect(reused.status).toBe(0);
+    expect(reused.stdout).toContain('Variants: 0 generated, 14 reused');
+    expect(readFileSync(reusedManifest, 'utf8')).toBe(readFileSync(initialManifest, 'utf8'));
+    expect(filesBelow(reusedOutput)).toHaveLength(0);
+  });
 });
 
 function buildManifest(source, manifest) {
@@ -87,8 +156,17 @@ function buildManifest(source, manifest) {
 }
 
 function filesBelow(directory) {
+  if (!readdirSync(directory, { withFileTypes: true }).length) return [];
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const child = path.join(directory, entry.name);
     return entry.isDirectory() ? filesBelow(child) : [child];
   });
+}
+
+function allVariants(photo) {
+  return [
+    ...Object.values(photo.variants.responsive).flat(),
+    photo.variants.lightbox,
+    photo.variants.social,
+  ];
 }

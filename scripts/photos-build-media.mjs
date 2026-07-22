@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import exifr from 'exifr';
@@ -45,6 +45,7 @@ if (!files.length) fail(`No supported photos found in ${sourceDirectory}`);
 const photos = [];
 let generatedCount = 0;
 let reusedCount = 0;
+const previousVariants = noUpload ? new Map() : loadPreviousVariants();
 
 for (const file of files) {
   const sourcePath = path.join(sourceDirectory, file);
@@ -59,6 +60,7 @@ for (const file of files) {
 
   for (const definition of definitions) {
     const key = derivativeKey(sourceHash, definition);
+    const src = derivativeUrl(sourceHash, definition);
     const expectedHeight = scaledHeight(dimensions.width, dimensions.height, definition.width);
     let width = definition.width;
     let height = expectedHeight;
@@ -71,10 +73,19 @@ for (const file of files) {
       height = result.height;
       generatedCount++;
     } else {
+      const previous = previousVariants.get(src);
+      if (previous) {
+        width = previous.width;
+        height = previous.height;
+      } else if (!manifestOnly && existingKeys.has(key)) {
+        const actual = await remoteVariantDimensions(key);
+        width = actual.width;
+        height = actual.height;
+      }
       reusedCount++;
     }
 
-    const variant = { width, height, src: derivativeUrl(sourceHash, definition) };
+    const variant = { width, height, src };
     if (definition.role === 'responsive') responsive[definition.format].push(variant);
     if (definition.role === 'lightbox') lightbox = variant;
     if (definition.role === 'social') social = variant;
@@ -115,6 +126,49 @@ if (!noUpload) {
 
 console.log(`Manifest: ${manifestPath}`);
 console.log(`Variants: ${generatedCount} generated, ${reusedCount} reused`);
+
+function loadPreviousVariants() {
+  const previousPath = `${manifestPath}.previous`;
+  rmSync(previousPath, { force: true });
+  const result = spawnSync('aws', [
+    's3', 'cp', `s3://${manifestBucket}/manifests/${album}/photos.json`, previousPath,
+    '--only-show-errors',
+  ], { encoding: 'utf8' });
+  if (result.error) fail(`Could not run aws: ${result.error.message}`);
+  if (result.status !== 0) {
+    const error = result.stderr.trim();
+    if (/404|NoSuchKey|Not Found|does not exist/i.test(error)) return new Map();
+    fail(error || 'Could not download the previous photo manifest');
+  }
+
+  let previous;
+  try {
+    previous = JSON.parse(readFileSync(previousPath, 'utf8'));
+  } catch (error) {
+    fail(`Could not read the previous photo manifest: ${error.message}`);
+  }
+
+  const variants = new Map();
+  for (const photo of previous.photos ?? []) {
+    const responsive = Object.values(photo.variants?.responsive ?? {}).flat();
+    for (const variant of [...responsive, photo.variants?.lightbox, photo.variants?.social]) {
+      if (variant?.src && Number.isInteger(variant.width) && Number.isInteger(variant.height)) {
+        variants.set(variant.src, variant);
+      }
+    }
+  }
+  return variants;
+}
+
+async function remoteVariantDimensions(key) {
+  const destination = path.join(outputDirectory, '.existing', path.basename(key));
+  mkdirSync(path.dirname(destination), { recursive: true });
+  run('aws', ['s3', 'cp', `s3://${mediaBucket}/${key}`, destination, '--only-show-errors']);
+  const metadata = await sharp(destination).metadata();
+  rmSync(destination, { force: true });
+  if (!metadata.width || !metadata.height) fail(`Could not read dimensions for existing media: ${key}`);
+  return { width: metadata.width, height: metadata.height };
+}
 
 function parseArgs(values) {
   const parsed = { noUpload: false, manifestOnly: false };
