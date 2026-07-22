@@ -8,10 +8,13 @@ use, and follow the conventions below so every album reads the same way.
 ---
 title: "Place Name"
 date: 2026-08-14
-cover: 01-DSCF1234.jpg
+cover: DSCF1234.jpg
 # --- everything below is optional ---
+order:
+  - DSCF1250.jpg
+  - DSCF1234.jpg
 captions:
-  02-DSCF1250.jpg: "One descriptive sentence about the photo."
+  DSCF1250.jpg: "One descriptive sentence about the photo."
 description: "Custom search/social blurb for this album."
 draft: true
 ---
@@ -23,15 +26,18 @@ worth remembering. One to three short paragraphs; plain markdown.
 
 ## Conventions
 
-- **Title is the place, nothing else.** No dates ("Yosemite, April '25") and
-  no event names — the date renders automatically above the title from the
-  `date` field, and flavor belongs in the album text.
+- **Title** defaults from the folder slug when `photos:push` creates the
+  file, and can be edited freely. Keep dates out of it because the `date`
+  field renders automatically above the title.
 - **Album text** is optional. When you use it, tell the story of the trip —
   never just restate the date or the title.
 - **Captions** are optional, one descriptive sentence per photo. No camera
   settings — the EXIF line under each photo shows those automatically.
-- **Filenames** are lowercase-extension JPEGs with a numeric prefix
-  (`01-`, `02-`, …) — that prefix is the display order.
+- **Photo order** defaults to natural filename order (`DSCF9.jpg` before
+  `DSCF10.jpg`). Use `order:` only for a custom sequence; when present, it
+  must list every photo exactly once.
+- **Filenames** can keep their camera/export names. `photos:push` normalizes
+  supported image extensions to lowercase before upload.
 - **Folder name** is `YYYY-MM-slug`; the slug becomes the URL. Never rename
   a folder after publishing.
 - **`draft: true`** while you're arranging; delete the line to publish.
