@@ -15,10 +15,15 @@ const filenameCollator = new Intl.Collator('en', { numeric: true, sensitivity: '
 
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
 const dryRun = args.includes('--dry-run');
-const positional = args.filter((arg) => arg !== '--dry-run');
+const prewarm = args.includes('--prewarm');
+const flags = new Set(['--dry-run', '--prewarm']);
+const positional = args.filter((arg) => !flags.has(arg));
 
-if (positional.length > 1 || args.some((arg) => arg.startsWith('--') && arg !== '--dry-run')) {
-  fail('Usage: bun run photos:push -- [album-folder] [--dry-run]');
+if (positional.length > 1 || args.some((arg) => arg.startsWith('--') && !flags.has(arg))) {
+  fail('Usage: bun run photos:push -- [album-folder] [--dry-run | --prewarm]');
+}
+if (dryRun && prewarm) {
+  fail('--dry-run cannot be combined with --prewarm');
 }
 
 const source = resolveSource(positional[0]);
@@ -51,7 +56,17 @@ if (dryRun) syncArgs.push('--dryrun');
 console.log(`\n${dryRun ? 'Previewing' : 'Uploading'} ${imageCount} image${imageCount === 1 ? '' : 's'} to ${destination}`);
 const result = spawnSync('aws', syncArgs, { stdio: 'inherit' });
 if (result.error) fail(`Could not run AWS CLI: ${result.error.message}`);
-process.exit(result.status ?? 1);
+if (result.status !== 0) process.exit(result.status ?? 1);
+
+if (prewarm) {
+  console.log('\nPrewarming the shared Astro image cache');
+  const prewarmResult = spawnSync('bun', [path.join(repoRoot, 'scripts', 'photos-prewarm.mjs')], {
+    cwd: repoRoot,
+    stdio: 'inherit',
+  });
+  if (prewarmResult.error) fail(`Could not start cache prewarm: ${prewarmResult.error.message}`);
+  process.exit(prewarmResult.status ?? 1);
+}
 
 function resolveSource(input) {
   if (!input) return albumsRoot;
