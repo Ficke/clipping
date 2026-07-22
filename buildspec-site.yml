@@ -21,7 +21,3 @@ phases:
           aws s3 sync dist "s3://$SITE_BUCKET" --delete --exclude "_astro/*" --cache-control "public, max-age=300"
           aws cloudfront create-invalidation --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
         fi
-
-cache:
-  paths:
-    - node_modules/**/*

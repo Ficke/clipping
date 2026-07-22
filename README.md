@@ -146,7 +146,7 @@ mutating published assets.
 - **S3**: `adamficke-com-site` (HTML/CSS/JS), `adamficke-com-media`
   (immutable public derivatives), `adamficke-com-originals` (versioned photo
   archive and manifests), `adamficke-com-builds` (short-lived CodeBuild
-  sources/cache), and `adamficke-com-tfstate` (Terraform state)—all private
+  source bundles), and `adamficke-com-tfstate` (Terraform state)—all private
   with public access blocked
 - **CloudFront**: HTTPS-only, HTTP/2+3, security headers (HSTS, strict CSP,
   frame-deny), and a viewer-request function for pretty URLs, legacy-URL
@@ -155,8 +155,9 @@ mutating published assets.
   assumes the AWS role via OIDC, uploads the git source archive, and waits for
   the site CodeBuild job
 - **CodeBuild**: `adamficke-com-media` processes one changed album at upload
-  time; `adamficke-com-site` builds and deploys the lightweight Astro site
-  with a native S3 dependency cache
+  time; `adamficke-com-site` builds and deploys the lightweight Astro site.
+  Bun's cold install is faster than transferring a dependency cache for this
+  small project
 - **Terraform** (`infra/`, state in S3): all of the above, plus a $10/month
   AWS budget alert and the Route 53 hosted zone. ACM and the CloudFront domain
   aliases remain inert until `enable_custom_domain = true`

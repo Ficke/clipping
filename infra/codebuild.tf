@@ -77,24 +77,6 @@ data "aws_iam_policy_document" "site_build" {
   }
 
   statement {
-    sid       = "ListBuildCache"
-    actions   = ["s3:ListBucket"]
-    resources = [aws_s3_bucket.builds.arn]
-
-    condition {
-      test     = "StringLike"
-      variable = "s3:prefix"
-      values   = ["cache/site/*"]
-    }
-  }
-
-  statement {
-    sid       = "BuildCache"
-    actions   = ["s3:GetObject", "s3:PutObject"]
-    resources = ["${aws_s3_bucket.builds.arn}/cache/site/*"]
-  }
-
-  statement {
     sid       = "ListSite"
     actions   = ["s3:ListBucket"]
     resources = [aws_s3_bucket.site.arn]
@@ -178,11 +160,6 @@ resource "aws_codebuild_project" "site" {
 
   artifacts {
     type = "NO_ARTIFACTS"
-  }
-
-  cache {
-    type     = "S3"
-    location = "${aws_s3_bucket.builds.bucket}/cache/site"
   }
 
   environment {
