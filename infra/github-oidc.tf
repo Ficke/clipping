@@ -38,42 +38,15 @@ resource "aws_iam_role" "deploy" {
 
 data "aws_iam_policy_document" "deploy" {
   statement {
-    sid       = "SyncSite"
-    actions   = ["s3:ListBucket"]
-    resources = [aws_s3_bucket.site.arn]
+    sid       = "UploadBuildSource"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${aws_s3_bucket.builds.arn}/source/*"]
   }
 
   statement {
-    sid       = "WriteObjects"
-    actions   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
-    resources = ["${aws_s3_bucket.site.arn}/*"]
-  }
-
-  statement {
-    sid       = "Invalidate"
-    actions   = ["cloudfront:CreateInvalidation"]
-    resources = [aws_cloudfront_distribution.site.arn]
-  }
-
-  # Read-only: CI pulls originals to build from but can never alter the archive.
-  statement {
-    sid       = "ListOriginals"
-    actions   = ["s3:ListBucket"]
-    resources = [aws_s3_bucket.originals.arn]
-  }
-
-  statement {
-    sid       = "ReadOriginals"
-    actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.originals.arn}/*"]
-  }
-
-  # CI's persistent image-encode cache — writable, but only this prefix, so
-  # the albums/ archive stays read-only from CI's perspective.
-  statement {
-    sid       = "ImageCache"
-    actions   = ["s3:PutObject", "s3:DeleteObject"]
-    resources = ["${aws_s3_bucket.originals.arn}/cache/*"]
+    sid       = "RunSiteBuild"
+    actions   = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"]
+    resources = [aws_codebuild_project.site.arn]
   }
 }
 

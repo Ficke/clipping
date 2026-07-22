@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -7,6 +8,9 @@ import exifr from 'exifr';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
 const archiveRoot = 's3://adamficke-com-originals/albums';
+const manifestRoot = 's3://adamficke-com-originals/manifests';
+const buildBucket = 'adamficke-com-builds';
+const mediaProject = 'adamficke-com-media';
 const supportedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
 const unsupportedPhotoExtensions = new Set([
   '.bmp', '.dng', '.gif', '.heic', '.heif', '.raf', '.raw', '.tif', '.tiff',
@@ -15,15 +19,11 @@ const filenameCollator = new Intl.Collator('en', { numeric: true, sensitivity: '
 
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
 const dryRun = args.includes('--dry-run');
-const prewarm = args.includes('--prewarm');
-const flags = new Set(['--dry-run', '--prewarm']);
+const flags = new Set(['--dry-run']);
 const positional = args.filter((arg) => !flags.has(arg));
 
 if (positional.length > 1 || args.some((arg) => arg.startsWith('--') && !flags.has(arg))) {
-  fail('Usage: bun run photos:push -- [album-folder] [--dry-run | --prewarm]');
-}
-if (dryRun && prewarm) {
-  fail('--dry-run cannot be combined with --prewarm');
+  fail('Usage: bun run photos:push -- [album-folder] [--dry-run]');
 }
 
 const source = resolveSource(positional[0]);
@@ -33,40 +33,44 @@ const albumDirectories = source === albumsRoot
       .map((entry) => path.join(albumsRoot, entry.name))
   : [source];
 
-let imageCount = 0;
+const preparedAlbums = [];
 for (const albumDirectory of albumDirectories) {
-  imageCount += await prepareAlbum(albumDirectory);
+  const images = await prepareAlbum(albumDirectory);
+  if (images.length) preparedAlbums.push({ albumDirectory, images });
 }
 
-if (!imageCount) fail(`No supported images found in ${source}`);
+if (!preparedAlbums.length) fail(`No supported images found in ${source}`);
 
-const relative = path.relative(albumsRoot, source);
-const destination = relative ? `${archiveRoot}/${relative.split(path.sep).join('/')}` : archiveRoot;
-const syncArgs = [
-  's3', 'sync', source, destination,
-  '--exclude', '*',
-  '--include', '*.jpg',
-  '--include', '*.jpeg',
-  '--include', '*.png',
-  '--include', '*.webp',
-  '--include', '*.avif',
-];
-if (dryRun) syncArgs.push('--dryrun');
+let sourceBundle;
+for (const { albumDirectory, images } of preparedAlbums) {
+  const album = path.basename(albumDirectory);
+  const destination = `${archiveRoot}/${album}`;
+  const syncArgs = [
+    's3', 'sync', albumDirectory, destination,
+    '--exclude', '*',
+    '--include', '*.jpg',
+    '--include', '*.jpeg',
+    '--include', '*.png',
+    '--include', '*.webp',
+    '--include', '*.avif',
+    '--delete',
+    '--checksum-algorithm', 'SHA256',
+  ];
+  if (dryRun) syncArgs.push('--dryrun');
 
-console.log(`\n${dryRun ? 'Previewing' : 'Uploading'} ${imageCount} image${imageCount === 1 ? '' : 's'} to ${destination}`);
-const result = spawnSync('aws', syncArgs, { stdio: 'inherit' });
-if (result.error) fail(`Could not run AWS CLI: ${result.error.message}`);
-if (result.status !== 0) process.exit(result.status ?? 1);
+  console.log(`\n${dryRun ? 'Previewing' : 'Uploading'} ${images.length} image${images.length === 1 ? '' : 's'} to ${destination}`);
+  run('aws', syncArgs);
 
-if (prewarm) {
-  console.log('\nPrewarming the shared Astro image cache');
-  const prewarmResult = spawnSync('bun', [path.join(repoRoot, 'scripts', 'photos-prewarm.mjs')], {
-    cwd: repoRoot,
-    stdio: 'inherit',
-  });
-  if (prewarmResult.error) fail(`Could not start cache prewarm: ${prewarmResult.error.message}`);
-  process.exit(prewarmResult.status ?? 1);
+  if (dryRun) {
+    console.log(`Would build immutable media and write content/albums/${album}/photos.json`);
+    continue;
+  }
+
+  sourceBundle ??= createSourceBundle();
+  publishMedia(album, sourceBundle);
 }
+
+if (sourceBundle) rmSync(sourceBundle.directory, { recursive: true, force: true });
 
 function resolveSource(input) {
   if (!input) return albumsRoot;
@@ -84,6 +88,10 @@ function resolveSource(input) {
 }
 
 async function prepareAlbum(albumDirectory) {
+  const album = path.basename(albumDirectory);
+  if (!/^\d{4}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(album)) {
+    fail(`Album folder must use YYYY-MM-slug format: ${album}`);
+  }
   const entries = readdirSync(albumDirectory, { withFileTypes: true });
   const nestedImages = entries
     .filter((entry) => entry.isDirectory())
@@ -103,7 +111,7 @@ async function prepareAlbum(albumDirectory) {
   if (unsupported.length) {
     fail(`Unsupported photo format in ${albumDirectory}: ${unsupported.join(', ')}. Export as JPEG, PNG, WebP, or AVIF.`);
   }
-  if (!candidates.length) return 0;
+  if (!candidates.length) return [];
 
   const normalizedNames = new Map();
   for (const file of candidates) {
@@ -133,7 +141,44 @@ async function prepareAlbum(albumDirectory) {
     if (!dryRun) writeFileSync(indexPath, contents);
   }
 
-  return images.length;
+  return images;
+}
+
+function createSourceBundle() {
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'photos-push-'));
+  const archive = path.join(directory, 'source.zip');
+  const commit = runCapture('git', ['rev-parse', 'HEAD']);
+  run('git', ['archive', '--format=zip', `--output=${archive}`, 'HEAD']);
+  const key = `source/${commit}.zip`;
+  console.log(`\nUploading build source to s3://${buildBucket}/${key}`);
+  run('aws', ['s3', 'cp', archive, `s3://${buildBucket}/${key}`, '--only-show-errors']);
+  return { directory, key };
+}
+
+function publishMedia(album, sourceBundle) {
+  console.log(`Starting ${mediaProject} for ${album}`);
+  const buildId = runCapture('aws', [
+    'codebuild', 'start-build',
+    '--project-name', mediaProject,
+    '--source-type-override', 'S3',
+    '--source-location-override', `${buildBucket}/${sourceBundle.key}`,
+    '--environment-variables-override', `name=ALBUM_ID,value=${album},type=PLAINTEXT`,
+    '--query', 'build.id', '--output', 'text',
+  ]);
+  console.log(`Waiting for ${buildId}`);
+  run('aws', ['codebuild', 'wait', 'build-complete', '--ids', buildId]);
+  const status = runCapture('aws', [
+    'codebuild', 'batch-get-builds', '--ids', buildId,
+    '--query', 'builds[0].buildStatus', '--output', 'text',
+  ]);
+  if (status !== 'SUCCEEDED') fail(`Media build ${buildId} finished with ${status}`);
+
+  const manifestPath = path.join(albumsRoot, album, 'photos.json');
+  run('aws', [
+    's3', 'cp', `${manifestRoot}/${album}/photos.json`, manifestPath,
+    '--only-show-errors',
+  ]);
+  console.log(`Created ${manifestPath}`);
 }
 
 function renameCaseSafely(directory, sourceName, destinationName) {
@@ -183,6 +228,19 @@ function findImageFiles(directory) {
     if (entry.isDirectory()) return findImageFiles(child);
     return supportedExtensions.has(path.extname(entry.name).toLowerCase()) ? [child] : [];
   });
+}
+
+function run(command, commandArgs) {
+  const result = spawnSync(command, commandArgs, { cwd: repoRoot, stdio: 'inherit' });
+  if (result.error) fail(`Could not run ${command}: ${result.error.message}`);
+  if (result.status !== 0) process.exit(result.status ?? 1);
+}
+
+function runCapture(command, commandArgs) {
+  const result = spawnSync(command, commandArgs, { cwd: repoRoot, encoding: 'utf8' });
+  if (result.error) fail(`Could not run ${command}: ${result.error.message}`);
+  if (result.status !== 0) fail(result.stderr.trim() || `${command} failed`);
+  return result.stdout.trim();
 }
 
 function fail(message) {

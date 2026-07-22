@@ -1,18 +1,16 @@
-import type { ImageMetadata } from 'astro';
 import { getCollection, type CollectionEntry } from 'astro:content';
-import path from 'node:path';
-import exifr from 'exifr';
+import type { PhotoManifest, PhotoManifestEntry } from './photo-manifest';
 
 export type Album = CollectionEntry<'albums'>;
 
-const imageModules = import.meta.glob<{ default: ImageMetadata }>(
-  '/content/albums/*/*.{jpg,jpeg,png,webp,avif}',
-  { eager: true }
+const manifests = import.meta.glob<PhotoManifest>(
+  '/content/albums/*/photos.json',
+  { eager: true, import: 'default' }
 );
 
 export interface AlbumPhoto {
   file: string;
-  image: ImageMetadata;
+  image: PhotoManifestEntry;
   caption: string | undefined;
   exif: string | undefined;
 }
@@ -30,12 +28,22 @@ export async function getAlbums(): Promise<Album[]> {
   return albums.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 }
 
-function imagesIn(album: Album): [string, ImageMetadata][] {
-  const prefix = `/content/albums/${album.id}/`;
-  const images = Object.entries(imageModules)
-    .filter(([p]) => p.startsWith(prefix))
-    .map(([p, mod]) => [p.slice(prefix.length), mod.default] as [string, ImageMetadata])
+function imagesIn(album: Album): [string, PhotoManifestEntry][] {
+  const manifest = manifests[`/content/albums/${album.id}/photos.json`];
+  if (!manifest) throw new Error(`Album ${album.id}: photos.json is missing`);
+  if (manifest.album !== album.id) {
+    throw new Error(`Album ${album.id}: photos.json belongs to ${manifest.album}`);
+  }
+
+  const images = manifest.photos
+    .map((photo) => [photo.file, photo] as [string, PhotoManifestEntry])
     .sort(([a], [b]) => filenameCollator.compare(a, b) || a.localeCompare(b));
+  const duplicateManifestFiles = images
+    .map(([file]) => file)
+    .filter((file, index, files) => files.indexOf(file) !== index);
+  if (duplicateManifestFiles.length) {
+    throw new Error(`Album ${album.id}: photos.json has duplicate files: ${[...new Set(duplicateManifestFiles)].join(', ')}`);
+  }
 
   if (!album.data.order) return images;
 
@@ -55,10 +63,10 @@ function imagesIn(album: Album): [string, ImageMetadata][] {
   }
 
   const byFile = new Map(images);
-  return album.data.order.map((file) => [file, byFile.get(file)!] as [string, ImageMetadata]);
+  return album.data.order.map((file) => [file, byFile.get(file)!] as [string, PhotoManifestEntry]);
 }
 
-export function coverOf(album: Album): ImageMetadata {
+export function coverOf(album: Album): PhotoManifestEntry {
   const hit = imagesIn(album).find(([file]) => file === album.data.cover);
   if (!hit) {
     throw new Error(`Album ${album.id}: cover "${album.data.cover}" matches no image in the folder`);
@@ -68,36 +76,12 @@ export function coverOf(album: Album): ImageMetadata {
 
 /** Photos in natural filename order, or explicit frontmatter order when set. */
 export async function photosOf(album: Album): Promise<AlbumPhoto[]> {
-  return Promise.all(
-    imagesIn(album).map(async ([file, image]) => ({
-      file,
-      image,
-      caption: album.data.captions[file],
-      exif: await exifSummary(album, file),
-    }))
-  );
-}
-
-async function exifSummary(album: Album, file: string): Promise<string | undefined> {
-  const abs = path.join(process.cwd(), 'content/albums', album.id, file);
-  try {
-    const ex = await exifr.parse(abs, ['Model', 'FNumber', 'FocalLength', 'ExposureTime', 'ISO']);
-    if (!ex) return undefined;
-    const parts: string[] = [];
-    if (ex.Model) parts.push(String(ex.Model).trim());
-    if (ex.FocalLength) parts.push(`${Math.round(ex.FocalLength)}mm`);
-    if (ex.FNumber) parts.push(`f/${ex.FNumber}`);
-    if (ex.ExposureTime) parts.push(formatShutter(ex.ExposureTime));
-    if (ex.ISO) parts.push(`ISO ${ex.ISO}`);
-    return parts.length ? parts.join(' · ') : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function formatShutter(seconds: number): string {
-  if (seconds >= 1) return `${seconds}s`;
-  return `1/${Math.round(1 / seconds)}s`;
+  return imagesIn(album).map(([file, image]) => ({
+    file,
+    image,
+    caption: album.data.captions[file],
+    exif: image.exif,
+  }));
 }
 
 export function formatDate(date: Date): string {

@@ -1,0 +1,16 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+    commands:
+      - npm install --global bun@1.3.14
+  pre_build:
+    commands:
+      - bun install --frozen-lockfile
+      - mkdir -p /tmp/photo-source /tmp/photo-media
+      - aws s3 sync "s3://$MANIFEST_BUCKET/albums/$ALBUM_ID" /tmp/photo-source --exclude "*" --include "*.jpg" --include "*.jpeg" --include "*.png" --include "*.webp" --include "*.avif" --only-show-errors
+  build:
+    commands:
+      - PHOTO_SOURCE_DIR=/tmp/photo-source PHOTO_OUTPUT_DIR=/tmp/photo-media PHOTO_MANIFEST_PATH=/tmp/photos.json bun scripts/photos-build-media.mjs

@@ -20,14 +20,10 @@ terraform init -input=false
 terraform apply
 
 ROLE=$(terraform output -raw deploy_role_arn)
-BUCKET=$(terraform output -raw site_bucket)
-DIST=$(terraform output -raw cloudfront_distribution_id)
 URL=$(terraform output -raw cloudfront_url)
 
 echo "==> Setting GitHub Actions variables"
 gh variable set AWS_DEPLOY_ROLE_ARN --body "$ROLE" -R "$REPO"
-gh variable set SITE_BUCKET --body "$BUCKET" -R "$REPO"
-gh variable set CLOUDFRONT_DISTRIBUTION_ID --body "$DIST" -R "$REPO"
 
 echo "==> Deploying"
 gh workflow run deploy.yml -R "$REPO"

@@ -8,7 +8,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "photos:push": "bun scripts/photos-push.mjs",
-    "photos:prewarm": "bun scripts/photos-prewarm.mjs",
+    "photos:build-media": "bun scripts/photos-build-media.mjs",
     "photos:pull": "aws s3 sync s3://adamficke-com-originals/albums content/albums --exclude '*' --include '*.jpg' --include '*.jpeg' --include '*.png' --include '*.webp' --include '*.avif'"
   },
   "dependencies": {

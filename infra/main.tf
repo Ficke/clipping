@@ -176,6 +176,23 @@ resource "aws_cloudfront_distribution" "site" {
     origin_access_control_id = aws_cloudfront_origin_access_control.site.id
   }
 
+  origin {
+    origin_id                = "media"
+    domain_name              = aws_s3_bucket.media.bucket_regional_domain_name
+    origin_access_control_id = aws_cloudfront_origin_access_control.site.id
+  }
+
+  ordered_cache_behavior {
+    path_pattern               = "media/*"
+    target_origin_id           = "media"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6" # managed CachingOptimized
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.security.id
+  }
+
   default_cache_behavior {
     target_origin_id           = "s3"
     viewer_protocol_policy     = "redirect-to-https"

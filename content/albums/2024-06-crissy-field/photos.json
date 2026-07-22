@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "profile": "photo-v1",
+  "album": "2024-06-crissy-field",
+  "photos": [
+    {
+      "file": "01-DSCF0162.jpg",
+      "sourceHash": "73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5",
+      "width": 2000,
+      "height": 1334,
+      "variants": {
+        "responsive": {
+          "avif": [
+            {
+              "width": 640,
+              "height": 427,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-640-q60.avif"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-1080-q60.avif"
+            },
+            {
+              "width": 1600,
+              "height": 1067,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-1600-q60.avif"
+            },
+            {
+              "width": 2000,
+              "height": 1334,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-2000-q60.avif"
+            }
+          ],
+          "webp": [
+            {
+              "width": 640,
+              "height": 427,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-640-q80.webp"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-1080-q80.webp"
+            },
+            {
+              "width": 1600,
+              "height": 1067,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-1600-q80.webp"
+            },
+            {
+              "width": 2000,
+              "height": 1334,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-2000-q80.webp"
+            }
+          ],
+          "jpeg": [
+            {
+              "width": 640,
+              "height": 427,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-640-q85.jpg"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-1080-q85.jpg"
+            },
+            {
+              "width": 1600,
+              "height": 1067,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-1600-q85.jpg"
+            },
+            {
+              "width": 2000,
+              "height": 1334,
+              "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/responsive-2000-q85.jpg"
+            }
+          ]
+        },
+        "lightbox": {
+          "width": 2000,
+          "height": 1334,
+          "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/lightbox-2000-q90.webp"
+        },
+        "social": {
+          "width": 1200,
+          "height": 800,
+          "src": "/media/photo-v1/73/73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5/social-1200-q85.jpg"
+        }
+      }
+    }
+  ]
+}
