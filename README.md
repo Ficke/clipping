@@ -32,11 +32,23 @@ incrementally uploads every local album.
    └── ...
    ```
 
-2. Preview, then prepare and upload that album:
+2. Preview the album upload. A dry run only reports extension renames,
+   `index.md` creation, and S3 uploads; it changes nothing locally or in AWS:
 
    ```sh
    bun run photos:push -- content/albums/2026-08-lost-coast --dry-run
+   ```
+
+3. Upload the originals and create `index.md`. For a new album, add
+   `--prewarm` to generate its responsive images locally and add them to the
+   same shared cache that CI uses:
+
+   ```sh
+   # Standard upload
    bun run photos:push -- content/albums/2026-08-lost-coast
+
+   # Recommended for a new album: upload, then prewarm the image cache
+   bun run photos:push -- content/albums/2026-08-lost-coast --prewarm
    ```
 
    The command lowercases image extensions, rejects unsupported photo
@@ -46,7 +58,12 @@ incrementally uploads every local album.
    from the first photo's EXIF (falling back to the folder month), and the
    cover is the first photo.
 
-3. The generated `index.md` is ready to publish without changes, or you can
+   Prewarming pulls `s3://adamficke-com-originals/cache/astro` into
+   `node_modules/.astro`, builds locally, and syncs new cache entries back to
+   S3. It does not deploy the site or commit generated files. Run the same
+   operation independently at any time with `bun run photos:prewarm`.
+
+4. The generated `index.md` is ready to publish without changes, or you can
    edit its title and add optional details:
 
    ```markdown
@@ -68,7 +85,7 @@ incrementally uploads every local album.
    If `order:` is present, it must list every photo exactly once. Full
    conventions live in `content/albums/TEMPLATE.md`.
 
-4. Commit the generated markdown to publish:
+5. Commit the generated markdown to publish:
 
    ```sh
    git add content/albums/2026-08-lost-coast/index.md
@@ -115,6 +132,24 @@ values in `src/pages/photography/[slug].astro` to go larger).
 
 The site bucket (`adamficke-com-site`) holds only derivatives plus
 HTML/CSS/JS and is fully disposable.
+
+### Prewarming image transforms
+
+The expensive part of a new-album deploy is generating responsive images.
+GitHub Actions and `photos:prewarm` intentionally share both cache paths:
+
+- Local: `node_modules/.astro`
+- S3: `s3://adamficke-com-originals/cache/astro`
+
+Run `bun run photos:prewarm` after adding or replacing photos but before
+pushing the related markdown. It pulls the current shared cache, runs the
+normal Astro build, and uploads only new or changed cache entries. The local
+push does not use `--delete`, so it cannot prune entries created by another
+build. CI still runs a build after the markdown reaches `main`, but unchanged
+image transforms should be cache hits.
+
+`node_modules/.astro` and `dist/` are gitignored. Prewarming never commits or
+deploys them, and metadata-only edits do not need another prewarm.
 
 ## Architecture
 
