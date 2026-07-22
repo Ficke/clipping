@@ -1,0 +1,265 @@
+{
+  "version": 1,
+  "profile": "photo-v1",
+  "album": "2024-06-great-highway-dolores",
+  "photos": [
+    {
+      "file": "01-DSCF0865.jpg",
+      "sourceHash": "20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159",
+      "width": 2500,
+      "height": 1667,
+      "variants": {
+        "responsive": {
+          "avif": [
+            {
+              "width": 640,
+              "height": 426,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-640-q60.avif"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-1080-q60.avif"
+            },
+            {
+              "width": 1600,
+              "height": 1067,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-1600-q60.avif"
+            },
+            {
+              "width": 2000,
+              "height": 1334,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-2000-q60.avif"
+            }
+          ],
+          "webp": [
+            {
+              "width": 640,
+              "height": 426,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-640-q80.webp"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-1080-q80.webp"
+            },
+            {
+              "width": 1600,
+              "height": 1067,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-1600-q80.webp"
+            },
+            {
+              "width": 2000,
+              "height": 1334,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-2000-q80.webp"
+            }
+          ],
+          "jpeg": [
+            {
+              "width": 640,
+              "height": 426,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-640-q85.jpg"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-1080-q85.jpg"
+            },
+            {
+              "width": 1600,
+              "height": 1067,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-1600-q85.jpg"
+            },
+            {
+              "width": 2000,
+              "height": 1334,
+              "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/responsive-2000-q85.jpg"
+            }
+          ]
+        },
+        "lightbox": {
+          "width": 2000,
+          "height": 1334,
+          "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/lightbox-2000-q90.webp"
+        },
+        "social": {
+          "width": 1200,
+          "height": 800,
+          "src": "/media/photo-v1/20/20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159/social-1200-q85.jpg"
+        }
+      }
+    },
+    {
+      "file": "02-DSCF0888.jpg",
+      "sourceHash": "d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25",
+      "width": 2000,
+      "height": 1333,
+      "variants": {
+        "responsive": {
+          "avif": [
+            {
+              "width": 640,
+              "height": 426,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-640-q60.avif"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-1080-q60.avif"
+            },
+            {
+              "width": 1600,
+              "height": 1066,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-1600-q60.avif"
+            },
+            {
+              "width": 2000,
+              "height": 1333,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-2000-q60.avif"
+            }
+          ],
+          "webp": [
+            {
+              "width": 640,
+              "height": 426,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-640-q80.webp"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-1080-q80.webp"
+            },
+            {
+              "width": 1600,
+              "height": 1066,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-1600-q80.webp"
+            },
+            {
+              "width": 2000,
+              "height": 1333,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-2000-q80.webp"
+            }
+          ],
+          "jpeg": [
+            {
+              "width": 640,
+              "height": 426,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-640-q85.jpg"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-1080-q85.jpg"
+            },
+            {
+              "width": 1600,
+              "height": 1066,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-1600-q85.jpg"
+            },
+            {
+              "width": 2000,
+              "height": 1333,
+              "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/responsive-2000-q85.jpg"
+            }
+          ]
+        },
+        "lightbox": {
+          "width": 2000,
+          "height": 1333,
+          "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/lightbox-2000-q90.webp"
+        },
+        "social": {
+          "width": 1200,
+          "height": 800,
+          "src": "/media/photo-v1/d7/d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25/social-1200-q85.jpg"
+        }
+      }
+    },
+    {
+      "file": "03-DSCF0867.jpg",
+      "sourceHash": "ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8",
+      "width": 2500,
+      "height": 1667,
+      "variants": {
+        "responsive": {
+          "avif": [
+            {
+              "width": 640,
+              "height": 426,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-640-q60.avif"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-1080-q60.avif"
+            },
+            {
+              "width": 1600,
+              "height": 1067,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-1600-q60.avif"
+            },
+            {
+              "width": 2000,
+              "height": 1334,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-2000-q60.avif"
+            }
+          ],
+          "webp": [
+            {
+              "width": 640,
+              "height": 426,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-640-q80.webp"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-1080-q80.webp"
+            },
+            {
+              "width": 1600,
+              "height": 1067,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-1600-q80.webp"
+            },
+            {
+              "width": 2000,
+              "height": 1334,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-2000-q80.webp"
+            }
+          ],
+          "jpeg": [
+            {
+              "width": 640,
+              "height": 426,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-640-q85.jpg"
+            },
+            {
+              "width": 1080,
+              "height": 720,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-1080-q85.jpg"
+            },
+            {
+              "width": 1600,
+              "height": 1067,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-1600-q85.jpg"
+            },
+            {
+              "width": 2000,
+              "height": 1334,
+              "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/responsive-2000-q85.jpg"
+            }
+          ]
+        },
+        "lightbox": {
+          "width": 2000,
+          "height": 1334,
+          "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/lightbox-2000-q90.webp"
+        },
+        "social": {
+          "width": 1200,
+          "height": 800,
+          "src": "/media/photo-v1/cc/ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8/social-1200-q85.jpg"
+        }
+      }
+    }
+  ]
+}

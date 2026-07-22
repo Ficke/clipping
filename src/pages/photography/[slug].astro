@@ -1,6 +1,6 @@
 ---
-import { getImage, Picture } from 'astro:assets';
 import { render } from 'astro:content';
+import PhotoPicture from '../../components/PhotoPicture.astro';
 import Layout from '../../layouts/Layout.astro';
 import { coverOf, formatDate, getAlbums, photosOf, slugOf } from '../../lib/albums';
 
@@ -14,16 +14,13 @@ const { Content } = await render(album);
 const photos = await photosOf(album);
 const hasIntro = album.body && album.body.trim().length > 0;
 
-const cover = await getImage({ src: coverOf(album), width: 1200, format: 'jpg' });
-const fullsized = await Promise.all(
-  photos.map((p) => getImage({ src: p.image, width: 2000, format: 'webp', quality: 90 }))
-);
+const cover = coverOf(album);
 ---
 
 <Layout
   title={`${album.data.title} — Adam Ficke`}
   description={album.data.description ?? `${album.data.title}, ${formatDate(album.data.date)}. Photographs by Adam Ficke.`}
-  ogImage={cover.src}
+  ogImage={cover.variants.social.src}
 >
   <article>
     <header class="album-header rise">
@@ -46,12 +43,10 @@ const fullsized = await Promise.all(
       {
         photos.map((photo, i) => (
           <figure class="rise" style={`animation-delay: ${Math.min(120 + i * 60, 420)}ms`}>
-            <a href={fullsized[i]!.src} class="zoom" data-lightbox aria-label={`View ${photo.file} fullsize`}>
-              <Picture
-                src={photo.image}
+            <a href={photo.image.variants.lightbox.src} class="zoom" data-lightbox aria-label={`View ${photo.file} fullsize`}>
+              <PhotoPicture
+                photo={photo.image}
                 alt={photo.caption ?? `${album.data.title}, photograph ${i + 1}`}
-                formats={['avif', 'webp']}
-                widths={[640, 1080, 1600, 2000]}
                 sizes="(min-width: 1200px) 1040px, 94vw"
                 loading={i < 2 ? 'eager' : 'lazy'}
                 fetchpriority={i === 0 ? 'high' : 'auto'}

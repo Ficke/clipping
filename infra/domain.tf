@@ -1,11 +1,15 @@
-# Custom-domain resources, created only when enable_custom_domain = true.
-# Prereq: the domain's registrar must delegate to this zone's nameservers
-# (or the ACM DNS validation below will never complete). See README.
+# Keep the hosted zone available before domain cutover so its nameservers can
+# be configured at the registrar. Certificate and alias resources remain gated
+# until the delegation is live. See README.
 
 resource "aws_route53_zone" "site" {
-  count = var.enable_custom_domain ? 1 : 0
-  name  = var.domain_name
-  tags  = local.tags
+  name = var.domain_name
+  tags = local.tags
+}
+
+moved {
+  from = aws_route53_zone.site[0]
+  to   = aws_route53_zone.site
 }
 
 resource "aws_acm_certificate" "site" {
@@ -29,7 +33,7 @@ resource "aws_route53_record" "cert_validation" {
     }
   } : {}
 
-  zone_id = aws_route53_zone.site[0].zone_id
+  zone_id = aws_route53_zone.site.zone_id
   name    = each.value.name
   type    = each.value.type
   records = [each.value.record]
@@ -45,7 +49,7 @@ resource "aws_acm_certificate_validation" "site" {
 resource "aws_route53_record" "site" {
   for_each = var.enable_custom_domain ? toset(["A", "AAAA"]) : toset([])
 
-  zone_id = aws_route53_zone.site[0].zone_id
+  zone_id = aws_route53_zone.site.zone_id
   name    = var.domain_name
   type    = each.value
 
@@ -59,7 +63,7 @@ resource "aws_route53_record" "site" {
 resource "aws_route53_record" "www" {
   for_each = var.enable_custom_domain ? toset(["A", "AAAA"]) : toset([])
 
-  zone_id = aws_route53_zone.site[0].zone_id
+  zone_id = aws_route53_zone.site.zone_id
   name    = "www.${var.domain_name}"
   type    = each.value
 

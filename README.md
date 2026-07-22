@@ -1,22 +1,21 @@
 # adamficke.com
 
-Photography portfolio. Astro 7 static site, built by GitHub Actions and
-served from a private S3 bucket through CloudFront. No servers, no database,
-no admin surface. Bun runs installs and scripts; photo originals are
-archived in S3, not git.
+Photography portfolio. Astro 7 static site, built in AWS CodeBuild and served
+from private S3 buckets through CloudFront. No servers, no database, no admin
+surface. Bun runs installs and scripts; photo originals and generated media
+live in S3, while git holds album text and small photo manifests.
 
 ## First-time setup on a machine
 
 ```sh
 bun install            # deps (bun.lock is committed)
-aws login              # AWS SSO — needed for photo sync
-bun run photos:pull    # hydrate content/albums/ with the originals from S3
 bun run dev            # local preview
 ```
 
-Photos are gitignored — a fresh clone has the markdown but no images until
-`photos:pull`. Running `photos:push` without an album path checks and
-incrementally uploads every local album.
+A fresh clone can build and preview from the committed manifests without
+downloading photos. For album work, run `aws login` first. `bun run
+photos:pull` hydrates the gitignored originals from S3 when you need to update
+an existing album.
 
 ## Adding an album
 
@@ -39,29 +38,21 @@ incrementally uploads every local album.
    bun run photos:push -- content/albums/2026-08-lost-coast --dry-run
    ```
 
-3. Upload the originals and create `index.md`. For a new album, add
-   `--prewarm` to generate its responsive images locally and add them to the
-   same shared cache that CI uses:
+3. Upload and publish the album media:
 
    ```sh
-   # Standard upload
    bun run photos:push -- content/albums/2026-08-lost-coast
-
-   # Recommended for a new album: upload, then prewarm the image cache
-   bun run photos:push -- content/albums/2026-08-lost-coast --prewarm
    ```
 
    The command lowercases image extensions, rejects unsupported photo
    formats or nested image folders, creates `index.md` when it is missing,
-   and incrementally uploads the originals to S3. The generated title comes
-   from the folder slug (`lost-coast` becomes `Lost Coast`), the date comes
-   from the first photo's EXIF (falling back to the folder month), and the
-   cover is the first photo.
-
-   Prewarming pulls `s3://adamficke-com-originals/cache/astro` into
-   `node_modules/.astro`, builds locally, and syncs new cache entries back to
-   S3. It does not deploy the site or commit generated files. Run the same
-   operation independently at any time with `bun run photos:prewarm`.
+   and synchronizes the album's originals to S3. It then starts the
+   `adamficke-com-media` CodeBuild job, which generates only missing
+   content-addressed image variants and downloads the resulting `photos.json`
+   manifest into the album folder. The generated title comes from the folder
+   slug (`lost-coast` becomes `Lost Coast`), the date comes from the first
+   photo's EXIF (falling back to the folder month), and the cover is the first
+   photo.
 
 4. The generated `index.md` is ready to publish without changes, or you can
    edit its title and add optional details:
@@ -85,95 +76,103 @@ incrementally uploads every local album.
    If `order:` is present, it must list every photo exactly once. Full
    conventions live in `content/albums/TEMPLATE.md`.
 
-5. Commit the generated markdown to publish:
+5. Commit the album text and generated manifest to publish:
 
    ```sh
-   git add content/albums/2026-08-lost-coast/index.md
+   git add content/albums/2026-08-lost-coast/index.md \
+     content/albums/2026-08-lost-coast/photos.json
    git commit -m "Lost Coast"
    git push
    ```
 
-CI pulls the originals, builds, and deploys.
+GitHub Actions sends a small source archive to CodeBuild. The site build reads
+the manifest, builds only HTML/CSS/JS, deploys to S3, and invalidates
+CloudFront. It never downloads originals or historical derivatives.
 
 **Never rename a published album folder** — the folder name minus the date
 prefix is the URL, and renaming breaks inbound links.
+
+### Updating an album
+
+Hydrate the originals if needed, then add, replace, or remove files in the
+album folder and run the same dry-run/push sequence. The local folder is
+authoritative: `photos:push` adds and replaces changed objects and removes
+remote images no longer in the folder. The originals bucket is versioned, so
+overwrites and deletions remain recoverable for 90 days.
+
+The media job hashes source bytes. A replacement gets new immutable URLs;
+unchanged photos reuse their existing variants; removed photos disappear from
+`photos.json`. Old content-addressed derivatives are intentionally retained
+and can be garbage-collected separately without putting a live page at risk.
+Changing only title, description, captions, cover, or `order:` requires no
+photo upload—edit `index.md` and commit it normally.
 
 ### Text on an album page
 
 - **Album text**: the markdown body of `index.md`, rendered above the photos
 - **Captions**: the `captions:` map in frontmatter, keyed by exact filename
-- **EXIF line** (camera, focal length, aperture, shutter, ISO): read from
-  each file at build time; photos with no EXIF just omit the line
+- **EXIF line** (camera, focal length, aperture, shutter, ISO): captured in
+  `photos.json` when media is published; photos with no EXIF omit the line
 - **`description:`** (optional frontmatter): overrides the auto-generated
   `<meta>` description for the album page
 
 ## Where the photos live
 
-**S3 is the archive; git holds only text.** Full-quality originals live in
-the versioned `adamficke-com-originals` bucket, laid out to mirror the repo
-(`albums/<folder>/<file>.jpg`); deleted or overwritten objects are
-recoverable for 90 days. `photos:push` / `photos:pull` are incremental
-`aws s3 sync` wrappers that only touch image files — markdown always comes
-from git.
+Full-quality originals live in the versioned `adamficke-com-originals`
+bucket at `albums/<folder>/<file>.jpg`. Public derivatives live separately in
+the private `adamficke-com-media` bucket and are served by CloudFront under
+`/media/*`. Git contains `index.md` plus `photos.json`; generated image files
+are never committed.
 
-The build derives everything the site serves. Astro + sharp emit
-content-hashed derivatives into `dist/_astro/`:
+The album-specific media CodeBuild job uses sharp to emit immutable,
+content-addressed derivatives:
 
 - AVIF (q60) + WebP (q80) at 640/1080/1600/2000 px for the responsive
   `<picture>` on album pages
 - a 2000 px WebP (q90) that the lightbox opens as fullsize
+- JPEG fallbacks at the responsive widths
 - a 1200 px JPEG for Open Graph / social previews
 
-sharp strips all metadata from derivatives, so EXIF/GPS in the originals
-never reaches the public site — only the build-time camera-settings line
-does. Export size is your call: bigger originals are downscaled at build,
-and the site serves at most 2000 px wide (raise the `widths` / `getImage`
-values in `src/pages/photography/[slug].astro` to go larger).
-
-The site bucket (`adamficke-com-site`) holds only derivatives plus
-HTML/CSS/JS and is fully disposable.
-
-### Prewarming image transforms
-
-The expensive part of a new-album deploy is generating responsive images.
-GitHub Actions and `photos:prewarm` intentionally share both cache paths:
-
-- Local: `node_modules/.astro`
-- S3: `s3://adamficke-com-originals/cache/astro`
-
-Run `bun run photos:prewarm` after adding or replacing photos but before
-pushing the related markdown. It pulls the current shared cache, runs the
-normal Astro build, and uploads only new or changed cache entries. The local
-push does not use `--delete`, so it cannot prune entries created by another
-build. CI still runs a build after the markdown reaches `main`, but unchanged
-image transforms should be cache hits.
-
-`node_modules/.astro` and `dist/` are gitignored. Prewarming never commits or
-deploys them, and metadata-only edits do not need another prewarm.
+sharp auto-orients photos and strips metadata from derivatives, so EXIF/GPS
+in the originals never reaches the public site—only the selected camera
+settings stored in the manifest do. Export size is your call: larger
+originals are downscaled, and the site serves at most 2000 px wide. Changing
+the global media profile creates a new versioned URL namespace instead of
+mutating published assets.
 
 ## Architecture
 
 - **Astro 7** static build; **Bun** for package management and scripts
-- **S3**: `adamficke-com-site` (deploy target), `adamficke-com-originals`
-  (photo archive, versioned), `adamficke-com-tfstate` (Terraform state) —
-  all private with public access blocked; CloudFront reads the site bucket
-  via Origin Access Control
+- **S3**: `adamficke-com-site` (HTML/CSS/JS), `adamficke-com-media`
+  (immutable public derivatives), `adamficke-com-originals` (versioned photo
+  archive and manifests), `adamficke-com-builds` (short-lived CodeBuild
+  source bundles), and `adamficke-com-tfstate` (Terraform state)—all private
+  with public access blocked
 - **CloudFront**: HTTPS-only, HTTP/2+3, security headers (HSTS, strict CSP,
   frame-deny), and a viewer-request function for pretty URLs, legacy-URL
-  redirects, and www → apex
+  redirects, and www → apex. Deploys invalidate mutable site paths without
+  evicting immutable `/_astro/*` or `/media/*` assets
 - **GitHub Actions** (`.github/workflows/deploy.yml`): on push to `main`,
-  assumes the AWS role via OIDC (no stored keys), pulls originals, builds,
-  syncs to S3, invalidates CloudFront. Builds are incremental — the sharp
-  encode cache persists at `s3://adamficke-com-originals/cache/` and the
-  pulled originals ride actions/cache, so only new photos get encoded.
-  Repo variables: `AWS_DEPLOY_ROLE_ARN`, `SITE_BUCKET`,
-  `CLOUDFRONT_DISTRIBUTION_ID`
+  assumes the AWS role via OIDC, uploads the git source archive, and waits for
+  the site CodeBuild job
+- **CodeBuild**: `adamficke-com-media` processes one changed album at upload
+  time; `adamficke-com-site` builds and deploys the lightweight Astro site.
+  Both use the current Ubuntu `standard:8.0` image. Bun's cold install is
+  faster than transferring a dependency cache for this small project
 - **Terraform** (`infra/`, state in S3): all of the above, plus a $10/month
-  AWS budget alert and the Route 53 / ACM resources for the custom domain
-  (inert until `enable_custom_domain = true`)
+  AWS budget alert and the Route 53 hosted zone. ACM and the CloudFront domain
+  aliases remain inert until `enable_custom_domain = true`
 - **RSS** at `/rss.xml`
 
 Runs ≈ $0.50–1.50/month once the domain is on Route 53.
+
+### Infrastructure rollout
+
+Run `terraform apply` in `infra/` before merging a change that first enables
+this pipeline. Then run `photos:push` for each existing hydrated album to
+backfill the media bucket and verify the generated `photos.json` files match
+the committed manifests. After that, the normal merge-to-`main` deployment
+can switch the live HTML to `/media/*` safely.
 
 ## Domain cutover (when ready)
 
@@ -181,12 +180,12 @@ The domain is registered at Squarespace. Two independent steps, in either
 order:
 
 1. **Serve the site from adamficke.com**
-   - In `infra/`: set `enable_custom_domain = true`, `terraform apply`
+   - In `infra/`, run `terraform apply` with the default configuration
    - Take the `nameservers` output and set those four as the domain's
      nameservers at the registrar
-   - Once DNS propagates, ACM validates automatically; if the first apply
-     timed out waiting, re-run `terraform apply` to attach the cert and
-     aliases to CloudFront
+   - Once delegation propagates, run
+     `terraform apply -var='enable_custom_domain=true'`; ACM validates and
+     Terraform attaches the certificate and aliases to CloudFront
 2. **Transfer registration to Route 53**
    - Squarespace: unlock the domain, request the transfer auth code
    - Route 53 console → Registered domains → Transfer in, paste the code

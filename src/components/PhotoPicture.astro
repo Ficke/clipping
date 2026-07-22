@@ -1,0 +1,37 @@
+---
+import type { PhotoManifestEntry } from '../lib/photo-manifest';
+import { largestVariant, srcset } from '../lib/photo-manifest';
+
+interface Props {
+  photo: PhotoManifestEntry;
+  alt: string;
+  sizes: string;
+  loading?: 'eager' | 'lazy';
+  fetchpriority?: 'high' | 'low' | 'auto';
+}
+
+const {
+  photo,
+  alt,
+  sizes,
+  loading = 'lazy',
+  fetchpriority = 'auto',
+} = Astro.props;
+const fallback = largestVariant(photo.variants.responsive.jpeg);
+---
+
+<picture>
+  <source type="image/avif" srcset={srcset(photo.variants.responsive.avif)} sizes={sizes} />
+  <source type="image/webp" srcset={srcset(photo.variants.responsive.webp)} sizes={sizes} />
+  <img
+    src={fallback.src}
+    srcset={srcset(photo.variants.responsive.jpeg)}
+    sizes={sizes}
+    width={photo.width}
+    height={photo.height}
+    alt={alt}
+    loading={loading}
+    fetchpriority={fetchpriority}
+    decoding="async"
+  />
+</picture>

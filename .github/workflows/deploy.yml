@@ -19,64 +19,26 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-
-      - run: bun install --frozen-lockfile
-
-      # Credentials come before the build: originals are pulled from S3.
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
-      # Moving caches: each run restores the newest snapshot and saves its own,
-      # so `s3 sync` only downloads new photos and sharp only encodes them.
-      # Images only — never cache markdown, which lives in git and must win.
-      - name: Restore originals cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            content/albums/**/*.jpg
-            content/albums/**/*.jpeg
-            content/albums/**/*.png
-            content/albums/**/*.webp
-            content/albums/**/*.avif
-          key: originals-${{ github.run_id }}
-          restore-keys: originals-
-
-      # Encode cache lives in S3, not actions/cache: GitHub evicts caches idle
-      # for 7 days, which a monthly-post cadence would miss every time.
-      - name: Pull image-transform cache
-        run: aws s3 sync s3://adamficke-com-originals/cache/astro node_modules/.astro --size-only
-
-      # --delete here (not in the local script) so photos removed from the
-      # archive drop out of the cached copy; markdown is outside the filters.
-      - name: Pull originals from S3
+      - name: Build and deploy in AWS CodeBuild
         run: |
-          aws s3 sync s3://adamficke-com-originals/albums content/albums --delete \
-            --exclude '*' --include '*.jpg' --include '*.jpeg' --include '*.png' \
-            --include '*.webp' --include '*.avif'
-
-      - run: bun run build
-
-      # --delete prunes entries for photos/settings that no longer exist.
-      - name: Push image-transform cache
-        run: aws s3 sync node_modules/.astro s3://adamficke-com-originals/cache/astro --size-only --delete
-
-      # Hashed assets are immutable; everything else gets a short TTL.
-      - name: Sync to S3
-        run: |
-          aws s3 sync dist/_astro "s3://$BUCKET/_astro" --size-only \
-            --cache-control "public, max-age=31536000, immutable"
-          aws s3 sync dist "s3://$BUCKET" --delete --exclude "_astro/*" \
-            --cache-control "public, max-age=300"
-        env:
-          BUCKET: ${{ vars.SITE_BUCKET }}
-
-      - name: Invalidate CloudFront
-        run: |
-          aws cloudfront create-invalidation \
-            --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \
-            --paths "/*"
+          git archive --format=zip --output=source.zip HEAD
+          aws s3 cp source.zip "s3://adamficke-com-builds/source/${GITHUB_SHA}.zip" --only-show-errors
+          BUILD_ID=$(aws codebuild start-build \
+            --project-name adamficke-com-site \
+            --source-type-override S3 \
+            --source-location-override "adamficke-com-builds/source/${GITHUB_SHA}.zip" \
+            --query 'build.id' --output text)
+          echo "CodeBuild: ${BUILD_ID}"
+          while true; do
+            STATUS=$(aws codebuild batch-get-builds --ids "${BUILD_ID}" --query 'builds[0].buildStatus' --output text)
+            case "${STATUS}" in
+              SUCCEEDED) break ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT) exit 1 ;;
+            esac
+            sleep 5
+          done

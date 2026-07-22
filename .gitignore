@@ -4,8 +4,8 @@ dist/
 .DS_Store
 *.log
 
-# Photo originals live in S3 (adamficke-com-originals), not git.
-# `bun run photos:pull` hydrates them; markdown stays in git.
+# Photo originals live in S3 (adamficke-com-originals), not git. Album
+# markdown and generated photos.json manifests stay in git.
 content/albums/**/*.jpg
 content/albums/**/*.jpeg
 content/albums/**/*.png

@@ -9,7 +9,7 @@ const albums = defineCollection({
     cover: z.string(),
     order: z.array(z.string()).optional(),
     description: z.string().optional(),
-    captions: z.record(z.string()).default({}),
+    captions: z.record(z.string(), z.string()).default({}),
     draft: z.boolean().default(false),
   }),
 });
