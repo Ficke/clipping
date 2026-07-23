@@ -21,15 +21,21 @@ variable "github_repository" {
 }
 
 variable "domain_name" {
-  description = "Apex domain for the site"
+  description = "Apex domain currently served by CloudFront"
   type        = string
-  default     = "adamficke.com"
+  default     = "adamficke.dev"
 }
 
-# Flip to true once the domain's nameservers point at the Route 53 hosted zone.
-# The zone itself exists before cutover so Terraform can output its nameservers.
+variable "managed_domains" {
+  description = "Domains with Route 53 hosted zones retained by this stack"
+  type        = set(string)
+  default     = ["adamficke.com", "adamficke.dev"]
+}
+
+# Keep true after the domain's nameservers point at the Route 53 hosted zone.
+# Set false only while preparing a new zone before its registrar cutover.
 variable "enable_custom_domain" {
   description = "Create the ACM certificate and attach the domain to CloudFront"
   type        = bool
-  default     = false
+  default     = true
 }
