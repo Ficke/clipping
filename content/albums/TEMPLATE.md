@@ -6,8 +6,10 @@ use, and follow the conventions below so every album reads the same way.
 
 ```markdown
 ---
+storyId: "2026-08-place-name"
 title: "Place Name"
 date: 2026-08-14
+location: "Emigrant Wilderness"
 cover: DSCF1234.jpg
 # --- everything below is optional ---
 order:
@@ -15,11 +17,13 @@ order:
   - DSCF1234.jpg
 captions:
   DSCF1250.jpg: "One descriptive sentence about the photo."
+alt:
+  DSCF1250.jpg: "A short description of what this photograph communicates."
 description: "Custom search/social blurb for this album."
 draft: true
 ---
 
-Album text (optional): a short introduction rendered above the photos.
+Album text (optional): a short trip note rendered after the opening photograph.
 The story of the trip — route, conditions, who you were with, anything
 worth remembering. One to three short paragraphs; plain markdown.
 ```
@@ -29,10 +33,18 @@ worth remembering. One to three short paragraphs; plain markdown.
 - **Title** defaults from the folder slug when `photos:push` creates the
   file, and can be edited freely. Keep dates out of it because the `date`
   field renders automatically above the title.
+- **Story ID** is the permanent identifier for the story and its future
+  comments. Set it once, normally to the original folder name, and never
+  change it even if the title or URL changes.
+- **Location** is a human-readable place name such as `Emigrant Wilderness`
+  or `Mendocino Coast`, not a formal address.
 - **Album text** is optional. When you use it, tell the story of the trip —
-  never just restate the date or the title.
+  never just restate the date or the title. It appears after the first
+  photograph so the image opens the story before the writing adds context.
 - **Captions** are optional, one descriptive sentence per photo. No camera
-  settings — the EXIF line under each photo shows those automatically.
+  settings — photo details are available separately.
+- **Alt text** is optional but encouraged. Describe what the photograph
+  communicates to someone who cannot see it; do not copy camera details.
 - **Photo order** defaults to natural filename order (`DSCF9.jpg` before
   `DSCF10.jpg`). Use `order:` only for a custom sequence; when present, it
   must list every photo exactly once.

@@ -215,7 +215,7 @@ async function scaffoldIndex(albumDirectory, images) {
     .map((word) => word[0].toLocaleUpperCase('en') + word.slice(1))
     .join(' ');
   const date = await photoDate(path.join(albumDirectory, images[0])) ?? `${year}-${month}-01`;
-  return `---\ntitle: ${JSON.stringify(title)}\ndate: ${date}\ncover: ${images[0]}\n---\n`;
+  return `---\nstoryId: ${JSON.stringify(folder)}\ntitle: ${JSON.stringify(title)}\ndate: ${date}\nlocation: ${JSON.stringify(title)}\ncover: ${images[0]}\n---\n`;
 }
 
 async function photoDate(file) {

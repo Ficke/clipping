@@ -2,13 +2,23 @@
 import Layout from '../layouts/Layout.astro';
 ---
 
-<Layout title="About — Adam Ficke" description="About Adam Ficke.">
+<Layout
+  title="About — Adam Ficke"
+  description="Adam Ficke is a photographer based in San Francisco."
+  section="about"
+>
   <section class="about rise">
     <p class="kicker">About</p>
     <h1>Adam Ficke</h1>
-    <p>
-      Landscape photographs, mostly from California — the Sierra, the coast, and
-      around San Francisco. Shot on a Fujifilm X-T5.
+    <div class="about-copy">
+      <p>
+        I make photographs on trips and during time outdoors, mostly around
+        California and the American West.
+      </p>
+      <p>Based in San Francisco.</p>
+    </div>
+    <p class="about-links">
+      <a href="https://www.instagram.com/youngficke/" rel="me">@youngficke on Instagram</a>
     </p>
   </section>
 </Layout>
@@ -22,5 +32,20 @@ import Layout from '../layouts/Layout.astro';
   .about h1 {
     font-size: clamp(2rem, 6vw, 3.4rem);
     margin: 0.3rem 0 1.2rem;
+  }
+
+  .about-copy {
+    display: grid;
+    gap: 0.8rem;
+  }
+
+  .about-links {
+    margin-top: 1.5rem;
+  }
+
+  .about-links a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 0.18em;
   }
 </style>
