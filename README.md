@@ -146,12 +146,17 @@ mutating published assets.
 - **S3**: `adamficke-com-site` (HTML/CSS/JS), `adamficke-com-media`
   (immutable public derivatives), `adamficke-com-originals` (versioned photo
   archive and manifests), `adamficke-com-builds` (short-lived CodeBuild
-  source bundles), and `adamficke-com-tfstate` (Terraform state)—all private
-  with public access blocked
+  source bundles), `adamficke-com-access-logs` (CloudFront request logs
+  retained indefinitely), and `adamficke-com-tfstate` (Terraform state)—all
+  private with public access blocked
 - **CloudFront**: HTTPS-only, HTTP/2+3, security headers (HSTS, strict CSP,
   frame-deny), and a viewer-request function for pretty URLs, legacy-URL
   redirects, and www → apex. Deploys invalidate mutable site paths without
   evicting immutable `/_astro/*` or `/media/*` assets
+- **Analytics**: GA4 (`G-P2XYT72XL6`) for visitor and page-level reporting;
+  privacy-reduced CloudFront standard logs in S3 for operational analysis.
+  Access logs omit viewer IPs, query strings, forwarded-for values, and
+  cookies
 - **GitHub Actions** (`.github/workflows/deploy.yml`): on push to `main`,
   assumes the AWS role via OIDC, uploads the git source archive, and waits for
   the site CodeBuild job

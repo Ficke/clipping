@@ -10,6 +10,10 @@ output "site_bucket" {
   value = aws_s3_bucket.site.bucket
 }
 
+output "access_logs_bucket" {
+  value = aws_s3_bucket.access_logs.bucket
+}
+
 output "deploy_role_arn" {
   value = aws_iam_role.deploy.arn
 }
