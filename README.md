@@ -1,4 +1,4 @@
-# adamficke.com
+# adamficke.dev
 
 Photography portfolio. Astro 7 static site, built in AWS CodeBuild and served
 from private S3 buckets through CloudFront. No servers, no database, no admin
@@ -174,20 +174,27 @@ backfill the media bucket and verify the generated `photos.json` files match
 the committed manifests. After that, the normal merge-to-`main` deployment
 can switch the live HTML to `/media/*` safely.
 
-## Domain cutover (when ready)
+## Domain cutover (adamficke.dev)
 
-The domain is registered at Squarespace. Two independent steps, in either
-order:
+`adamficke.dev` remains registered at Squarespace for now. Delegating its DNS
+to Route 53 is separate from transferring registration and does not affect
+`adamficke.com`.
 
-1. **Serve the site from adamficke.com**
-   - In `infra/`, run `terraform apply` with the default configuration
-   - Take the `nameservers` output and set those four as the domain's
-     nameservers at the registrar
-   - Once delegation propagates, run
-     `terraform apply -var='enable_custom_domain=true'`; ACM validates and
-     Terraform attaches the certificate and aliases to CloudFront
-2. **Transfer registration to Route 53**
-   - Squarespace: unlock the domain, request the transfer auth code
-   - Route 53 console → Registered domains → Transfer in, paste the code
-   - Keep the Squarespace subscription active until the transfer completes
-     (up to ~7 days)
+1. **Create the Route 53 zone**
+   - In `infra/`, run `terraform apply`. This preserves the existing `.com`
+     zone and creates the `.dev` zone, but makes no DNS changes.
+   - Run `terraform output nameservers` to get the four `.dev` nameservers.
+2. **Delegate DNS in Squarespace**
+   - Squarespace Domains dashboard → `adamficke.dev` → DNS Settings →
+     Nameservers → Custom nameservers.
+   - Replace the existing nameservers with the four Route 53 values.
+   - Before saving, copy any email-related records (MX, SPF, DKIM, DMARC) to
+     Route 53. Do not copy old website A/AAAA/CNAME records.
+3. **Finish the CloudFront setup**
+   - Once the Route 53 nameservers are authoritative, leave
+     `enable_custom_domain` enabled and run `terraform apply`.
+   - ACM validates automatically and Terraform attaches HTTPS for
+     `adamficke.dev` and `www.adamficke.dev`.
+
+When `adamficke.com` is ready to move, extend the infrastructure to serve it
+ as a redirect domain rather than replacing the `.dev` configuration.

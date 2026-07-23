@@ -1,15 +1,16 @@
-# Keep the hosted zone available before domain cutover so its nameservers can
-# be configured at the registrar. Certificate and alias resources remain gated
-# until the delegation is live. See README.
-
-resource "aws_route53_zone" "site" {
-  name = var.domain_name
-  tags = local.tags
-}
+# Keep both hosted zones available before their respective cutovers. Only
+# domain_name is attached to CloudFront; its certificate and aliases remain
+# gated until its registrar delegates to Route 53. See README.
 
 moved {
-  from = aws_route53_zone.site[0]
-  to   = aws_route53_zone.site
+  from = aws_route53_zone.site
+  to   = aws_route53_zone.site["adamficke.com"]
+}
+
+resource "aws_route53_zone" "site" {
+  for_each = var.managed_domains
+  name     = each.value
+  tags     = local.tags
 }
 
 resource "aws_acm_certificate" "site" {
@@ -33,7 +34,7 @@ resource "aws_route53_record" "cert_validation" {
     }
   } : {}
 
-  zone_id = aws_route53_zone.site.zone_id
+  zone_id = aws_route53_zone.site[var.domain_name].zone_id
   name    = each.value.name
   type    = each.value.type
   records = [each.value.record]
@@ -49,7 +50,7 @@ resource "aws_acm_certificate_validation" "site" {
 resource "aws_route53_record" "site" {
   for_each = var.enable_custom_domain ? toset(["A", "AAAA"]) : toset([])
 
-  zone_id = aws_route53_zone.site.zone_id
+  zone_id = aws_route53_zone.site[var.domain_name].zone_id
   name    = var.domain_name
   type    = each.value
 
@@ -63,7 +64,7 @@ resource "aws_route53_record" "site" {
 resource "aws_route53_record" "www" {
   for_each = var.enable_custom_domain ? toset(["A", "AAAA"]) : toset([])
 
-  zone_id = aws_route53_zone.site.zone_id
+  zone_id = aws_route53_zone.site[var.domain_name].zone_id
   name    = "www.${var.domain_name}"
   type    = each.value
 
