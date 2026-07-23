@@ -1,216 +1,393 @@
 ---
 import { render } from 'astro:content';
-import PhotoPicture from '../../components/PhotoPicture.astro';
+import StoryPhoto from '../../components/StoryPhoto.astro';
 import Layout from '../../layouts/Layout.astro';
 import { coverOf, formatDate, getAlbums, photosOf, slugOf } from '../../lib/albums';
 
 export async function getStaticPaths() {
   const albums = await getAlbums();
-  return albums.map((album) => ({ params: { slug: slugOf(album) }, props: { album } }));
+  return albums.map((album, index) => ({
+    params: { slug: slugOf(album) },
+    props: {
+      album,
+      newer: albums[index - 1] ?? null,
+      older: albums[index + 1] ?? null,
+    },
+  }));
 }
 
-const { album } = Astro.props;
+const { album, newer, older } = Astro.props;
 const { Content } = await render(album);
 const photos = await photosOf(album);
-const hasIntro = album.body && album.body.trim().length > 0;
-
+const opening = photos[0]!;
+const remaining = photos.slice(1);
+const hasNarrative = Boolean(album.body?.trim());
 const cover = coverOf(album);
+const dateIso = album.data.date.toISOString().slice(0, 10);
+const coverAlt = album.data.alt[cover.file]
+  ?? album.data.captions[cover.file]
+  ?? `Cover photograph for ${album.data.title}`;
+
+function altFor(index: number): string {
+  const photo = photos[index]!;
+  return photo.alt
+    ?? photo.caption
+    ?? `${album.data.title}, photograph ${index + 1} of ${photos.length}`;
+}
 ---
 
 <Layout
   title={`${album.data.title} — Adam Ficke`}
-  description={album.data.description ?? `${album.data.title}, ${formatDate(album.data.date)}. Photographs by Adam Ficke.`}
+  description={album.data.description
+    ?? `${album.data.title} — ${album.data.location}, ${formatDate(album.data.date)}. A photo story by Adam Ficke.`}
   ogImage={cover.variants.social.src}
+  ogImageAlt={coverAlt}
+  type="article"
+  publishedTime={album.data.date}
+  section="photography"
 >
-  <article>
-    <header class="album-header rise">
-      <p class="kicker">
-        <a href="/">Photography</a>
-        <span aria-hidden="true"> / </span>
-        {formatDate(album.data.date)}
+  <article class="story" data-story-id={album.data.storyId}>
+    <header class="story-header rise">
+      <p class="story-meta">
+        <span>{album.data.location}</span>
+        <span aria-hidden="true">·</span>
+        <time datetime={dateIso}>{formatDate(album.data.date)}</time>
       </p>
       <h1>{album.data.title}</h1>
-      {
-        hasIntro && (
-          <div class="intro">
-            <Content />
-          </div>
-        )
-      }
     </header>
 
-    <div class="photos">
-      {
-        photos.map((photo, i) => (
-          <figure class="rise" style={`animation-delay: ${Math.min(120 + i * 60, 420)}ms`}>
-            <a href={photo.image.variants.lightbox.src} class="zoom" data-lightbox aria-label={`View ${photo.file} fullsize`}>
-              <PhotoPicture
-                photo={photo.image}
-                alt={photo.caption ?? `${album.data.title}, photograph ${i + 1}`}
-                sizes="(min-width: 1200px) 1040px, 94vw"
-                loading={i < 2 ? 'eager' : 'lazy'}
-                fetchpriority={i === 0 ? 'high' : 'auto'}
-              />
+    <StoryPhoto
+      photo={opening}
+      alt={altFor(0)}
+      index={0}
+      total={photos.length}
+      loading="eager"
+      fetchpriority="high"
+    />
+
+    {
+      hasNarrative && (
+        <section class="narrative rise" aria-label="Trip notes">
+          <Content />
+        </section>
+      )
+    }
+
+    {
+      remaining.length > 0 && (
+        <div class="photos">
+          {remaining.map((photo, index) => (
+            <StoryPhoto
+              photo={photo}
+              alt={altFor(index + 1)}
+              index={index + 1}
+              total={photos.length}
+            />
+          ))}
+        </div>
+      )
+    }
+
+    <div class="discussion-mount" data-story-id={album.data.storyId}></div>
+
+    {
+      (newer || older) && (
+        <nav class="story-nav" aria-label="More photo stories">
+          {newer ? (
+            <a class="story-nav-link newer" href={`/photography/${slugOf(newer)}/`} rel="prev">
+              <span class="kicker">Newer story</span>
+              <strong>{newer.data.title}</strong>
+              <span>{newer.data.location}</span>
             </a>
-            {(photo.caption || photo.exif) && (
-              <figcaption>
-                {photo.caption && <span class="caption">{photo.caption}</span>}
-                {photo.exif && <span class="exif">{photo.exif}</span>}
-              </figcaption>
-            )}
-          </figure>
-        ))
-      }
-    </div>
+          ) : <span />}
+          {older && (
+            <a class="story-nav-link older" href={`/photography/${slugOf(older)}/`} rel="next">
+              <span class="kicker">Older story</span>
+              <strong>{older.data.title}</strong>
+              <span>{older.data.location}</span>
+            </a>
+          )}
+        </nav>
+      )
+    }
   </article>
 
-  <dialog id="lightbox" aria-label="Fullsize photograph" tabindex="-1">
+  <dialog id="lightbox" aria-label="Photograph viewer">
     <button id="lightbox-close" class="kicker">Close</button>
-    <button id="lightbox-prev" class="lightbox-nav" aria-label="Previous photograph">‹</button>
-    <img alt="" />
-    <button id="lightbox-next" class="lightbox-nav" aria-label="Next photograph">›</button>
+    {
+      photos.length > 1 && (
+        <>
+          <button id="lightbox-prev" class="lightbox-nav" aria-label="Previous photograph">‹</button>
+          <button id="lightbox-next" class="lightbox-nav" aria-label="Next photograph">›</button>
+        </>
+      )
+    }
+    <figure class="lightbox-figure">
+      <img alt="" />
+      <figcaption id="lightbox-caption" hidden></figcaption>
+    </figure>
   </dialog>
 </Layout>
 
 <script>
   const dialog = document.getElementById('lightbox') as HTMLDialogElement;
-  const img = dialog.querySelector('img')!;
+  const img = dialog.querySelector('img') as HTMLImageElement;
+  const caption = document.getElementById('lightbox-caption') as HTMLElement;
+  const closeButton = document.getElementById('lightbox-close') as HTMLButtonElement;
+  const prevButton = document.getElementById('lightbox-prev') as HTMLButtonElement | null;
+  const nextButton = document.getElementById('lightbox-next') as HTMLButtonElement | null;
   const links = [...document.querySelectorAll<HTMLAnchorElement>('a[data-lightbox]')];
   let current = 0;
+  let activeLink: HTMLAnchorElement | undefined;
+  let touchStartX: number | undefined;
 
-  function show(i: number) {
-    current = (i + links.length) % links.length;
-    img.src = links[current]!.href;
-    // warm the neighbors so arrowing through feels instant
-    for (const n of [current + 1, current - 1]) {
-      new Image().src = links[(n + links.length) % links.length]!.href;
+  function show(index: number) {
+    current = (index + links.length) % links.length;
+    const link = links[current]!;
+    const captionText = link.dataset.caption?.trim() ?? '';
+
+    img.src = link.href;
+    img.alt = link.dataset.alt ?? '';
+    caption.textContent = captionText;
+    caption.hidden = captionText.length === 0;
+
+    for (const neighbor of [current + 1, current - 1]) {
+      new Image().src = links[(neighbor + links.length) % links.length]!.href;
     }
   }
 
-  links.forEach((a, i) => {
-    a.addEventListener('click', (e) => {
-      e.preventDefault();
-      show(i);
+  links.forEach((link, index) => {
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      activeLink = link;
+      show(index);
       dialog.showModal();
-      dialog.focus();
+      closeButton.focus();
     });
   });
-  document.getElementById('lightbox-prev')!.addEventListener('click', () => show(current - 1));
-  document.getElementById('lightbox-next')!.addEventListener('click', () => show(current + 1));
-  dialog.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowLeft') show(current - 1);
-    if (e.key === 'ArrowRight') show(current + 1);
+
+  prevButton?.addEventListener('click', () => show(current - 1));
+  nextButton?.addEventListener('click', () => show(current + 1));
+  closeButton.addEventListener('click', () => dialog.close());
+
+  dialog.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowLeft') show(current - 1);
+    if (event.key === 'ArrowRight') show(current + 1);
   });
-  dialog.addEventListener('click', (e) => {
-    if (e.target === dialog) dialog.close();
+
+  dialog.addEventListener('click', (event) => {
+    if (event.target === dialog) dialog.close();
   });
-  img.addEventListener('click', () => dialog.close());
-  document.getElementById('lightbox-close')!.addEventListener('click', () => dialog.close());
+
+  img.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'touch') touchStartX = event.clientX;
+  });
+
+  img.addEventListener('pointerup', (event) => {
+    if (event.pointerType !== 'touch' || touchStartX === undefined) return;
+    const distance = event.clientX - touchStartX;
+    touchStartX = undefined;
+    if (Math.abs(distance) < 50 || links.length < 2) return;
+    show(distance > 0 ? current - 1 : current + 1);
+  });
+
   dialog.addEventListener('close', () => {
     img.removeAttribute('src');
+    img.alt = '';
+    caption.textContent = '';
+    caption.hidden = true;
+    activeLink?.focus();
   });
 </script>
 
 <style>
-  .album-header {
-    margin: clamp(1rem, 4vw, 3rem) 0 clamp(2.2rem, 5vw, 3.4rem);
+  .story-header {
+    margin: clamp(1.5rem, 5vw, 4.5rem) 0 clamp(2.4rem, 6vw, 4.2rem);
   }
 
-  .album-header h1 {
-    font-size: clamp(2rem, 6vw, 3.4rem);
-    margin: 0.3rem 0 0;
+  .story-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
   }
 
-  .album-header .kicker a:hover {
-    color: var(--accent);
+  .story-header h1 {
+    max-width: 920px;
+    margin-top: 0.45rem;
+    font-size: clamp(2.6rem, 7vw, 5.4rem);
+    line-height: 0.98;
   }
 
-  .intro {
+  .narrative {
     max-width: var(--measure);
-    margin-top: 1.3rem;
-    color: color-mix(in srgb, var(--ink) 88%, var(--muted));
+    margin: clamp(3rem, 8vw, 6rem) auto;
+    font-size: clamp(1rem, 1.4vw, 1.08rem);
+    color: color-mix(in srgb, var(--ink) 92%, var(--muted));
   }
 
-  .intro :global(p + p) {
-    margin-top: 0.8em;
+  .narrative::before {
+    content: '';
+    display: block;
+    width: 3rem;
+    margin-bottom: 1.5rem;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .narrative :global(p + p),
+  .narrative :global(p + ul),
+  .narrative :global(p + ol),
+  .narrative :global(ul + p),
+  .narrative :global(ol + p) {
+    margin-top: 1em;
+  }
+
+  .narrative :global(h2),
+  .narrative :global(h3) {
+    margin: 1.6em 0 0.65em;
+  }
+
+  .narrative :global(a) {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 0.16em;
+  }
+
+  .narrative :global(ul),
+  .narrative :global(ol) {
+    padding-left: 1.25rem;
+  }
+
+  .narrative :global(blockquote) {
+    margin: 1.4em 0;
+    padding-left: 1rem;
+    border-left: 2px solid var(--accent);
+    color: var(--muted);
   }
 
   .photos {
     display: flex;
     flex-direction: column;
-    gap: clamp(2.6rem, 6vw, 4rem);
+    gap: clamp(3.8rem, 9vw, 7rem);
+    margin-top: clamp(3.8rem, 9vw, 7rem);
   }
 
-  .zoom {
-    display: block;
-    cursor: zoom-in;
+  .discussion-mount:empty {
+    display: none;
   }
 
-  .photos img {
-    width: 100%;
-    border-radius: 2px;
+  .story-nav {
+    margin-top: clamp(5rem, 12vw, 9rem);
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--hairline);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(1.5rem, 6vw, 4rem);
   }
 
-  figcaption {
-    margin-top: 0.55rem;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem 1.2rem;
+  .story-nav-link {
+    display: grid;
+    align-content: start;
+    gap: 0.15rem;
+  }
+
+  .story-nav-link strong {
+    font-family: 'Fraunces Variable', Georgia, serif;
+    font-size: clamp(1.2rem, 2.5vw, 1.7rem);
+    font-weight: 480;
+    line-height: 1.15;
+    transition: color 0.2s ease;
+  }
+
+  .story-nav-link > span:last-child {
+    margin-top: 0.25rem;
     font-size: 0.8rem;
     color: var(--muted);
   }
 
-  figcaption .exif {
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.03em;
+  .story-nav-link:hover strong,
+  .story-nav-link:focus-visible strong {
+    color: var(--accent);
+  }
+
+  .story-nav-link.older {
+    text-align: right;
   }
 
   dialog {
-    /* the global `* { margin: 0 }` reset kills the UA's centering margin */
     margin: auto;
-    outline: none;
+    width: 100vw;
+    height: 100vh;
+    max-width: none;
+    max-height: none;
+    overflow: hidden;
     border: none;
-    padding: 0;
-    background: transparent;
-    max-width: 96vw;
-    max-height: 96vh;
+    padding: 2.7rem 3.8rem 1.4rem;
+    background: rgba(10, 9, 8, 0.98);
+    color: #f7f4ee;
   }
 
   dialog::backdrop {
-    background: rgba(10, 9, 8, 0.92);
+    background: rgba(10, 9, 8, 0.98);
+  }
+
+  .lightbox-figure {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
   }
 
   dialog img {
-    max-width: 96vw;
-    max-height: 92vh;
+    max-width: 100%;
+    max-height: calc(100vh - 6rem);
     width: auto;
     height: auto;
-    cursor: zoom-out;
+    object-fit: contain;
+    touch-action: pan-y;
+  }
+
+  #lightbox-caption {
+    width: min(100%, var(--measure));
+    padding-top: 0.65rem;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    text-align: center;
+    color: #bdb6aa;
   }
 
   #lightbox-close {
     position: fixed;
-    top: 0.6rem;
-    right: 0.8rem;
-    background: none;
+    z-index: 2;
+    top: 0.45rem;
+    right: 0.55rem;
+    min-width: 44px;
+    min-height: 44px;
     border: none;
+    background: none;
     color: #f7f4ee;
     cursor: pointer;
-    padding: 0.5rem;
   }
 
   .lightbox-nav {
     position: fixed;
+    z-index: 2;
     top: 50%;
+    min-width: 48px;
+    min-height: 64px;
     transform: translateY(-50%);
-    background: none;
     border: none;
+    background: none;
     color: #f7f4ee;
-    font-size: 2.4rem;
+    font-size: 2.5rem;
     line-height: 1;
-    padding: 1.2rem 0.9rem;
     cursor: pointer;
-    opacity: 0.65;
+    opacity: 0.6;
     transition: opacity 0.2s ease;
   }
 
@@ -220,10 +397,38 @@ const cover = coverOf(album);
   }
 
   #lightbox-prev {
-    left: 0.4rem;
+    left: 0.2rem;
   }
 
   #lightbox-next {
-    right: 0.4rem;
+    right: 0.2rem;
+  }
+
+  @media (max-width: 620px) {
+    .story-nav {
+      grid-template-columns: 1fr;
+    }
+
+    .story-nav > span:empty {
+      display: none;
+    }
+
+    .story-nav-link.older {
+      text-align: left;
+    }
+
+    dialog {
+      padding: 3.1rem 0.8rem 1rem;
+    }
+
+    dialog img {
+      max-height: calc(100vh - 7rem);
+    }
+
+    .lightbox-nav {
+      top: auto;
+      bottom: 0.35rem;
+      transform: none;
+    }
   }
 </style>

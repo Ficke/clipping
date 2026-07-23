@@ -4,24 +4,49 @@ import Layout from '../layouts/Layout.astro';
 import { coverOf, formatDate, getAlbums, slugOf } from '../lib/albums';
 
 const albums = await getAlbums();
+const latest = albums[0];
+const latestCover = latest ? coverOf(latest) : undefined;
+const latestCoverAlt = latest && latestCover
+  ? latest.data.alt[latestCover.file]
+    ?? latest.data.captions[latestCover.file]
+    ?? `Cover photograph for ${latest.data.title}`
+  : undefined;
 ---
 
-<Layout title="Adam Ficke — Photography">
-  <h1 class="visually-hidden">Photography</h1>
-  <ol class="albums">
+<Layout
+  title="Adam Ficke — Photography"
+  description="Photographs from trips and time outdoors by Adam Ficke."
+  ogImage={latestCover?.variants.social.src}
+  ogImageAlt={latestCoverAlt}
+  section="photography"
+>
+  <header class="index-intro rise">
+    <p class="kicker">Photography</p>
+    <h1>Photographs from trips and time outdoors.</h1>
+  </header>
+
+  <ol class="albums" aria-label="Photo stories, newest first">
     {
       albums.map((album, i) => {
         const cover = coverOf(album);
         return (
           <li class="album rise" style={`animation-delay: ${Math.min(i * 90, 360)}ms`}>
             <a href={`/photography/${slugOf(album)}/`}>
-              <p class="kicker">{formatDate(album.data.date)}</p>
+              <p class="story-meta">
+                <span>{album.data.location}</span>
+                <span aria-hidden="true">·</span>
+                <time datetime={album.data.date.toISOString().slice(0, 10)}>
+                  {formatDate(album.data.date)}
+                </time>
+              </p>
               <h2>{album.data.title}</h2>
               <PhotoPicture
                 photo={cover}
-                alt={album.data.title}
+                alt={album.data.alt[cover.file]
+                  ?? album.data.captions[cover.file]
+                  ?? `Cover photograph for ${album.data.title}`}
                 sizes="(min-width: 1200px) 1040px, 94vw"
-                loading={i < 2 ? 'eager' : 'lazy'}
+                loading={i === 0 ? 'eager' : 'lazy'}
                 fetchpriority={i === 0 ? 'high' : 'auto'}
               />
             </a>
@@ -33,30 +58,44 @@ const albums = await getAlbums();
 </Layout>
 
 <style>
-  .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
+  .index-intro {
+    margin: clamp(1.5rem, 5vw, 4.5rem) 0 clamp(3.6rem, 8vw, 6.5rem);
+    max-width: 820px;
+  }
+
+  .index-intro h1 {
+    margin-top: 0.45rem;
+    font-size: clamp(2.4rem, 7vw, 5.2rem);
+    line-height: 0.98;
   }
 
   .albums {
     list-style: none;
     padding: 0;
-    margin: clamp(1rem, 4vw, 3rem) 0 0;
+    margin: 0;
     display: flex;
     flex-direction: column;
-    gap: clamp(3.2rem, 8vw, 5.5rem);
+    gap: clamp(4.2rem, 10vw, 8rem);
   }
 
   .album a {
     display: block;
   }
 
+  .story-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
   .album h2 {
-    font-size: clamp(1.7rem, 4.5vw, 2.7rem);
-    margin: 0.25rem 0 1rem;
+    font-size: clamp(1.9rem, 4.8vw, 3rem);
+    margin: 0.35rem 0 1.1rem;
     transition: color 0.25s ease;
   }
 

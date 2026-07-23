@@ -1,6 +1,8 @@
 ---
+storyId: "2024-07-desolation-wilderness"
 title: "Desolation Wilderness"
 date: 2024-07-05
+location: "Desolation Wilderness"
 cover: 01-DSCF1292.jpg
 ---
 

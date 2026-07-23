@@ -12,6 +12,7 @@ export interface AlbumPhoto {
   file: string;
   image: PhotoManifestEntry;
   caption: string | undefined;
+  alt: string | undefined;
   exif: string | undefined;
 }
 
@@ -25,6 +26,13 @@ export function slugOf(album: Album): string {
 /** All non-draft albums, newest first. */
 export async function getAlbums(): Promise<Album[]> {
   const albums = await getCollection('albums', ({ data }) => !data.draft);
+  const storyIds = new Set<string>();
+  for (const album of albums) {
+    if (storyIds.has(album.data.storyId)) {
+      throw new Error(`Duplicate storyId: ${album.data.storyId}`);
+    }
+    storyIds.add(album.data.storyId);
+  }
   return albums.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
 }
 
@@ -80,6 +88,7 @@ export async function photosOf(album: Album): Promise<AlbumPhoto[]> {
     file,
     image,
     caption: album.data.captions[file],
+    alt: album.data.alt[file],
     exif: image.exif,
   }));
 }
