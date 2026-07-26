@@ -15,15 +15,12 @@ const latestCoverAlt = latest && latestCover
 
 <Layout
   title="Adam Ficke — Photography"
-  description="Photographs from trips and time outdoors by Adam Ficke."
+  description="Photographs by Adam Ficke."
   ogImage={latestCover?.variants.social.src}
   ogImageAlt={latestCoverAlt}
   section="photography"
 >
-  <header class="index-intro rise">
-    <p class="kicker">Photography</p>
-    <h1>Photographs from trips and time outdoors.</h1>
-  </header>
+  <h1 class="visually-hidden">Photographs by Adam Ficke</h1>
 
   <ol class="albums" aria-label="Photo stories, newest first">
     {
@@ -32,14 +29,6 @@ const latestCoverAlt = latest && latestCover
         return (
           <li class="album rise" style={`animation-delay: ${Math.min(i * 90, 360)}ms`}>
             <a href={`/photography/${slugOf(album)}/`}>
-              <p class="story-meta">
-                <span>{album.data.location}</span>
-                <span aria-hidden="true">·</span>
-                <time datetime={album.data.date.toISOString().slice(0, 10)}>
-                  {formatDate(album.data.date)}
-                </time>
-              </p>
-              <h2>{album.data.title}</h2>
               <PhotoPicture
                 photo={cover}
                 alt={album.data.alt[cover.file]
@@ -49,6 +38,14 @@ const latestCoverAlt = latest && latestCover
                 loading={i === 0 ? 'eager' : 'lazy'}
                 fetchpriority={i === 0 ? 'high' : 'auto'}
               />
+              <h2>{album.data.title}</h2>
+              <p class="story-meta">
+                <span>{album.data.location}</span>
+                <span aria-hidden="true">·</span>
+                <time datetime={album.data.date.toISOString().slice(0, 10)}>
+                  {formatDate(album.data.date)}
+                </time>
+              </p>
             </a>
           </li>
         );
@@ -58,21 +55,10 @@ const latestCoverAlt = latest && latestCover
 </Layout>
 
 <style>
-  .index-intro {
-    margin: clamp(1.5rem, 5vw, 4.5rem) 0 clamp(3.6rem, 8vw, 6.5rem);
-    max-width: 820px;
-  }
-
-  .index-intro h1 {
-    margin-top: 0.45rem;
-    font-size: clamp(2.4rem, 7vw, 5.2rem);
-    line-height: 0.98;
-  }
-
   .albums {
     list-style: none;
     padding: 0;
-    margin: 0;
+    margin: clamp(1.5rem, 4vw, 3rem) 0 0;
     display: flex;
     flex-direction: column;
     gap: clamp(4.2rem, 10vw, 8rem);
@@ -94,8 +80,8 @@ const latestCoverAlt = latest && latestCover
   }
 
   .album h2 {
-    font-size: clamp(1.9rem, 4.8vw, 3rem);
-    margin: 0.35rem 0 1.1rem;
+    font-size: clamp(1.5rem, 3.2vw, 2.1rem);
+    margin: 1.1rem 0 0.3rem;
     transition: color 0.25s ease;
   }
 
