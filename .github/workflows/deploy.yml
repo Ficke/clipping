@@ -17,6 +17,15 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # Production deploys from main only. A workflow_dispatch runs against
+      # whatever ref you pick, which has already put a feature branch on the
+      # live site once — fail before any AWS credentials are issued.
+      - name: Refuse to deploy a non-main ref
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Deploy is restricted to main; got ${GITHUB_REF}."
+          exit 1
+
       - uses: actions/checkout@v5
 
       - uses: aws-actions/configure-aws-credentials@v4
