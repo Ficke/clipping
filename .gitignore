@@ -19,7 +19,7 @@ public/media/
 # Terraform (the .terraform.lock.hcl provider lockfile IS committed)
 infra/.terraform/
 infra/*.tfstate*
-infra/tfplan
+infra/tfplan*
 
 # preview-check screenshots
 .claude/skills/preview-check/shots/
