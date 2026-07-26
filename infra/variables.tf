@@ -21,9 +21,15 @@ variable "github_repository" {
 }
 
 variable "domain_name" {
-  description = "Apex domain currently served by CloudFront"
+  description = "Canonical apex domain; every other served name 301s here"
   type        = string
-  default     = "adamficke.dev"
+  default     = "adamficke.com"
+}
+
+variable "redirect_domains" {
+  description = "Apex domains CloudFront also answers for, redirected to domain_name"
+  type        = list(string)
+  default     = ["adamficke.dev"]
 }
 
 variable "managed_domains" {

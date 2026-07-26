@@ -73,7 +73,8 @@ resource "aws_cloudfront_origin_access_control" "site" {
 }
 
 # Rewrites pretty URLs to the S3 object Astro actually emits
-# (/about/ -> /about/index.html) and 301s www -> apex.
+# (/about/ -> /about/index.html) and 301s every other served host
+# (www., the old .dev domain, the cloudfront.net name) to the canonical apex.
 resource "aws_cloudfront_function" "rewrite" {
   name    = "${var.name}-rewrite"
   runtime = "cloudfront-js-2.0"
@@ -101,12 +102,13 @@ resource "aws_cloudfront_function" "rewrite" {
         };
       }
 
-      if (host.startsWith('www.')) {
+      var canonical = '${var.domain_name}';
+      if (host && host !== canonical) {
         return {
           statusCode: 301,
           statusDescription: 'Moved Permanently',
           headers: {
-            location: { value: 'https://' + host.slice(4) + request.uri }
+            location: { value: 'https://' + canonical + request.uri }
           }
         };
       }
@@ -167,7 +169,7 @@ resource "aws_cloudfront_distribution" "site" {
   comment             = var.name
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
-  aliases             = var.enable_custom_domain ? [var.domain_name, "www.${var.domain_name}"] : []
+  aliases             = keys(local.served_hosts)
   tags                = local.tags
 
   origin {
