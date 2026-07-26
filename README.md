@@ -49,28 +49,34 @@ an existing album.
    and synchronizes the album's originals to S3. It then starts the
    `adamficke-com-media` CodeBuild job, which generates only missing
    content-addressed image variants and downloads the resulting `photos.json`
-   manifest into the album folder. The generated title comes from the folder
-   slug (`lost-coast` becomes `Lost Coast`), the date comes from the first
-   photo's EXIF (falling back to the folder month), and the cover is the first
-   photo.
+   manifest into the album folder. The generated story ID comes from the
+   folder name; title and initial location come from the folder slug
+   (`lost-coast` becomes `Lost Coast`); the date comes from the first photo's
+   EXIF (falling back to the folder month); and the cover is the first photo.
+   Edit the location into the human-readable place name you want visitors to
+   see.
 
 4. The generated `index.md` is ready to publish without changes, or you can
    edit its title and add optional details:
 
    ```markdown
    ---
+   storyId: "2026-08-lost-coast" # permanent; future comments attach here
    title: "Lost Coast"       # editable; defaults from the folder slug
    date: 2026-08-14          # controls ordering; rendered above the title
+   location: "Mendocino Coast"
    cover: DSCF1234.jpg       # image shown on the index page
    order:                    # optional: override natural filename order
      - DSCF1250.jpg
      - DSCF1234.jpg
    captions:                 # optional: one descriptive sentence per photo
      DSCF1250.jpg: "Fog coming over Punta Gorda."
+   alt:                      # optional accessibility descriptions
+     DSCF1250.jpg: "Fog moving over a dark coastal ridge."
    draft: true               # optional: hide until ready
    ---
 
-   Optional album text — the story of the trip, shown above the photos.
+   Optional album text — the story of the trip, shown after the opening photo.
    ```
 
    If `order:` is present, it must list every photo exactly once. Full
@@ -109,10 +115,14 @@ photo upload—edit `index.md` and commit it normally.
 
 ### Text on an album page
 
-- **Album text**: the markdown body of `index.md`, rendered above the photos
+- **Album text**: the markdown body of `index.md`, rendered after the opening
+  photo and before the rest of the sequence
 - **Captions**: the `captions:` map in frontmatter, keyed by exact filename
+- **Alt text**: the `alt:` map in frontmatter, kept separate from captions so
+  each can do its own job
 - **EXIF line** (camera, focal length, aperture, shutter, ISO): captured in
-  `photos.json` when media is published; photos with no EXIF omit the line
+  `photos.json` when media is published; available under “Photo details” when
+  present
 - **`description:`** (optional frontmatter): overrides the auto-generated
   `<meta>` description for the album page
 

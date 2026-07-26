@@ -6,13 +6,14 @@ export async function GET(context: APIContext) {
   const albums = await getAlbums();
   return rss({
     title: 'Adam Ficke — Photography',
-    description: 'New photo albums from Adam Ficke.',
+    description: 'Photo stories from trips and time outdoors by Adam Ficke.',
     site: context.site!,
     items: albums.map((album) => ({
       title: album.data.title,
       pubDate: album.data.date,
       link: `/photography/${slugOf(album)}/`,
-      description: album.data.description ?? `${album.data.title}, ${formatDate(album.data.date)}.`,
+      description: album.data.description
+        ?? `${album.data.title} — ${album.data.location}, ${formatDate(album.data.date)}.`,
     })),
   });
 }
