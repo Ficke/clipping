@@ -54,6 +54,13 @@ function altFor(index: number): string {
         <time datetime={dateIso}>{formatDate(album.data.date)}</time>
       </p>
       <h1>{album.data.title}</h1>
+      {
+        hasNarrative && (
+          <div class="standfirst">
+            <Content />
+          </div>
+        )
+      }
     </header>
 
     <StoryPhoto
@@ -64,14 +71,6 @@ function altFor(index: number): string {
       loading="eager"
       fetchpriority="high"
     />
-
-    {
-      hasNarrative && (
-        <section class="narrative rise" aria-label="Trip notes">
-          <Content />
-        </section>
-      )
-    }
 
     {
       remaining.length > 0 && (
@@ -223,47 +222,44 @@ function altFor(index: number): string {
     line-height: 0.98;
   }
 
-  .narrative {
-    max-width: var(--measure);
-    margin: clamp(3rem, 8vw, 6rem) auto;
-    font-size: clamp(1rem, 1.4vw, 1.08rem);
-    color: color-mix(in srgb, var(--ink) 92%, var(--muted));
+  /* Editorial standfirst: sits under the title, on the same left axis, one
+     step down from the headline in the display serif. */
+  .standfirst {
+    max-width: 46ch;
+    margin-top: clamp(1.1rem, 2.5vw, 1.7rem);
+    font-family: 'Fraunces Variable', Georgia, serif;
+    font-style: italic;
+    font-size: clamp(1.15rem, 2vw, 1.5rem);
+    line-height: 1.4;
+    color: color-mix(in srgb, var(--ink) 76%, var(--muted));
   }
 
-  .narrative::before {
-    content: '';
-    display: block;
-    width: 3rem;
-    margin-bottom: 1.5rem;
-    border-top: 1px solid var(--hairline);
+  .standfirst :global(p + p),
+  .standfirst :global(p + ul),
+  .standfirst :global(p + ol),
+  .standfirst :global(ul + p),
+  .standfirst :global(ol + p) {
+    margin-top: 0.7em;
   }
 
-  .narrative :global(p + p),
-  .narrative :global(p + ul),
-  .narrative :global(p + ol),
-  .narrative :global(ul + p),
-  .narrative :global(ol + p) {
-    margin-top: 1em;
+  .standfirst :global(h2),
+  .standfirst :global(h3) {
+    margin: 1.2em 0 0.5em;
   }
 
-  .narrative :global(h2),
-  .narrative :global(h3) {
-    margin: 1.6em 0 0.65em;
-  }
-
-  .narrative :global(a) {
+  .standfirst :global(a) {
     color: var(--accent);
     text-decoration: underline;
     text-underline-offset: 0.16em;
   }
 
-  .narrative :global(ul),
-  .narrative :global(ol) {
+  .standfirst :global(ul),
+  .standfirst :global(ol) {
     padding-left: 1.25rem;
   }
 
-  .narrative :global(blockquote) {
-    margin: 1.4em 0;
+  .standfirst :global(blockquote) {
+    margin: 1.2em 0;
     padding-left: 1rem;
     border-left: 2px solid var(--accent);
     color: var(--muted);
