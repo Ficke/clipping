@@ -12,6 +12,10 @@ content/albums/**/*.png
 content/albums/**/*.webp
 content/albums/**/*.avif
 
+# Locally-built derivative images (served from S3/CloudFront in production;
+# generated on demand for `bun run dev` by scripts/photos-media-dev.mjs)
+public/media/
+
 # Terraform (the .terraform.lock.hcl provider lockfile IS committed)
 infra/.terraform/
 infra/*.tfstate*
