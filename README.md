@@ -17,6 +17,9 @@ downloading photos. For album work, run `aws login` first. `bun run
 photos:pull` hydrates the gitignored originals from S3 when you need to update
 an existing album.
 
+`predev` clears `.astro/`, whose cached frontmatter goes stale against schema
+changes in `src/content.config.ts`.
+
 ## Adding an album
 
 1. Create `content/albums/YYYY-MM-slug/` and drop in your exports. JPEG,
