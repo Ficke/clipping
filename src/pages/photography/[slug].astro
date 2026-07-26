@@ -218,19 +218,22 @@ function altFor(index: number): string {
   .story-header h1 {
     max-width: 920px;
     margin-top: 0.45rem;
-    font-size: clamp(2.6rem, 7vw, 5.4rem);
-    line-height: 0.98;
+    font-size: clamp(2.2rem, 5vw, 3.9rem);
+    line-height: 1.02;
   }
 
   /* Editorial standfirst: sits under the title, on the same left axis, one
      step down from the headline in the display serif. */
   .standfirst {
-    max-width: 46ch;
+    max-width: 58ch;
     margin-top: clamp(1.1rem, 2.5vw, 1.7rem);
     font-family: 'Fraunces Variable', Georgia, serif;
-    font-style: italic;
-    font-size: clamp(1.15rem, 2vw, 1.5rem);
-    line-height: 1.4;
+    /* text-grade optical size + lighter weight keep this from reading as a
+       second headline, since it shares the display family */
+    font-variation-settings: 'opsz' 14, 'SOFT' 40, 'WONK' 0;
+    font-weight: 380;
+    font-size: clamp(1rem, 1.35vw, 1.18rem);
+    line-height: 1.5;
     color: color-mix(in srgb, var(--ink) 76%, var(--muted));
   }
 
