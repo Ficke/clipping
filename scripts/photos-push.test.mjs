@@ -238,4 +238,41 @@ exit 0
     // --dry-run must not touch the file.
     expect(readFileSync(path.join(album, 'index.md'), 'utf8')).toContain('  - file: b.jpg');
   });
+
+  test('refuses a storyId that would escape the archive prefix', async () => {
+    const repoRoot = path.resolve(import.meta.dir, '..');
+    const album = path.join(repoRoot, 'content', 'albums', `2099-01-badid-test-${process.pid}`);
+    const temporary = mkdtempSync(path.join(os.tmpdir(), 'photos-push-test-'));
+    const bin = path.join(temporary, 'bin');
+    temporaryAlbums.push(album);
+    temporaryDirectories.push(temporary);
+    mkdirSync(album);
+    mkdirSync(bin);
+    await sharp({ create: { width: 20, height: 10, channels: 3, background: '#123456' } })
+      .jpeg().toFile(path.join(album, 'a.jpg'));
+    // storyId becomes an S3 key prefix and the ALBUM_ID build variable, so a
+    // traversal here would point the sync at a different prefix entirely.
+    writeFileSync(path.join(album, 'index.md'), [
+      '---',
+      'storyId: "../../evil"',
+      'title: "Bad Id"',
+      'date: 2099-01-01',
+      'location: "Nowhere"',
+      'photos:',
+      '  - file: a.jpg',
+      '---',
+      '',
+    ].join('\n'));
+    const fakeAws = path.join(bin, 'aws');
+    writeFileSync(fakeAws, '#!/bin/sh\nexit 0\n');
+    chmodSync(fakeAws, 0o755);
+
+    const result = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-push.mjs'), album, '--dry-run',
+    ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('must be lowercase letters and digits');
+    expect(result.stdout).not.toContain('Previewing');
+  });
 });

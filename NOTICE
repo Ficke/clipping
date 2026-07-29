@@ -1,0 +1,29 @@
+adamficke.com
+Copyright (c) 2026 Adam Ficke
+
+This repository contains two kinds of material under two different terms.
+
+SOURCE CODE — MIT licensed
+--------------------------
+The site source, build scripts, and infrastructure definitions are licensed
+under the MIT License. See LICENSE for the full text. This covers everything
+in src/, scripts/, infra/, public/, the album markdown in content/albums/,
+and the configuration at the repository root.
+
+PHOTOGRAPHS — all rights reserved
+---------------------------------
+The photographs are NOT covered by the MIT License. All rights are reserved.
+
+This applies to every copy of them, specifically:
+
+  - the image files under content/albums/ (kept out of git by .gitignore, and
+    archived in S3)
+  - the generated derivatives served from the site under /media/
+  - any image files present in this repository's git history
+
+You may not copy, redistribute, modify, or use the photographs — commercially
+or otherwise — without prior written permission. Reading the code to learn
+from it, forking the repository, and reusing the code under the MIT License
+are all fine; republishing the photographs is not.
+
+For permission to use a photograph, contact the copyright holder.

@@ -165,6 +165,7 @@ async function prepareAlbum(albumDirectory) {
   const existing = readFileSync(indexPath, 'utf8');
   const storyId = frontmatterValue(existing, 'storyId');
   if (!storyId) fail(`${indexPath} has no storyId`);
+  assertStoryIdShape(storyId, indexPath);
 
   const reconciled = reconcilePhotos(existing, images, path.basename(albumDirectory));
   if (reconciled !== existing) {
@@ -472,6 +473,20 @@ function existingStoryIds() {
     if (storyId) ids.add(storyId);
   }
   return ids;
+}
+
+/**
+ * A storyId minted by the form is always slugified, but one read back from an
+ * existing index.md is whatever the file says. It becomes an S3 key prefix and
+ * the ALBUM_ID CodeBuild variable that buildspec-media.yml interpolates into an
+ * `s3 sync` URL, so assert the slug shape rather than silently re-slugifying —
+ * a hand-edited id that no longer matches its archive should stop the push, not
+ * quietly retarget a different prefix.
+ */
+function assertStoryIdShape(storyId, indexPath) {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(storyId)) {
+    fail(`${indexPath}: storyId ${JSON.stringify(storyId)} must be lowercase letters and digits in hyphen-separated words`);
+  }
 }
 
 /** Git is not the whole truth: an id can be free locally but taken in S3. */
