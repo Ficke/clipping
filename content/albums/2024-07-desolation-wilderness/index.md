@@ -4,6 +4,7 @@ title: "Desolation Wilderness"
 date: 2024-07-05
 published: 2024-07-05
 location: "Desolation Wilderness"
+description: "Overnight in Desolation over the 4th of July: Smith Lake → Twin Lakes → Tyler & Gertrude Lakes, with some off-trail hiking to connect them."
 photos:
   - file: 01-DSCF1292.jpg
   - file: 02-DSCF1302.jpg
@@ -25,7 +26,5 @@ photos:
   - file: 18-DSCF1627.jpg
   - file: 19-DSCF1645.jpg
 ---
-
-Overnight in Desolation over the 4th of July: Smith Lake → Twin Lakes → Tyler & Gertrude Lakes, with some off-trail hiking to connect them.
 
 First go at some astrophotography — no tripod, but the boulders did a serviceable job holding the camera steady.
