@@ -22,10 +22,11 @@ changes in `src/content.config.ts`.
 
 ## Adding an album
 
-1. Create `content/albums/YYYY-MM-slug/` and drop in your exports. JPEG,
-   PNG, WebP, and AVIF are supported. Photos display in natural filename
-   order, so a camera sequence like `DSCF9.jpg`, `DSCF10.jpg`, `DSCF11.jpg`
-   needs no manual numbering:
+1. Create a folder under `content/albums/` and drop in your exports. JPEG,
+   PNG, WebP, and AVIF are supported. The folder name is only a working
+   label — it seeds the form's defaults on the first push and nothing reads
+   it afterwards — so `YYYY-MM-name` is a useful convention for sorting but
+   not a requirement:
 
    ```
    content/albums/2026-08-lost-coast/
@@ -35,7 +36,8 @@ changes in `src/content.config.ts`.
    ```
 
 2. Preview the album upload. A dry run only reports extension renames,
-   `index.md` creation, and S3 uploads; it changes nothing locally or in AWS:
+   `index.md` creation, and S3 uploads; it changes nothing locally or in AWS,
+   and it skips the form:
 
    ```sh
    bun run photos:push -- content/albums/2026-08-lost-coast --dry-run
@@ -47,92 +49,148 @@ changes in `src/content.config.ts`.
    bun run photos:push -- content/albums/2026-08-lost-coast
    ```
 
-   The command lowercases image extensions, rejects unsupported photo
-   formats or nested image folders, creates `index.md` when it is missing,
-   and synchronizes the album's originals to S3. It then starts the
-   `adamficke-com-media` CodeBuild job, which generates only missing
-   content-addressed image variants and downloads the resulting `photos.json`
-   manifest into the album folder. The generated story ID comes from the
-   folder name; title and initial location come from the folder slug
-   (`lost-coast` becomes `Lost Coast`); the date comes from the first photo's
-   EXIF (falling back to the folder month); and the cover is the first photo.
-   Edit the location into the human-readable place name you want visitors to
-   see.
+   For a new album this opens a short form with defaults derived from the
+   folder name — press Enter to accept each one. `location` is the exception:
+   nothing can infer it, so it is required.
+
+   ```
+   2026-08-lost-coast → new album, 24 photos
+     storyId    [lost-coast]
+                  → /photography/lost-coast/
+     title      [Lost Coast]
+     date       [2026-08-14]
+     cover      [DSCF1234.jpg]
+     location   [] Mendocino Coast
+   ```
+
+   The story ID is permanent: it keys the S3 archive, the manifest, the URL,
+   and any future comments. The script checks it is unused both locally and
+   in S3 before writing anything.
+
+   It then lowercases image extensions, rejects unsupported photo formats or
+   nested image folders, writes `index.md`, and synchronizes the album's
+   originals to S3.
+
+   Finally it asks where to generate the image variants:
+
+   ```
+   Build media for 24 photos:
+     codebuild  reproducible, builds from HEAD
+     local      faster, builds from your working tree
+     where      [codebuild]
+   ```
+
+   Both run the same `photos-build-media.mjs` and write to the same buckets —
+   variant keys derive from each source file's hash, so the two are
+   interchangeable and either warms the cache for the other. CodeBuild is the
+   default because it builds from `HEAD` in a fixed container. Local is
+   markedly faster on a cold album, since it skips the source bundle and the
+   round trip that pulls the originals back out of S3; use `--local` to skip
+   the prompt. Only variants that do not already exist are generated, so
+   re-pushing an unchanged album is quick either way.
 
 4. The generated `index.md` is ready to publish without changes, or you can
    edit its title and add optional details:
 
    ```markdown
    ---
-   storyId: "2026-08-lost-coast" # permanent; future comments attach here
-   title: "Lost Coast"       # editable; defaults from the folder slug
+   storyId: "lost-coast"     # permanent; keys storage, URL, future comments
+   title: "Lost Coast"       # editable; defaults from the folder name
    date: 2026-08-14          # controls ordering; rendered above the title
    location: "Mendocino Coast"
-   cover: DSCF1234.jpg       # image shown on the index page
-   order:                    # optional: override natural filename order
-     - DSCF1250.jpg
-     - DSCF1234.jpg
-   captions:                 # optional: one descriptive sentence per photo
-     DSCF1250.jpg: "Fog coming over Punta Gorda."
-   alt:                      # optional accessibility descriptions
-     DSCF1250.jpg: "Fog moving over a dark coastal ridge."
+   cover: DSCF1250.jpg       # optional; defaults to the first photo
    draft: true               # optional: hide until ready
+   photos:                   # order of the list is the order of the album
+     - file: DSCF1234.jpg
+     - file: DSCF1250.jpg
+       caption: "Fog coming over Punta Gorda."
+       alt: "Fog moving over a dark coastal ridge."
    ---
 
    Optional album text — the story of the trip, shown after the opening photo.
    ```
 
-   If `order:` is present, it must list every photo exactly once. Full
-   conventions live in `content/albums/TEMPLATE.md`.
+   Full conventions live in `content/albums/TEMPLATE.md`.
 
-5. Commit the album text and generated manifest to publish:
+5. Check it locally, then publish it — see [Publishing](#publishing):
 
    ```sh
-   git add content/albums/2026-08-lost-coast/index.md \
-     content/albums/2026-08-lost-coast/photos.json
-   git commit -m "Lost Coast"
-   git push
+   bun run build   # catches schema errors and photos/photos.json mismatches
    ```
 
-GitHub Actions sends a small source archive to CodeBuild. The site build reads
-the manifest, builds only HTML/CSS/JS, deploys to S3, and invalidates
-CloudFront. It never downloads originals or historical derivatives.
+## Updating an album
 
-**Never rename a published album folder** — the folder name minus the date
-prefix is the URL, and renaming breaks inbound links.
+Run `bun run photos:pull` to hydrate the originals, then add, replace, or
+remove files in the album folder and run the same dry-run/push sequence.
+Because identity lives in `index.md`, the folder can be renamed or
+reorganized freely — the album is still the same album.
 
-### Updating an album
+`photos:push` reconciles the `photos` list against the folder on every push:
+new files are added, deleted ones removed, and captions, alt text and any
+hand-set order are preserved. New photos slot into filename order unless the
+album has been reordered by hand, in which case they are appended.
 
-Hydrate the originals if needed, then add, replace, or remove files in the
-album folder and run the same dry-run/push sequence. The local folder is
-authoritative: `photos:push` adds and replaces changed objects and removes
-remote images no longer in the folder. The originals bucket is versioned, so
-overwrites and deletions remain recoverable for 90 days.
+The local folder is authoritative: the push adds and replaces changed objects
+and removes remote images no longer in the folder. The originals bucket is
+versioned, so overwrites and deletions remain recoverable for 90 days.
 
 The media job hashes source bytes. A replacement gets new immutable URLs;
 unchanged photos reuse their existing variants; removed photos disappear from
 `photos.json`. Old content-addressed derivatives are intentionally retained
 and can be garbage-collected separately without putting a live page at risk.
-Changing only title, description, captions, cover, or `order:` requires no
-photo upload—edit `index.md` and commit it normally.
+Changing only text — title, description, captions, alt, cover, or the order of
+`photos:` — needs no photo upload; edit `index.md` and publish it normally.
+
+**Changing `storyId` changes the URL**, breaks inbound links, and orphans the
+album from its S3 archive and manifest. Treat it as permanent. The folder
+name, by contrast, is free to change at any time.
 
 ### Text on an album page
 
 - **Album text**: the markdown body of `index.md`, rendered after the opening
   photo and before the rest of the sequence
-- **Captions**: the `captions:` map in frontmatter, keyed by exact filename
-- **Alt text**: the `alt:` map in frontmatter, kept separate from captions so
-  each can do its own job
+- **Captions**: the `caption:` field on an entry in `photos:`
+- **Alt text**: the `alt:` field on an entry in `photos:`, kept separate from
+  the caption so each can do its own job
 - **EXIF line** (camera, focal length, aperture, shutter, ISO): captured in
   `photos.json` when media is published; available under “Photo details” when
   present
 - **`description:`** (optional frontmatter): overrides the auto-generated
   `<meta>` description for the album page
 
+## Publishing
+
+`main` deploys to production on merge, so album and site changes go through a
+branch and a pull request.
+
+```sh
+git checkout -b japan-24
+
+# only the text and the manifest: originals are gitignored, and the
+# generated derivatives already live in S3
+git add "content/albums/2024-12-Japan-'24/index.md" \
+        "content/albums/2024-12-Japan-'24/photos.json"
+git commit -m "Japan '24"
+
+git push -u origin japan-24
+gh pr create --fill
+```
+
+Merging to `main` triggers `.github/workflows/deploy.yml`, which assumes the
+AWS role via OIDC, uploads a git source archive, and waits for the
+`adamficke-com-site` CodeBuild job. That job reads the committed manifests,
+builds only HTML/CSS/JS, deploys to the site bucket, and invalidates the
+mutable CloudFront paths, leaving immutable `/_astro/*` and `/media/*` in
+cache. It never downloads originals or historical derivatives.
+
+Media generation has already happened by this point — `photos:push` does it at
+upload time, not at deploy time. A deploy that changes only album text costs
+nothing but the site build.
+
 ## Where the photos live
 
 Full-quality originals live in the versioned `adamficke-com-originals`
-bucket at `albums/<folder>/<file>.jpg`. Public derivatives live separately in
+bucket at `albums/<storyId>/<file>.jpg`. Public derivatives live separately in
 the private `adamficke-com-media` bucket and are served by CloudFront under
 `/media/*`. Git contains `index.md` plus `photos.json`; generated image files
 are never committed.
