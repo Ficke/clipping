@@ -1,0 +1,15 @@
+#!/bin/sh
+# Refuse pushes to main: a push to main deploys to production (.github/workflows/deploy.yml).
+# Open a PR instead. Bypass for a genuine emergency with --no-verify.
+
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      echo "pre-push: refusing to push to main — it deploys to production." >&2
+      echo "          Open a PR: git push -u origin \$(git branch --show-current) && gh pr create" >&2
+      exit 1
+      ;;
+  esac
+done
+
+exit 0
