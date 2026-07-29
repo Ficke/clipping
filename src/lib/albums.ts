@@ -37,7 +37,17 @@ export function slugOf(album: Album): string {
   return album.data.storyId.replace(/^\d{4}-\d{2}-/, '');
 }
 
-/** All non-draft albums, newest first. */
+/**
+ * When the album went up, as opposed to when it was shot. Ordering and the
+ * feed key off this so a trip written up two years later still surfaces as
+ * new; the page itself keeps showing `date`. Albums predating the field are
+ * ordered by their trip date, which is where they already sat.
+ */
+export function publishedAt(album: Album): Date {
+  return album.data.published ?? album.data.date;
+}
+
+/** All non-draft albums, most recently published first. */
 export async function getAlbums(): Promise<Album[]> {
   const albums = await getCollection('albums', ({ data }) => !data.draft);
   const storyIds = new Set<string>();
@@ -47,7 +57,7 @@ export async function getAlbums(): Promise<Album[]> {
     }
     storyIds.add(album.data.storyId);
   }
-  return albums.sort((a, b) => b.data.date.valueOf() - a.data.date.valueOf());
+  return albums.sort((a, b) => publishedAt(b).valueOf() - publishedAt(a).valueOf());
 }
 
 /**

@@ -2,6 +2,7 @@
 storyId: "2024-07-desolation-wilderness"
 title: "Desolation Wilderness"
 date: 2024-07-05
+published: 2024-07-05
 location: "Desolation Wilderness"
 photos:
   - file: 01-DSCF1292.jpg

@@ -388,6 +388,10 @@ async function scaffoldIndex(albumDirectory, images) {
     `storyId: ${JSON.stringify(answers.storyId)}`,
     `title: ${JSON.stringify(answers.title)}`,
     `date: ${answers.date}`,
+    // Written on every album, even when it matches the trip date, so a story
+    // posted long after the fact can never quietly backdate itself out of the
+    // feed. The site orders by this; the page still shows `date`.
+    `published: ${new Date().toISOString().slice(0, 10)}`,
     `location: ${JSON.stringify(answers.location)}`,
   ];
   if (answers.cover !== images[0]) lines.push(`cover: ${answers.cover}`);

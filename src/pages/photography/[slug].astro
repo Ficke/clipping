@@ -3,7 +3,7 @@ import { render } from 'astro:content';
 import Lightbox from '../../components/Lightbox.astro';
 import StoryPhoto from '../../components/StoryPhoto.astro';
 import Layout from '../../layouts/Layout.astro';
-import { coverAltOf, coverOf, formatDate, getAlbums, photosOf, slugOf } from '../../lib/albums';
+import { coverAltOf, coverOf, formatDate, getAlbums, photosOf, publishedAt, slugOf } from '../../lib/albums';
 
 export async function getStaticPaths() {
   const albums = await getAlbums();
@@ -42,7 +42,7 @@ function altFor(index: number): string {
   ogImage={cover.variants.social.src}
   ogImageAlt={coverAlt}
   type="article"
-  publishedTime={album.data.date}
+  publishedTime={publishedAt(album)}
   section="photography"
 >
   <article class="story" data-story-id={album.data.storyId}>

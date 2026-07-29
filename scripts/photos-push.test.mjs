@@ -109,6 +109,41 @@ fi
     expect(existsSync(path.join(album, 'photos.json'))).toBe(true);
   });
 
+  test('scaffolds a new album with today as its published date', async () => {
+    const repoRoot = path.resolve(import.meta.dir, '..');
+    const album = path.join(repoRoot, 'content', 'albums', `2099-01-scaffold-test-${process.pid}`);
+    const temporary = mkdtempSync(path.join(os.tmpdir(), 'photos-push-test-'));
+    const bin = path.join(temporary, 'bin');
+    temporaryAlbums.push(album);
+    temporaryDirectories.push(temporary);
+    mkdirSync(album);
+    mkdirSync(bin);
+    await sharp({ create: { width: 20, height: 10, channels: 3, background: '#abcdef' } })
+      .jpeg().toFile(path.join(album, 'photo.jpg'));
+    // No index.md: this exercises the scaffold path rather than reconciliation.
+    const fakeAws = path.join(bin, 'aws');
+    // A first push has no previous manifest in S3; real aws exits non-zero.
+    writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3 cp" ]; then
+  case "$3" in
+    s3://*manifests*) echo "An error occurred (404) when calling HeadObject: Not Found" >&2; exit 1 ;;
+  esac
+fi
+exit 0
+`);
+    chmodSync(fakeAws, 0o755);
+
+    const result = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local', '--yes',
+    ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
+
+    expect(result.status).toBe(0);
+    const index = readFileSync(path.join(album, 'index.md'), 'utf8');
+    // Written unconditionally so a late post can never backdate itself out of
+    // the feed by falling back to the trip date.
+    expect(index).toContain(`published: ${new Date().toISOString().slice(0, 10)}`);
+  });
+
   test('builds media locally instead of starting CodeBuild', async () => {
     const repoRoot = path.resolve(import.meta.dir, '..');
     const album = path.join(repoRoot, 'content', 'albums', `2099-01-local-test-${process.pid}`);
