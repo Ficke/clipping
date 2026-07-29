@@ -7,6 +7,7 @@
     "predev": "rm -rf .astro && bun scripts/photos-media-dev.mjs",
     "dev": "astro dev",
     "build": "astro build",
+    "test": "bun test",
     "preview": "astro preview",
     "photos:push": "bun scripts/photos-push.mjs",
     "photos:build-media": "bun scripts/photos-build-media.mjs",

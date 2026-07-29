@@ -271,3 +271,12 @@ registrar points at that zone's nameservers. Get them from
 change is visible in `dig NS <domain>`. Copy any email records (MX, SPF, DKIM,
 DMARC) into the Route 53 zone before cutting nameservers over; leave the old
 website A/AAAA/CNAME records behind.
+
+## License
+
+The code is MIT licensed — see [LICENSE](LICENSE). Fork it, learn from it,
+reuse it.
+
+The photographs are not. They stay all rights reserved, wherever they appear:
+in `content/albums/`, in the `/media/` derivatives the site serves, and in this
+repository's git history. [NOTICE](NOTICE) spells out the split.
