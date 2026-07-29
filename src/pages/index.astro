@@ -1,16 +1,12 @@
 ---
 import PhotoPicture from '../components/PhotoPicture.astro';
 import Layout from '../layouts/Layout.astro';
-import { coverOf, formatDate, getAlbums, slugOf } from '../lib/albums';
+import { coverAltOf, coverOf, formatDate, getAlbums, slugOf } from '../lib/albums';
 
 const albums = await getAlbums();
 const latest = albums[0];
 const latestCover = latest ? coverOf(latest) : undefined;
-const latestCoverAlt = latest && latestCover
-  ? latest.data.alt[latestCover.file]
-    ?? latest.data.captions[latestCover.file]
-    ?? `Cover photograph for ${latest.data.title}`
-  : undefined;
+const latestCoverAlt = latest ? coverAltOf(latest) : undefined;
 ---
 
 <Layout
@@ -31,9 +27,7 @@ const latestCoverAlt = latest && latestCover
             <a href={`/photography/${slugOf(album)}/`}>
               <PhotoPicture
                 photo={cover}
-                alt={album.data.alt[cover.file]
-                  ?? album.data.captions[cover.file]
-                  ?? `Cover photograph for ${album.data.title}`}
+                alt={coverAltOf(album)}
                 sizes="(min-width: 1200px) 1040px, 94vw"
                 loading={i === 0 ? 'eager' : 'lazy'}
                 fetchpriority={i === 0 ? 'high' : 'auto'}

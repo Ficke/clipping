@@ -2,7 +2,7 @@
 import { render } from 'astro:content';
 import StoryPhoto from '../../components/StoryPhoto.astro';
 import Layout from '../../layouts/Layout.astro';
-import { coverOf, formatDate, getAlbums, photosOf, slugOf } from '../../lib/albums';
+import { coverAltOf, coverOf, formatDate, getAlbums, photosOf, slugOf } from '../../lib/albums';
 
 export async function getStaticPaths() {
   const albums = await getAlbums();
@@ -24,9 +24,7 @@ const remaining = photos.slice(1);
 const hasNarrative = Boolean(album.body?.trim());
 const cover = coverOf(album);
 const dateIso = album.data.date.toISOString().slice(0, 10);
-const coverAlt = album.data.alt[cover.file]
-  ?? album.data.captions[cover.file]
-  ?? `Cover photograph for ${album.data.title}`;
+const coverAlt = coverAltOf(album);
 
 function altFor(index: number): string {
   const photo = photos[index]!;

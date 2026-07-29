@@ -4,4 +4,12 @@ title: "Olympics"
 date: 2026-07-06
 location: "Olympic National Park"
 cover: DSCF7640.jpg
+photos:
+  - file: DSCF7556.jpg
+  - file: DSCF7581.jpg
+  - file: DSCF7588.jpg
+  - file: DSCF7590.jpg
+  - file: DSCF7609.jpg
+  - file: DSCF7616.jpg
+  - file: DSCF7640.jpg
 ---
