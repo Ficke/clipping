@@ -1,4 +1,4 @@
-# adamficke.dev
+# adamficke.com
 
 Photography portfolio. Astro 7 static site, built in AWS CodeBuild and served
 from private S3 buckets through CloudFront. No servers, no database, no admin
@@ -222,8 +222,8 @@ mutating published assets.
   private with public access blocked
 - **CloudFront**: HTTPS-only, HTTP/2+3, security headers (HSTS, strict CSP,
   frame-deny), and a viewer-request function for pretty URLs, legacy-URL
-  redirects, and www → apex. Deploys invalidate mutable site paths without
-  evicting immutable `/_astro/*` or `/media/*` assets
+  redirects, and the canonical-host redirect. Deploys invalidate mutable site
+  paths without evicting immutable `/_astro/*` or `/media/*` assets
 - **Analytics**: GA4 (`G-P2XYT72XL6`) for visitor and page-level reporting;
   privacy-reduced CloudFront standard logs in S3 for operational analysis.
   Access logs omit viewer IPs, query strings, forwarded-for values, and
@@ -236,41 +236,32 @@ mutating published assets.
   Both use the current Ubuntu `standard:8.0` image. Bun's cold install is
   faster than transferring a dependency cache for this small project
 - **Terraform** (`infra/`, state in S3): all of the above, plus a $10/month
-  AWS budget alert and the Route 53 hosted zone. ACM and the CloudFront domain
-  aliases remain inert until `enable_custom_domain = true`
+  AWS budget alert, the Route 53 hosted zones, and the ACM certificate
 - **RSS** at `/rss.xml`
 
-Runs ≈ $0.50–1.50/month once the domain is on Route 53.
+Runs ≈ $0.50–1.50/month.
 
-### Infrastructure rollout
+## Domains
 
-Run `terraform apply` in `infra/` before merging a change that first enables
-this pipeline. Then run `photos:push` for each existing hydrated album to
-backfill the media bucket and verify the generated `photos.json` files match
-the committed manifests. After that, the normal merge-to-`main` deployment
-can switch the live HTML to `/media/*` safely.
+`adamficke.com` is the canonical URL. It is registered with Amazon Registrar
+and its DNS is delegated to a Route 53 hosted zone in the same account, so
+registration and DNS are managed together.
 
-## Domain cutover (adamficke.dev)
+CloudFront answers for four names — the canonical apex, `www.adamficke.com`,
+and the retired `adamficke.dev` pair — under one ACM certificate in
+`us-east-1`. The viewer-request function 301s every name except the canonical
+apex, which also covers the raw `*.cloudfront.net` hostname. Old `.dev` links
+keep working and search engines see a single canonical host.
 
-`adamficke.dev` remains registered at Squarespace for now. Delegating its DNS
-to Route 53 is separate from transferring registration and does not affect
-`adamficke.com`.
+Terraform derives the certificate SANs, CloudFront aliases, and Route 53 alias
+records from `domain_name` plus `redirect_domains` in `infra/variables.tf`.
+Changing those two variables is the whole edit; `managed_domains` separately
+controls which hosted zones exist.
 
-1. **Create the Route 53 zone**
-   - In `infra/`, run `terraform apply`. This preserves the existing `.com`
-     zone and creates the `.dev` zone, but makes no DNS changes.
-   - Run `terraform output nameservers` to get the four `.dev` nameservers.
-2. **Delegate DNS in Squarespace**
-   - Squarespace Domains dashboard → `adamficke.dev` → DNS Settings →
-     Nameservers → Custom nameservers.
-   - Replace the existing nameservers with the four Route 53 values.
-   - Before saving, copy any email-related records (MX, SPF, DKIM, DMARC) to
-     Route 53. Do not copy old website A/AAAA/CNAME records.
-3. **Finish the CloudFront setup**
-   - Once the Route 53 nameservers are authoritative, leave
-     `enable_custom_domain` enabled and run `terraform apply`.
-   - ACM validates automatically and Terraform attaches HTTPS for
-     `adamficke.dev` and `www.adamficke.dev`.
-
-When `adamficke.com` is ready to move, extend the infrastructure to serve it
- as a redirect domain rather than replacing the `.dev` configuration.
+Delegation has to come first when adding a domain. ACM validates by writing a
+CNAME into the domain's hosted zone, so `terraform apply` will block until the
+registrar points at that zone's nameservers. Get them from
+`terraform output nameservers`, set them at the registrar, and apply once the
+change is visible in `dig NS <domain>`. Copy any email records (MX, SPF, DKIM,
+DMARC) into the Route 53 zone before cutting nameservers over; leave the old
+website A/AAAA/CNAME records behind.

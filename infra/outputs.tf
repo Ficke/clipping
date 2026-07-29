@@ -19,6 +19,6 @@ output "deploy_role_arn" {
 }
 
 output "nameservers" {
-  description = "Route 53 nameservers for the currently served domain"
-  value       = aws_route53_zone.site[var.domain_name].name_servers
+  description = "Route 53 nameservers per managed zone, to set at each registrar"
+  value       = { for domain, zone in aws_route53_zone.site : domain => zone.name_servers }
 }
