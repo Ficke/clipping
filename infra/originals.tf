@@ -4,6 +4,12 @@
 resource "aws_s3_bucket" "originals" {
   bucket = "${var.name}-originals"
   tags   = local.tags
+
+  # Git holds only the markdown, so this bucket is the sole copy of the
+  # photographs. Versioning covers overwrites; this covers the bucket itself.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 # Overwrites and deletes are recoverable — this bucket is the archive.

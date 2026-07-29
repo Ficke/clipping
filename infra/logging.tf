@@ -1,6 +1,7 @@
-# CloudFront standard logging v2. Logs are retained indefinitely; no lifecycle
-# expiration is configured. The selected fields intentionally omit viewer IPs,
-# query strings, forwarded-for values, and cookies.
+# CloudFront standard logging v2. Logs expire after a year, which keeps
+# year-over-year comparisons available without growing storage forever. The
+# selected fields intentionally omit viewer IPs, query strings, forwarded-for
+# values, and cookies.
 
 data "aws_caller_identity" "current" {}
 
@@ -15,6 +16,19 @@ resource "aws_s3_bucket_public_access_block" "access_logs" {
   block_public_policy     = true
   ignore_public_acls      = true
   restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "access_logs" {
+  bucket = aws_s3_bucket.access_logs.id
+
+  rule {
+    id     = "expire-logs"
+    status = "Enabled"
+    filter {}
+    expiration {
+      days = 365
+    }
+  }
 }
 
 resource "aws_s3_bucket_ownership_controls" "access_logs" {
