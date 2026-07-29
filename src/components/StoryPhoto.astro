@@ -1,5 +1,6 @@
 ---
 import type { AlbumPhoto } from '../lib/albums';
+import { lightboxSrcset } from '../lib/photo-manifest';
 import PhotoPicture from './PhotoPicture.astro';
 
 interface Props {
@@ -30,6 +31,8 @@ const captionId = `photo-caption-${index + 1}`;
     data-lightbox
     data-alt={alt}
     data-caption={photo.caption}
+    data-srcset={lightboxSrcset(photo.image)}
+    data-aspect={(photo.image.width / photo.image.height).toFixed(4)}
     aria-label={`View photograph ${index + 1} of ${total} larger`}
     aria-describedby={photo.caption ? captionId : undefined}
   >
