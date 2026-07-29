@@ -2,6 +2,7 @@
 storyId: "japan-24"
 title: "Japan '24"
 date: 2024-12-02
+published: 2026-07-28
 location: "Japan"
 description: "Tokyo, Kyoto, Osaka, Kanazawa, Matsumoto"
 photos:

@@ -2,6 +2,7 @@
 storyId: "2026-07-olympics"
 title: "Olympics"
 date: 2026-07-06
+published: 2026-07-21
 location: "Olympic National Park"
 cover: DSCF7640.jpg
 photos:

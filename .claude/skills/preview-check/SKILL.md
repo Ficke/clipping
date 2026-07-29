@@ -23,6 +23,20 @@ and actually look at them — a blank or top-left-pinned frame means a bug.
 The script also reports browser console errors and asserts the lightbox
 Esc-close works.
 
+To check the GA4 tag instead of the visuals:
+
+```sh
+bun .claude/skills/preview-check/analytics-check.mjs /               # any path
+bun .claude/skills/preview-check/analytics-check.mjs / --csp         # under CloudFront's CSP
+```
+
+It reports whether gtag.js loaded and whether a `page_view` hit was
+actually built. Collect endpoints are stubbed with a 204, so running it
+never writes localhost traffic into the real property — and stubbing
+rather than aborting matters, because an aborted hit makes gtag attempt
+a `www.google.com` fallback that looks like a CSP bug but is not one.
+`--csp` replays the policy from `infra/main.tf`; keep the two in sync.
+
 When done:
 
 ```sh

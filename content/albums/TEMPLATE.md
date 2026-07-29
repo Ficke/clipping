@@ -9,6 +9,7 @@ from this file. It documents the fields and the conventions each one follows.
 storyId: "place-name"
 title: "Place Name"
 date: 2026-08-14
+published: 2026-08-16
 location: "Emigrant Wilderness"
 # --- everything below is optional ---
 cover: DSCF1250.jpg
@@ -36,6 +37,15 @@ worth remembering. One to three short paragraphs; plain markdown.
   form's defaults when an album is first pushed.
 - **Title** defaults from the folder name and can be edited freely. Keep
   dates out of it because the `date` field renders automatically above it.
+- **Date** is when the photographs were made. It is the only date the page
+  shows, rendered above the title, and it never moves — a trip in December
+  2024 says December 2024 however long the album sat unpublished.
+- **Published** is when the album went up. It orders the home page, the
+  older/newer story links, and the feed, so a trip written up two years later
+  still arrives as new rather than sinking into the archive. `photos:push`
+  writes today's date on every new album, even when it matches `date`; leave
+  it alone unless you are correcting a real posting date. Omitting it falls
+  back to `date`, which is what makes a late post disappear — so don't.
 - **Location** is a human-readable place name such as `Emigrant Wilderness`
   or `Mendocino Coast`, not a formal address. It has no default — nothing can
   infer it — so the form asks for it.

@@ -2,14 +2,17 @@ const measurementId = 'G-P2XYT72XL6';
 
 declare global {
   interface Window {
-    dataLayer: unknown[][];
+    dataLayer: IArguments[];
     gtag: (...args: unknown[]) => void;
   }
 }
 
 window.dataLayer = window.dataLayer || [];
-window.gtag = (...args: unknown[]) => {
-  window.dataLayer.push(args);
+// gtag.js only reads a queued item as a command when it is a genuine
+// `arguments` object; a spread into an array is absorbed as data instead,
+// so `config` never registers and no page_view is sent.
+window.gtag = function gtag() {
+  window.dataLayer.push(arguments);
 };
 
 window.gtag('js', new Date());
