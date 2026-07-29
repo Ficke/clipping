@@ -1,4 +1,5 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
+import { slugForStoryId } from './downloads';
 import type { PhotoManifest, PhotoManifestEntry } from './photo-manifest';
 
 export type Album = CollectionEntry<'albums'>;
@@ -26,15 +27,16 @@ export interface AlbumPhoto {
   caption: string | undefined;
   alt: string | undefined;
   exif: string | undefined;
+  /** Whether this photo is offered as a download. See `downloads.ts`. */
+  forSale: boolean;
 }
 
 /**
  * URL slug, derived from storyId rather than the folder so albums can be
- * reorganised on disk. The YYYY-MM- prefix is legacy: ids minted before the
- * folder stopped being load-bearing carry one, newer ids do not.
+ * reorganised on disk.
  */
 export function slugOf(album: Album): string {
-  return album.data.storyId.replace(/^\d{4}-\d{2}-/, '');
+  return slugForStoryId(album.data.storyId);
 }
 
 /**
@@ -100,6 +102,7 @@ function imagesIn(album: Album): AlbumPhoto[] {
       caption: photo.caption?.trim() || undefined,
       alt: photo.alt?.trim() || undefined,
       exif: image.exif,
+      forSale: photo.forSale ?? album.data.forSale,
     };
   });
 }

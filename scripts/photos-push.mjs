@@ -216,6 +216,9 @@ function serializePhotos(entries) {
     block.push(`  - file: ${entry.file}`);
     if (entry.caption) block.push(`    caption: ${JSON.stringify(entry.caption)}`);
     if (entry.alt) block.push(`    alt: ${JSON.stringify(entry.alt)}`);
+    /* Explicit false is meaningful — it opts a photo out of a for-sale album —
+       so test for presence, not truthiness. */
+    if (entry.forSale !== undefined) block.push(`    forSale: ${entry.forSale}`);
   }
   return block;
 }
@@ -233,8 +236,11 @@ function readPhotosBlock(lines) {
       entries.push({ file: unquote(item[1]) });
       continue;
     }
-    const field = line.match(/^\s+(caption|alt):\s*(.*)$/);
-    if (field && entries.length) entries[entries.length - 1][field[1]] = unquote(field[2]);
+    const field = line.match(/^\s+(caption|alt|forSale):\s*(.*)$/);
+    if (field && entries.length) {
+      const value = unquote(field[2]);
+      entries[entries.length - 1][field[1]] = field[1] === 'forSale' ? value === 'true' : value;
+    }
   }
   return { entries, span: [start, end] };
 }

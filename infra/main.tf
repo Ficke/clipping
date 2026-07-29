@@ -202,6 +202,44 @@ resource "aws_cloudfront_distribution" "site" {
     origin_access_control_id = aws_cloudfront_origin_access_control.site.id
   }
 
+  # The commerce Lambda. Its Function URL is public (see commerce.tf), so this
+  # header is what distinguishes a request that came through CloudFront from one
+  # that found the origin directly.
+  origin {
+    origin_id   = "commerce"
+    domain_name = local.commerce_origin_domain
+
+    custom_origin_config {
+      origin_protocol_policy = "https-only"
+      http_port              = 80
+      https_port             = 443
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+
+    custom_header {
+      name  = "x-edge-secret"
+      value = random_password.edge_secret.result
+    }
+  }
+
+  # Checkout, the Stripe webhook, and download redirects. No caching, every
+  # header and the request body forwarded, and no viewer-request function: the
+  # pretty-URL rewrite would turn /api/checkout into /api/checkout/index.html.
+  ordered_cache_behavior {
+    path_pattern             = "api/*"
+    target_origin_id         = "commerce"
+    viewer_protocol_policy   = "redirect-to-https"
+    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods           = ["GET", "HEAD"]
+    compress                 = true
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # managed CachingDisabled
+    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # managed AllViewerExceptHostHeader
+
+    # Deliberately no response_headers_policy: the site's CSP and frame rules
+    # describe HTML, and attaching them here would put a CSP on JSON and on
+    # 302s to S3 that no browser needs to evaluate.
+  }
+
   ordered_cache_behavior {
     path_pattern               = "media/*"
     target_origin_id           = "media"

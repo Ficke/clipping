@@ -1,0 +1,149 @@
+---
+import Layout from '../../layouts/Layout.astro';
+
+/*
+ * Where Stripe returns a buyer. The page itself is static; the entitlement is
+ * fetched from /api/fulfill with the session id Stripe puts in the URL, which is
+ * same-origin and so allowed by `connect-src 'self'` without a CSP change.
+ *
+ * The webhook is what guarantees fulfillment — a buyer who closes the tab still
+ * gets their email. This page exists so the file is there immediately for the
+ * buyer who does not.
+ */
+---
+
+<Layout
+  title="Your download — Adam Ficke"
+  description="Your full-resolution download."
+>
+  <section class="purchase rise">
+    <p class="kicker">Thank you</p>
+    <h1 data-heading>Preparing your download…</h1>
+
+    <div class="state" data-state="loading">
+      <p>One moment while I confirm the payment.</p>
+    </div>
+
+    <div class="state" data-state="paid" hidden>
+      <p data-summary></p>
+      <p class="action">
+        <a class="download" data-download href="#" download>Download the full-resolution file</a>
+      </p>
+      <p class="note" data-expiry></p>
+      <p class="note">
+        A copy of this link is on its way to your email. Keep the file somewhere
+        safe — the link itself does not last forever.
+      </p>
+    </div>
+
+    <div class="state" data-state="pending" hidden>
+      <p>
+        Your payment is still clearing — some payment methods take a few days.
+        You will get an email with the download link the moment it lands.
+      </p>
+    </div>
+
+    <div class="state" data-state="error" hidden>
+      <p data-error>Something went wrong.</p>
+      <p class="note">
+        If you were charged, the file is yours — reply to your Stripe receipt and
+        I will send it straight over.
+      </p>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  const heading = document.querySelector<HTMLElement>('[data-heading]')!;
+  const states = new Map(
+    [...document.querySelectorAll<HTMLElement>('[data-state]')].map((el) => [el.dataset.state!, el]),
+  );
+
+  function show(name: string) {
+    for (const [key, el] of states) el.hidden = key !== name;
+  }
+
+  function fail(message: string) {
+    heading.textContent = 'That did not work';
+    document.querySelector<HTMLElement>('[data-error]')!.textContent = message;
+    show('error');
+  }
+
+  const sessionId = new URLSearchParams(location.search).get('session_id');
+  if (!sessionId) {
+    fail('This page needs the link from your checkout to find your order.');
+  } else {
+    try {
+      const response = await fetch(`/api/fulfill?session_id=${encodeURIComponent(sessionId)}`);
+      const body = await response.json();
+
+      if (response.status === 202 || body.status === 'pending') {
+        heading.textContent = 'Payment is clearing';
+        show('pending');
+      } else if (!response.ok) {
+        fail(body.error ?? 'Your order could not be confirmed.');
+      } else {
+        const link = document.querySelector<HTMLAnchorElement>('[data-download]')!;
+        link.href = body.downloadUrl;
+        heading.textContent = 'Your download is ready';
+        document.querySelector<HTMLElement>('[data-summary]')!.textContent =
+          `${body.albumTitle} — ${body.file}`;
+        document.querySelector<HTMLElement>('[data-expiry]')!.textContent =
+          `This link works until ${new Date(body.expiresAt * 1000).toLocaleDateString(undefined, { dateStyle: 'long' })}.`;
+        show('paid');
+      }
+    } catch {
+      /* A network failure here costs the buyer nothing: the email still comes. */
+      fail('I could not reach the store to confirm your order.');
+    }
+  }
+</script>
+
+<style>
+  .purchase {
+    margin-top: clamp(1rem, 4vw, 3rem);
+    max-width: var(--measure);
+  }
+
+  .purchase h1 {
+    font-size: clamp(1.8rem, 5vw, 3rem);
+    margin: 0.3rem 0 1.4rem;
+  }
+
+  .state {
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  /* An author `display` beats the UA stylesheet's [hidden] { display: none },
+     so without this every state renders at once. */
+  .state[hidden] {
+    display: none;
+  }
+
+  .action {
+    margin-top: 0.4rem;
+  }
+
+  .download {
+    display: inline-block;
+    padding: 0.75rem 1.15rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-weight: 600;
+    font-size: 0.9rem;
+    letter-spacing: 0.03em;
+    border-radius: 2px;
+    transition: background 0.2s ease;
+  }
+
+  .download:hover,
+  .download:focus-visible {
+    background: var(--accent);
+  }
+
+  .note {
+    font-size: 0.86rem;
+    color: var(--muted);
+  }
+</style>

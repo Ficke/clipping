@@ -1,6 +1,8 @@
 ---
 import type { AlbumPhoto } from '../lib/albums';
+import type { SellablePhoto } from '../lib/catalog';
 import { lightboxSrcset } from '../lib/photo-manifest';
+import BuyDownload from './BuyDownload.astro';
 import PhotoPicture from './PhotoPicture.astro';
 
 interface Props {
@@ -10,6 +12,8 @@ interface Props {
   total: number;
   loading?: 'eager' | 'lazy';
   fetchpriority?: 'high' | 'low' | 'auto';
+  /** Download offers for this photo. Empty when it is not for sale. */
+  offers?: SellablePhoto[];
 }
 
 const {
@@ -19,6 +23,7 @@ const {
   total,
   loading = 'lazy',
   fetchpriority = 'auto',
+  offers = [],
 } = Astro.props;
 const orientation = photo.image.height > photo.image.width ? 'portrait' : 'landscape';
 const captionId = `photo-caption-${index + 1}`;
@@ -47,7 +52,7 @@ const captionId = `photo-caption-${index + 1}`;
     />
   </a>
   {
-    (photo.caption || photo.exif) && (
+    (photo.caption || photo.exif || offers.length > 0) && (
       <figcaption>
         {photo.caption && <p id={captionId} class="caption">{photo.caption}</p>}
         {photo.exif && (
@@ -55,6 +60,11 @@ const captionId = `photo-caption-${index + 1}`;
             <summary>Photo details</summary>
             <p>{photo.exif}</p>
           </details>
+        )}
+        {offers.length > 0 && (
+          <p class="offers">
+            <BuyDownload offers={offers} />
+          </p>
         )}
       </figcaption>
     )
@@ -97,9 +107,21 @@ const captionId = `photo-caption-${index + 1}`;
     color: color-mix(in srgb, var(--ink) 88%, var(--muted));
   }
 
+  /* Explicit columns rather than auto-placement, so the caption, the details
+     and the buy link keep their sides whether or not the others are present. */
+  .caption {
+    grid-column: 1;
+  }
+
   .photo-details {
+    grid-column: 2;
     color: var(--muted);
     text-align: right;
+  }
+
+  .offers {
+    grid-column: 1;
+    margin-top: 0.15rem;
   }
 
   .photo-details summary {
@@ -117,6 +139,12 @@ const captionId = `photo-caption-${index + 1}`;
   @media (max-width: 620px) {
     figcaption {
       grid-template-columns: 1fr;
+    }
+
+    .caption,
+    .photo-details,
+    .offers {
+      grid-column: 1;
     }
 
     .photo-details {

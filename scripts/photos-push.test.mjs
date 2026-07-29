@@ -195,6 +195,61 @@ exit 0
     expect(awsCalls).toContain('manifests/local-test/photos.json');
   });
 
+  test('keeps per-photo forSale flags across a push', async () => {
+    const repoRoot = path.resolve(import.meta.dir, '..');
+    const album = path.join(repoRoot, 'content', 'albums', `2099-01-forsale-test-${process.pid}`);
+    const temporary = mkdtempSync(path.join(os.tmpdir(), 'photos-push-test-'));
+    const bin = path.join(temporary, 'bin');
+    temporaryAlbums.push(album);
+    temporaryDirectories.push(temporary);
+    mkdirSync(album);
+    mkdirSync(bin);
+    for (const file of ['a.jpg', 'b.jpg', 'c.jpg']) {
+      await sharp({ create: { width: 20, height: 10, channels: 3, background: '#123456' } })
+        .jpeg().toFile(path.join(album, file));
+    }
+    // c.jpg is new, so the list is rewritten — a.jpg's opt-out and b.jpg's
+    // opt-in have to survive that rewrite.
+    writeFileSync(path.join(album, 'index.md'), [
+      '---',
+      'storyId: "forsale-test"',
+      'title: "For Sale Test"',
+      'date: 2099-01-01',
+      'location: "Nowhere"',
+      'forSale: true',
+      'photos:',
+      '  - file: a.jpg',
+      '    forSale: false',
+      '  - file: b.jpg',
+      '    caption: "Kept."',
+      '    forSale: true',
+      '---',
+      '',
+    ].join('\n'));
+    const fakeAws = path.join(bin, 'aws');
+    writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3 cp" ]; then
+  case "$3" in
+    s3://*manifests*) echo "An error occurred (404)" >&2; exit 1 ;;
+  esac
+fi
+exit 0
+`);
+    chmodSync(fakeAws, 0o755);
+
+    const result = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local', '--yes',
+    ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
+
+    expect(result.status).toBe(0);
+    const rewritten = readFileSync(path.join(album, 'index.md'), 'utf8');
+    expect(rewritten).toContain('  - file: a.jpg\n    forSale: false');
+    expect(rewritten).toContain('  - file: b.jpg\n    caption: "Kept."\n    forSale: true');
+    // The album default covers the new file, so it needs no flag of its own.
+    expect(rewritten).toContain('  - file: c.jpg\n');
+    expect(rewritten).not.toContain('  - file: c.jpg\n    forSale');
+  });
+
   test('reconciles the photos list against the folder, keeping captions', async () => {
     const repoRoot = path.resolve(import.meta.dir, '..');
     const album = path.join(repoRoot, 'content', 'albums', `2099-01-reconcile-test-${process.pid}`);

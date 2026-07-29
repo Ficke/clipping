@@ -38,6 +38,16 @@ variable "managed_domains" {
   default     = ["adamficke.com", "adamficke.dev"]
 }
 
+# A verified SES identity in this account. Leave empty to launch without
+# delivery emails: buyers still get their file from the page they land on after
+# paying, and the Lambda logs that it sent nothing. Setting it also grants the
+# Lambda ses:SendEmail, pinned to this exact address.
+variable "commerce_from_email" {
+  description = "Verified SES sender for download delivery emails; empty disables them"
+  type        = string
+  default     = ""
+}
+
 # Keep true after the domain's nameservers point at the Route 53 hosted zone.
 # Set false only while preparing a new zone before its registrar cutover.
 variable "enable_custom_domain" {

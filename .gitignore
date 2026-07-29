@@ -1,6 +1,10 @@
 node_modules/
 dist/
 .astro/
+
+# Bundled commerce Lambda. Rebuilt by `bun run lambda:build`, which
+# `terraform apply` needs to have run first — see README.
+dist-lambda/
 .DS_Store
 *.log
 

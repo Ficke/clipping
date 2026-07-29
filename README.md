@@ -9,7 +9,7 @@ live in S3, while git holds album text and small photo manifests.
 
 ```sh
 bun install                            # deps (bun.lock is committed)
-git config core.hooksPath .githooks    # refuse pushes to main (see Publishing)
+git config core.hooksPath .githooks    # block pushes to main + committed keys
 bun run dev                            # local preview
 ```
 
@@ -17,6 +17,11 @@ A fresh clone can build and preview from the committed manifests without
 downloading photos. For album work, run `aws login` first. `bun run
 photos:pull` hydrates the gitignored originals from S3 when you need to update
 an existing album.
+
+For work on the store, also install the [Stripe
+CLI](https://docs.stripe.com/stripe-cli) (`npm i -g @stripe/cli`) — it forwards
+webhooks to `bun run commerce:dev`. See [Selling
+downloads](#selling-downloads).
 
 `predev` clears `.astro/`, whose cached frontmatter goes stale against schema
 changes in `src/content.config.ts`.
@@ -165,9 +170,11 @@ name, by contrast, is free to change at any time.
 branch and a pull request.
 
 The `.githooks/pre-push` hook refuses pushes to `main` to keep an accidental
-deploy from being one command away. It is advisory — `--no-verify` skips it, and
-it only applies once a clone has run the `core.hooksPath` line above. GitHub's
-own branch protection would need Pro on a private repo.
+deploy from being one command away, and `.githooks/pre-commit` refuses a staged
+Stripe key or webhook signing secret — this repo is public, and a committed key
+is the usual way one gets taken over. Both are advisory: `--no-verify` skips
+them, and they only apply once a clone has run the `core.hooksPath` line above.
+GitHub's own branch protection would need Pro on a private repo.
 
 ```sh
 git checkout -b japan-24
@@ -192,6 +199,137 @@ cache. It never downloads originals or historical derivatives.
 Media generation has already happened by this point — `photos:push` does it at
 upload time, not at deploy time. A deploy that changes only album text costs
 nothing but the site build.
+
+## Selling downloads
+
+Photographs can be sold as full-resolution downloads. Payment is Stripe
+Checkout; the file is the original out of the archive bucket, presigned for the
+buyer. There is still no database — a signed token carries the entitlement.
+
+### Putting a photo on sale
+
+Two frontmatter fields, no code and no Lambda deploy:
+
+```yaml
+forSale: true               # offer every photo in the album
+photos:
+  - file: DSCF7556.jpg
+    forSale: false          # …except this one
+  - file: DSCF7640.jpg
+```
+
+`forSale` on a photo overrides the album in either direction, so a single photo
+can be sold out of an album that otherwise is not. Publish it the usual way; the
+site build emits `/downloads-catalog.json`, and the Lambda reads that as the
+authority on what is purchasable and at what price. **Putting an album on sale is
+a content deploy.** Nothing in `infra/` changes.
+
+Prices and licence terms live in `src/lib/downloads.ts`, in one table. A new
+licence tier added there appears on every photo already for sale.
+
+### The money path
+
+```
+album page  ─ <a href="/api/checkout?sku=…">        (a plain link: no JS, no CSP change)
+                 │
+CloudFront   /api/*  ──►  commerce Lambda ──►  Stripe Checkout Session ──► 303
+                 │
+buyer pays on checkout.stripe.com
+                 │
+                 ├─ POST /api/stripe/webhook  → verify signature → mint token → email
+                 └─ GET  /purchase/?session_id=…  → same token, shown immediately
+                                                        │
+                          GET /api/download?t=…  ──►  302 to a presigned S3 URL
+```
+
+The webhook is what guarantees delivery; the landing page is what makes it
+instant. Both run the same `fulfillCheckout`, which writes nothing, so running
+twice is harmless — only the webhook sends the email, so that happens once.
+
+Four routes, one Lambda, behind the existing distribution at `/api/*`. Its
+Function URL is public because Stripe has to POST to it (an OAC-signed POST
+needs an `x-amz-content-sha256` header Stripe knows nothing about), so
+CloudFront adds a shared secret header and the Lambda refuses anything without
+it. The webhook's real guarantee is its own signature.
+
+Entitlements are signed tokens rather than rows: a token names the SKU and the
+session and expires in seven days, and is exchanged for a *fresh* 15-minute
+presigned URL on every download. So a leaked link is useful for minutes while
+the buyer's own link keeps working, and the originals bucket stays private and
+un-fronted by CloudFront.
+
+### Deploying it
+
+The Lambda is bundled locally and shipped by Terraform, so it deploys on
+`terraform apply`, not on a push to `main`:
+
+```sh
+bun run lambda:build            # → dist-lambda/index.mjs (gitignored)
+cd infra && terraform apply
+```
+
+`terraform apply` fails if the bundle is missing — build first.
+
+Terraform creates the Secrets Manager secret **empty**, on purpose: Stripe keys
+must never pass through Terraform state. Populate it out of band:
+
+```sh
+aws secretsmanager put-secret-value \
+  --secret-id adamficke-com-commerce \
+  --secret-string "$(jq -nc \
+      --arg k "rk_test_…" \
+      --arg w "whsec_…" \
+      --arg d "$(openssl rand -hex 32)" \
+      '{stripeApiKey:$k, stripeWebhookSecret:$w, downloadTokenKey:$d}')"
+```
+
+Use a [restricted key](https://docs.stripe.com/keys/restricted-api-keys) (`rk_`),
+not a secret key, with write access to Checkout Sessions and read on Prices.
+Rotating `downloadTokenKey` voids every live download link.
+
+### Testing before it is live
+
+`bun run commerce:dev` runs the real handler on `localhost:8787` against real AWS
+and Stripe *test* keys — it refuses to start against an `rk_live`/`sk_live` key.
+In another shell, `bun run commerce:listen` points `stripe listen` at it and
+prints the `whsec_` to export.
+
+```sh
+export STRIPE_API_KEY=rk_test_…  STRIPE_WEBHOOK_SECRET=whsec_…
+bun run commerce:dev
+open "http://localhost:8787/api/checkout?sku=<storyId>/<file>/personal"
+```
+
+Deploy with test keys in the secret first and buy something with
+`4242 4242 4242 4242`; swap in live keys only once a real file lands in an inbox.
+
+### Go-live checklist
+
+- [ ] **Stripe Tax**: set the head office address in
+      [tax settings](https://dashboard.stripe.com/settings/tax), then add a
+      registration for the state you are obliged to collect in. `automatic_tax`
+      is enabled in code, but **Stripe collects nothing in a jurisdiction with no
+      active registration and reports no error** — it silently sells tax-free
+      while looking configured.
+- [ ] **Product tax code**: `PRODUCT_TAX_CODE` in `src/lib/downloads.ts` is
+      `txcd_10501000` (*Digital Photographs/Images — downloaded, permanent
+      rights*). The alternative is `txcd_10505001` (*Digital Finished Artwork*),
+      a better fit if a licence ever grants reproduction rights. Confirm with a
+      tax advisor — it changes what is collected.
+- [ ] **Webhook endpoint**: register `https://adamficke.com/api/stripe/webhook`
+      for `checkout.session.completed` and
+      `checkout.session.async_payment_succeeded`, and put its signing secret in
+      the secret above.
+- [ ] **Delivery email**: verify an SES identity, set `commerce_from_email` in
+      `infra/variables.tf`, and get the account out of the SES sandbox. Left
+      empty, buyers still get their file from the landing page and the Lambda
+      logs that it emailed nobody.
+- [ ] **Payment methods**: whatever is enabled in the
+      [Dashboard](https://dashboard.stripe.com/settings/payment_methods) is what
+      buyers see. The code never pins `payment_method_types`.
+- [ ] **EU/UK**: out of scope by choice. Digital goods owe VAT there from the
+      first sale with no threshold, so selling outside the US needs a
+      registration decision first.
 
 ## Where the photos live
 
@@ -229,7 +367,12 @@ mutating published assets.
 - **CloudFront**: HTTPS-only, HTTP/2+3, security headers (HSTS, strict CSP,
   frame-deny), and a viewer-request function for pretty URLs, legacy-URL
   redirects, and the canonical-host redirect. Deploys invalidate mutable site
-  paths without evicting immutable `/_astro/*` or `/media/*` assets
+  paths without evicting immutable `/_astro/*` or `/media/*` assets. `/api/*`
+  routes to the commerce Lambda, uncached and with no viewer-request function
+- **Commerce** (`lambda/`): one Node 22 Lambda on ARM behind `/api/*` — Stripe
+  Checkout, the webhook, and presigned downloads. Stateless: Stripe holds the
+  order, a signed token holds the entitlement, and `/downloads-catalog.json`
+  from the site build holds the prices. See [Selling downloads](#selling-downloads)
 - **Analytics**: GA4 (`G-P2XYT72XL6`) for visitor and page-level reporting;
   privacy-reduced CloudFront standard logs in S3 for operational analysis.
   Access logs omit viewer IPs, query strings, forwarded-for values, and
@@ -245,7 +388,9 @@ mutating published assets.
   AWS budget alert, the Route 53 hosted zones, and the ACM certificate
 - **RSS** at `/rss.xml`
 
-Runs ≈ $0.50–1.50/month.
+Runs ≈ $0.50–1.50/month. The store adds no fixed cost: Lambda and Secrets
+Manager sit inside the free tier at this volume, and Stripe charges per sale
+(2.9% + 30¢, plus ~0.5% for Stripe Tax).
 
 ## Domains
 

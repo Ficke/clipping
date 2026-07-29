@@ -4,6 +4,7 @@ import Lightbox from '../../components/Lightbox.astro';
 import StoryPhoto from '../../components/StoryPhoto.astro';
 import Layout from '../../layouts/Layout.astro';
 import { coverAltOf, coverOf, formatDate, getAlbums, photosOf, publishedAt, slugOf } from '../../lib/albums';
+import { offersFor } from '../../lib/catalog';
 
 export async function getStaticPaths() {
   const albums = await getAlbums();
@@ -72,6 +73,7 @@ function altFor(index: number): string {
       alt={altFor(0)}
       index={0}
       total={photos.length}
+      offers={offersFor(album, opening)}
       loading="eager"
       fetchpriority="high"
     />
@@ -85,6 +87,7 @@ function altFor(index: number): string {
               alt={altFor(index + 1)}
               index={index + 1}
               total={photos.length}
+              offers={offersFor(album, photo)}
             />
           ))}
         </div>

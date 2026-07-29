@@ -1,0 +1,51 @@
+---
+import { formatPrice } from '../lib/downloads';
+import type { SellablePhoto } from '../lib/catalog';
+
+interface Props {
+  offers: SellablePhoto[];
+}
+
+const { offers } = Astro.props;
+---
+
+{
+  /*
+   * A plain link, not a form or a fetch. The redirect to Stripe happens on the
+   * server side of /api/checkout, so the strict CSP — which allows no external
+   * scripts and sets form-action 'none' — needs no exception for this to work.
+   */
+  offers.map((offer) => (
+    <a class="buy" href={offer.href} rel="nofollow">
+      <span class="buy-label">{offer.tier.summary}</span>
+      <span class="buy-price">{formatPrice(offer.tier.priceCents)}</span>
+    </a>
+  ))
+}
+
+<style>
+  .buy {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 0.12rem;
+    transition: color 0.2s ease, border-color 0.2s ease;
+  }
+
+  .buy:hover,
+  .buy:focus-visible {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+
+  .buy-price {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+</style>
