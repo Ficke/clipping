@@ -8,8 +8,9 @@ live in S3, while git holds album text and small photo manifests.
 ## First-time setup on a machine
 
 ```sh
-bun install            # deps (bun.lock is committed)
-bun run dev            # local preview
+bun install                            # deps (bun.lock is committed)
+git config core.hooksPath .githooks    # refuse pushes to main (see Publishing)
+bun run dev                            # local preview
 ```
 
 A fresh clone can build and preview from the committed manifests without
@@ -162,6 +163,11 @@ name, by contrast, is free to change at any time.
 
 `main` deploys to production on merge, so album and site changes go through a
 branch and a pull request.
+
+The `.githooks/pre-push` hook refuses pushes to `main` to keep an accidental
+deploy from being one command away. It is advisory — `--no-verify` skips it, and
+it only applies once a clone has run the `core.hooksPath` line above. GitHub's
+own branch protection would need Pro on a private repo.
 
 ```sh
 git checkout -b japan-24
