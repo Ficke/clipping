@@ -1,14 +1,21 @@
 // Verifies the GA4 tag actually registers and fires a page_view.
-// Outbound hits to google-analytics.com are ABORTED after being recorded, so
-// running this never pollutes the real property with localhost traffic.
+//
+// Two layers keep this from writing localhost traffic into the real property:
+// the tag itself no-ops off the canonical host, and the collect endpoints are
+// stubbed below. `?ga-debug` opts the tag back in so there is something to
+// verify. Pass --off to assert the opposite -- that an ordinary local visit
+// reports nothing.
 import { chromium } from 'playwright-core';
 
 // Local preview serves no headers, so replay CloudFront's CSP verbatim
 // (infra/main.tf) to catch a policy that would block the tag in production.
 const CSP = "default-src 'none'; script-src 'self' https://*.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; font-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
-const path = process.argv[2] ?? '/';
+const rawPath = process.argv[2] ?? '/';
 const withCsp = process.argv.includes('--csp');
+// Off-production the tag no-ops, so opt in unless we are asserting it stays off.
+const off = process.argv.includes('--off');
+const path = off ? rawPath : rawPath + (rawPath.includes('?') ? '&' : '?') + 'ga-debug';
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const page = await (await browser.newContext()).newPage();
 
@@ -60,4 +67,11 @@ for (const hit of hits) {
   console.log(`   host=${url.host}  en=${params.get('en')}  tid=${params.get('tid')}  dl=${params.get('dl')}`);
 }
 console.log('console errors:  ', errors.length ? errors : 'none');
+
+const expected = off ? 0 : 1;
+const ok = hits.length === expected;
+console.log(ok
+  ? `PASS: ${off ? 'no reporting off-production' : 'page_view reported'}`
+  : `FAIL: expected ${expected} collect hit(s), got ${hits.length}`);
 await browser.close();
+process.exit(ok ? 0 : 1);
