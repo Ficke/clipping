@@ -28,13 +28,22 @@ To check the GA4 tag instead of the visuals:
 ```sh
 bun .claude/skills/preview-check/analytics-check.mjs /               # any path
 bun .claude/skills/preview-check/analytics-check.mjs / --csp         # under CloudFront's CSP
+bun .claude/skills/preview-check/analytics-check.mjs / --off         # assert it stays silent
 ```
 
 It reports whether gtag.js loaded and whether a `page_view` hit was
-actually built. Collect endpoints are stubbed with a 204, so running it
-never writes localhost traffic into the real property — and stubbing
-rather than aborting matters, because an aborted hit makes gtag attempt
-a `www.google.com` fallback that looks like a CSP bug but is not one.
+actually built, and exits non-zero if not.
+
+The tag no-ops unless the page's canonical host matches the host being
+served, so an ordinary local visit reports nothing; the script appends
+`?ga-debug` to opt back in. `--off` drops that and asserts silence — run
+it after touching `analytics.ts`, since a guard that fails open is how
+localhost traffic ends up in the real property.
+
+Collect endpoints are also stubbed with a 204 as a second layer. Stubbing
+rather than aborting matters: an aborted hit makes gtag attempt a
+`www.google.com` fallback that looks like a CSP bug but is not one.
+
 `--csp` replays the policy from `infra/main.tf`; keep the two in sync.
 
 When done:
