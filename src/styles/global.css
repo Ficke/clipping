@@ -30,7 +30,8 @@ html {
   background: var(--paper);
   color: var(--ink);
   font-family: 'Figtree Variable', system-ui, sans-serif;
-  font-size: 17px;
+  /* 17px at a 16px default, but scales with the reader's font-size setting */
+  font-size: 106.25%;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
