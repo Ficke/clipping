@@ -22,14 +22,13 @@ const { Content } = await render(album);
 const photos = await photosOf(album);
 const opening = photos[0]!;
 const remaining = photos.slice(1);
-/* Standfirst is the frontmatter description — the same crisp line that serves as
-   the meta/OG description. Deliberately not the generated meta fallback, which
-   would read as boilerplate on the page. */
+/* The description, not the generated meta fallback, which reads as boilerplate. */
 const standfirst = album.data.description?.trim();
-/* Long-form prose is the markdown body, rendered below the photographs. */
 const hasNarrative = Boolean(album.body?.trim());
 const cover = coverOf(album);
 const dateIso = album.data.date.toISOString().slice(0, 10);
+const posted = publishedAt(album);
+const postedIso = posted.toISOString().slice(0, 10);
 const coverAlt = coverAltOf(album);
 
 function altFor(index: number): string {
@@ -92,6 +91,10 @@ function altFor(index: number): string {
       )
     }
 
+    <p class="posted kicker">
+      Posted <time datetime={postedIso}>{formatDate(posted)}</time>
+    </p>
+
     <div class="discussion-mount" data-story-id={album.data.storyId}></div>
 
     {
@@ -142,11 +145,9 @@ function altFor(index: number): string {
     line-height: 1.02;
   }
 
-  /* Editorial standfirst: the frontmatter description, sitting under the title
-     on the same left axis, one step down from the headline in the serif. */
+  /* rem, not ch: ch resolves per-font, so a shared ch measure would render the
+     serif standfirst narrower than the sans .prose below it. */
   .standfirst {
-    /* rem, not ch: ch resolves against each element's own font, so a ch measure
-       here would render narrower than the sans-set .prose directly below it */
     max-width: 34rem;
     margin-top: clamp(1.1rem, 2.5vw, 1.7rem);
     font-family: 'Source Serif 4 Variable', Georgia, serif;
@@ -159,9 +160,7 @@ function altFor(index: number): string {
     color: color-mix(in srgb, var(--ink) 76%, var(--muted));
   }
 
-  /* Long-form prose: the markdown body, directly under the standfirst. Full
-     measure and body-grade type, so it reads as an essay rather than an
-     extended dek. */
+  /* The markdown body, at body grade so it reads as an essay, not a long dek. */
   .prose {
     max-width: 34rem;
     margin-top: clamp(1.2rem, 2.5vw, 1.8rem);
@@ -181,8 +180,7 @@ function altFor(index: number): string {
   .prose :global(h3) {
     margin: 1.8em 0 0.6em;
     font-size: 1.35rem;
-    /* the global h2/h3 rule sets a display-grade opsz; step it down to match
-       the smaller size these render at inside prose */
+    /* the global h2/h3 opsz is display-grade; step down for this size */
     font-variation-settings: 'opsz' 24;
   }
 
@@ -213,6 +211,10 @@ function altFor(index: number): string {
     flex-direction: column;
     gap: clamp(3.8rem, 9vw, 7rem);
     margin-top: clamp(3.8rem, 9vw, 7rem);
+  }
+
+  .posted {
+    margin-top: clamp(2.4rem, 6vw, 4rem);
   }
 
   .discussion-mount:empty {
