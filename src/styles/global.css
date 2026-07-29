@@ -30,7 +30,8 @@ html {
   background: var(--paper);
   color: var(--ink);
   font-family: 'Figtree Variable', system-ui, sans-serif;
-  font-size: 17px;
+  /* 17px at a 16px default, but scales with the reader's font-size setting */
+  font-size: 106.25%;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
@@ -83,9 +84,9 @@ main:focus {
 h1,
 h2,
 h3 {
-  font-family: 'Fraunces Variable', Georgia, serif;
-  font-variation-settings: 'opsz' 72, 'SOFT' 40, 'WONK' 0;
-  font-weight: 460;
+  font-family: 'Source Serif 4 Variable', Georgia, serif;
+  font-variation-settings: 'opsz' 48;
+  font-weight: 500;
   line-height: 1.08;
   letter-spacing: -0.01em;
   text-wrap: balance;
@@ -148,10 +149,10 @@ a.kicker:focus-visible {
 }
 
 .site-header .wordmark {
-  font-family: 'Fraunces Variable', Georgia, serif;
-  font-variation-settings: 'opsz' 40, 'SOFT' 60;
+  font-family: 'Source Serif 4 Variable', Georgia, serif;
+  font-variation-settings: 'opsz' 32;
   font-size: 1.35rem;
-  font-weight: 520;
+  font-weight: 500;
 }
 
 .site-header nav {

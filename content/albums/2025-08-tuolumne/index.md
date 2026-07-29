@@ -4,6 +4,7 @@ title: "Grand Canyon of the Tuolumne"
 date: 2025-08-25
 published: 2025-08-25
 location: "Yosemite National Park"
+description: "Three days down the canyon."
 photos:
   - file: 01-DSCF6608.jpg
   - file: 02-DSCF6580.jpg
@@ -15,5 +16,3 @@ photos:
   - file: 08-DSCF6634_DxO-1.jpg
   - file: 09-DSCF6853.jpg
 ---
-
-Three days down the canyon.
