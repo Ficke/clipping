@@ -284,24 +284,45 @@ aws secretsmanager put-secret-value \
 ```
 
 Use a [restricted key](https://docs.stripe.com/keys/restricted-api-keys) (`rk_`),
-not a secret key, with write access to Checkout Sessions and read on Prices.
+not a secret key, with write access to Checkout Sessions and nothing else.
 Rotating `downloadTokenKey` voids every live download link.
 
-### Testing before it is live
+**Where keys live.** Live keys exist in exactly two places: the Stripe dashboard
+and Secrets Manager. Copy one to the other and nowhere else — not a file, not a
+shell export, not an environment variable on the Lambda. Test keys go in
+`.env.local`, which is gitignored; `.githooks/pre-commit` refuses to commit
+either kind, and `commerce:dev` refuses to run against a live one.
 
-`bun run commerce:dev` runs the real handler on `localhost:8787` against real AWS
-and Stripe *test* keys — it refuses to start against an `rk_live`/`sk_live` key.
-In another shell, `bun run commerce:listen` points `stripe listen` at it and
-prints the `whsec_` to export.
+### Running the store locally
+
+`bun run commerce:dev` serves `dist/` **and** the store on `localhost:8787`, so
+the site and `/api/*` share one origin exactly as they do behind CloudFront —
+a relative buy link just works, and pretty URLs resolve the way the
+viewer-request function resolves them. It runs the real handler, so what passes
+here is the code that runs in production.
 
 ```sh
-export STRIPE_API_KEY=rk_test_…  STRIPE_WEBHOOK_SECRET=whsec_…
-bun run commerce:dev
-open "http://localhost:8787/api/checkout?sku=<storyId>/<file>/personal"
+cp .env.local.example .env.local      # then paste your test keys in
+bun run build                         # the store reads dist/, so build first
+bun run commerce:dev                  # → http://localhost:8787
+bun run commerce:listen               # other shell: forwards Stripe webhooks
 ```
 
-Deploy with test keys in the secret first and buy something with
-`4242 4242 4242 4242`; swap in live keys only once a real file lands in an inbox.
+Nothing is for sale until an album says so, so add `forSale: true` to one and
+rebuild. Then browse to the album and click the buy link: real Stripe test
+Checkout, card `4242 4242 4242 4242`, any future expiry and CVC.
+
+Two things are faked, and only two: secrets come from `.env.local` instead of
+Secrets Manager, and the catalog is read from `dist/downloads-catalog.json`
+instead of the site bucket — so putting a photo on sale locally needs no deploy.
+Everything else is real, which means **redeeming a download link needs `aws
+login`**, because the file is genuinely presigned out of the archive bucket.
+
+`commerce:dev` refuses to start against an `rk_live`/`sk_live` key.
+
+Because `dist/` is served rather than watched, rerun `bun run build` after a
+change. For pure UI work with hot reload, `bun run dev` is still the right tool —
+buy links render there, they just have no store behind them.
 
 ### Go-live checklist
 
