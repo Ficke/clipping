@@ -8,14 +8,15 @@
  *   open http://localhost:8787/api/checkout?sku=<sku>
  *
  * It runs the real handler, so what passes here is the code that runs in
- * production. Keys come from Secrets Manager exactly as they do on the deployed
+ * production. Keys come from Parameter Store exactly as they do on the deployed
  * Lambda — nothing is written to disk — so this needs `aws login` first.
  *
- * It reads the *test* secret (`adamficke-com-commerce-test`), not the production
- * one. Those are separate secrets on purpose: the deployed Lambda's IAM policy
- * names only the production secret, so a laptop never holds a live key and a
- * local checkout can never take real money. Point COMMERCE_SECRET_ID elsewhere
- * to override, though it refuses outright to run against a live key.
+ * It reads the *test* parameter (`/adamficke-com/commerce-test`), not the
+ * production one. Those are separate parameters on purpose: the deployed
+ * Lambda's IAM policy names only the production one, so a laptop never holds a
+ * live key and a local checkout can never take real money. Point
+ * COMMERCE_SECRET_PARAM elsewhere to override, though it refuses outright to
+ * run against a live key.
  *
  * `stripe listen` may reissue its signing secret per session; export
  * STRIPE_WEBHOOK_SECRET to override just that field for a run.
@@ -38,9 +39,9 @@ const EDGE_SECRET = randomBytes(24).toString('hex');
  * The handler reads its environment at import time, so all of this has to be set
  * before the dynamic import below.
  */
-const DEFAULT_SECRET_ID = 'adamficke-com-commerce-test';
+const DEFAULT_SECRET_PARAM = '/adamficke-com/commerce-test';
 
-process.env.COMMERCE_SECRET_ID ??= DEFAULT_SECRET_ID;
+process.env.COMMERCE_SECRET_PARAM ??= DEFAULT_SECRET_PARAM;
 process.env.ORIGINALS_BUCKET ??= 'adamficke-com-originals';
 process.env.SITE_BUCKET ??= 'adamficke-com-site';
 process.env.SITE_URL ??= `http://localhost:${PORT}`;
@@ -53,35 +54,37 @@ process.env.EDGE_SECRET = EDGE_SECRET;
  */
 process.env.AWS_EC2_METADATA_DISABLED ??= 'true';
 
-const secretId = process.env.COMMERCE_SECRET_ID;
-const { SecretsManagerClient, GetSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
+const secretParam = process.env.COMMERCE_SECRET_PARAM;
+const { SSMClient, GetParameterCommand } = await import('@aws-sdk/client-ssm');
 
 /*
  * Read the secret for real, up front, for one reason the handler cannot do for
  * us: refuse to run against live keys. Nothing else about the path changes —
- * the value below is what Secrets Manager returned, and the handler still parses
+ * the value below is what Parameter Store returned, and the handler still parses
  * and validates it itself.
  */
 let fields;
 try {
-  const stored = await new SecretsManagerClient({ maxAttempts: 2 }).send(
-    new GetSecretValueCommand({ SecretId: secretId }),
+  const stored = await new SSMClient({ maxAttempts: 2 }).send(
+    new GetParameterCommand({ Name: secretParam, WithDecryption: true }),
   );
-  fields = JSON.parse(stored.SecretString ?? '{}');
+  fields = JSON.parse(stored.Parameter?.Value ?? '{}');
 } catch (error) {
-  console.error(`commerce:dev: could not read ${secretId} — ${error.message}`);
-  console.error(error.name === 'ResourceNotFoundException'
-    ? '             It does not exist yet. `cd infra && terraform apply` creates it empty,\n'
-      + '             then put test keys in it — see the README\'s "Selling downloads".'
+  /* SSM returns ParameterNotFound with no message body, so lead with the name. */
+  const missing = error.name === 'ParameterNotFound';
+  console.error(`commerce:dev: could not read ${secretParam} — ${missing ? 'no such parameter' : error.message}`);
+  console.error(missing
+    ? '             `cd infra && terraform apply` creates it holding {}, then put\n'
+      + '             test keys in it — see the README\'s "Selling downloads".'
     : '             Check your AWS session: `aws login`.');
   process.exit(1);
 }
 
 if (/^[sr]k_live/.test(fields.stripeApiKey ?? '')) {
-  console.error(`commerce:dev: ${secretId} holds a LIVE Stripe key — refusing to run.`);
-  console.error(secretId === DEFAULT_SECRET_ID
-    ? `             Put test keys in ${DEFAULT_SECRET_ID}, and roll that live key: it is in the wrong secret.`
-    : `             Unset COMMERCE_SECRET_ID to use ${DEFAULT_SECRET_ID}.`);
+  console.error(`commerce:dev: ${secretParam} holds a LIVE Stripe key — refusing to run.`);
+  console.error(secretParam === DEFAULT_SECRET_PARAM
+    ? `             Put test keys in ${DEFAULT_SECRET_PARAM}, and roll that live key: it is in the wrong parameter.`
+    : `             Unset COMMERCE_SECRET_PARAM to use ${DEFAULT_SECRET_PARAM}.`);
   process.exit(1);
 }
 
@@ -91,8 +94,8 @@ if (process.env.STRIPE_WEBHOOK_SECRET) {
   console.log('commerce:dev: using STRIPE_WEBHOOK_SECRET from the environment');
 }
 
-SecretsManagerClient.prototype.send = async () => ({ SecretString: JSON.stringify(fields) });
-console.log(`commerce:dev: secrets from ${secretId}`);
+SSMClient.prototype.send = async () => ({ Parameter: { Value: JSON.stringify(fields) } });
+console.log(`commerce:dev: secrets from ${secretParam}`);
 
 /*
  * Serve the catalog from the last `bun run build` instead of the site bucket, so

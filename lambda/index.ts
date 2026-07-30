@@ -51,7 +51,7 @@ function stripe(secrets: Secrets): Stripe {
 export async function handler(event: FunctionUrlEvent): Promise<FunctionUrlResult> {
   /*
    * Gate on having come through CloudFront before doing anything else, so a
-   * request that found the Function URL directly costs no Secrets Manager call.
+   * request that found the Function URL directly costs no Parameter Store call.
    *
    * The Function URL has to be public rather than OAC-signed: Stripe must POST to
    * it, and an OAC-signed POST requires the caller to send an

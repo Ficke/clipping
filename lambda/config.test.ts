@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { parseSecrets, readEnv } from './config';
 
 const complete = {
-  COMMERCE_SECRET_ID: 'adamficke-com-commerce',
+  COMMERCE_SECRET_PARAM: '/adamficke-com/commerce',
   ORIGINALS_BUCKET: 'adamficke-com-originals',
   SITE_BUCKET: 'adamficke-com-site',
   SITE_URL: 'https://adamficke.com',
@@ -12,7 +12,7 @@ const complete = {
 describe('environment', () => {
   test('reads the wiring', () => {
     expect(readEnv(complete)).toEqual({
-      secretId: 'adamficke-com-commerce',
+      secretParam: '/adamficke-com/commerce',
       originalsBucket: 'adamficke-com-originals',
       siteBucket: 'adamficke-com-site',
       siteUrl: 'https://adamficke.com',

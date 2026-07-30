@@ -1,18 +1,23 @@
-import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
+import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 
 /**
  * Configuration comes from two places, split by sensitivity.
  *
  * Non-secret wiring (bucket names, the canonical site URL) arrives as Lambda
  * environment variables, where it is visible in the console and in Terraform.
- * Everything that would be damaging to leak lives in one Secrets Manager
- * secret, fetched once per execution environment. Stripe keys in particular
- * must never sit in environment variables: they are readable by anything that
- * can describe the function.
+ * Everything that would be damaging to leak lives in one KMS-encrypted SSM
+ * `SecureString` parameter, fetched once per execution environment. Stripe keys
+ * in particular must never sit in environment variables: they are readable by
+ * anything that can describe the function.
+ *
+ * Parameter Store rather than Secrets Manager: both encrypt with KMS and gate on
+ * IAM identically, but Secrets Manager bills $0.40 per secret per month for
+ * rotation, replication, and resource policies this uses none of. At 283 bytes
+ * against a 4 KB standard-tier limit, this is free.
  */
 
 export interface Env {
-  secretId: string;
+  secretParam: string;
   originalsBucket: string;
   siteBucket: string;
   siteUrl: string;
@@ -24,10 +29,10 @@ export interface Env {
    * CloudFront — and therefore skipped the canonical host, the access logs, and
    * the response headers policy — from being served.
    *
-   * It sits here rather than in Secrets Manager for two reasons: Terraform has
+   * It sits here rather than in Parameter Store for two reasons: Terraform has
    * to know it anyway to configure the CloudFront origin, and reading it from an
    * environment variable means an unauthenticated request is refused without
-   * spending a Secrets Manager call. It authenticates a hop between two things
+   * spending a Parameter Store call. It authenticates a hop between two things
    * we own, not access to anyone's money.
    */
   edgeSecret: string;
@@ -49,7 +54,7 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     return value;
   };
   return {
-    secretId: required('COMMERCE_SECRET_ID'),
+    secretParam: required('COMMERCE_SECRET_PARAM'),
     originalsBucket: required('ORIGINALS_BUCKET'),
     siteBucket: required('SITE_BUCKET'),
     siteUrl: required('SITE_URL').replace(/\/$/, ''),
@@ -69,6 +74,7 @@ export function parseSecrets(payload: string): Secrets {
   try {
     parsed = JSON.parse(payload);
   } catch {
+    /* Terraform creates the parameter holding `{}`; a bare placeholder lands here. */
     throw new Error('Commerce secret is not valid JSON');
   }
   if (typeof parsed !== 'object' || parsed === null) {
@@ -90,12 +96,14 @@ let cached: Promise<Secrets> | undefined;
  * effect as containers recycle rather than instantly; for the webhook secret
  * that means keeping both old and new registered in Stripe during a rotation.
  */
-export function loadSecrets(env: Env, client = new SecretsManagerClient({})): Promise<Secrets> {
+export function loadSecrets(env: Env, client = new SSMClient({})): Promise<Secrets> {
   cached ??= client
-    .send(new GetSecretValueCommand({ SecretId: env.secretId }))
+    /* WithDecryption, or a SecureString comes back as ciphertext. */
+    .send(new GetParameterCommand({ Name: env.secretParam, WithDecryption: true }))
     .then((response) => {
-      if (!response.SecretString) throw new Error('Commerce secret has no string value');
-      return parseSecrets(response.SecretString);
+      const value = response.Parameter?.Value;
+      if (!value) throw new Error('Commerce secret parameter has no value');
+      return parseSecrets(value);
     })
     .catch((error) => {
       /* Do not cache a failure: the next invocation should retry. */

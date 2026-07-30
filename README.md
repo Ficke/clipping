@@ -275,13 +275,15 @@ cd infra && terraform apply
 
 `terraform apply` fails if the bundle is missing — build first.
 
-Terraform creates the Secrets Manager secret **empty**, on purpose: Stripe keys
-must never pass through Terraform state. Populate it out of band:
+Terraform creates the parameter holding `{}`, on purpose: Stripe keys must never
+pass through Terraform state, and `ignore_changes` keeps it that way. Populate it
+out of band:
 
 ```sh
-aws secretsmanager put-secret-value \
-  --secret-id adamficke-com-commerce \
-  --secret-string "$(jq -nc \
+aws ssm put-parameter --overwrite \
+  --name /adamficke-com/commerce \
+  --type SecureString \
+  --value "$(jq -nc \
       --arg k "rk_test_…" \
       --arg w "whsec_…" \
       --arg d "$(openssl rand -hex 32)" \
@@ -292,19 +294,28 @@ Use a [restricted key](https://docs.stripe.com/keys/restricted-api-keys) (`rk_`)
 not a secret key, with write access to Checkout Sessions and nothing else.
 Rotating `downloadTokenKey` voids every live download link.
 
-**Where keys live.** In Secrets Manager, and nowhere else — not a file, not a
-shell export, not a Lambda environment variable. Two secrets:
+**Where keys live.** In SSM Parameter Store as KMS-encrypted `SecureString`
+values, and nowhere else — not a file, not a shell export, not a Lambda
+environment variable. Two parameters:
 
-| Secret | Holds | Read by |
+| Parameter | Holds | Read by |
 | --- | --- | --- |
-| `adamficke-com-commerce` | live keys | the deployed Lambda |
-| `adamficke-com-commerce-test` | test keys | `bun run commerce:dev` |
+| `/adamficke-com/commerce` | live keys | the deployed Lambda |
+| `/adamficke-com/commerce-test` | test keys | `bun run commerce:dev` |
 
-Separate secrets rather than one, because the Lambda's IAM policy names only the
-first: local development cannot reach a live key, and the deployed function
-cannot accidentally run on test ones. `commerce:dev` refuses to start if the
-secret it reads holds a live key, and `.githooks/pre-commit` refuses to commit
-either kind.
+Separate parameters rather than one, because the Lambda's IAM policy names only
+the first: local development cannot reach a live key, and the deployed function
+cannot accidentally run on test ones.
+
+`commerce:dev` refuses to start if the parameter it reads holds a live key, and
+`.githooks/pre-commit` refuses to commit either kind.
+
+Parameter Store rather than Secrets Manager because the two are equivalent for
+this — both KMS-encrypted under a KMS key, both IAM-gated, both audited in
+CloudTrail — while Secrets Manager charges $0.40 per secret per month for managed
+rotation, cross-region replication, and resource policies that go unused here.
+Rotation is pasting a new key from the Stripe dashboard. Standard-tier parameters
+are free up to 4 KB; this payload is about 283 bytes.
 
 ### Running the store locally
 
@@ -315,7 +326,7 @@ viewer-request function resolves them. It runs the real handler, so what passes
 here is the code that runs in production.
 
 ```sh
-aws login                             # keys come from Secrets Manager
+aws login                             # keys come from Parameter Store
 bun run build                         # the store reads dist/, so build first
 bun run commerce:dev                  # → http://localhost:8787
 bun run commerce:listen               # other shell: forwards Stripe webhooks
@@ -326,12 +337,12 @@ rebuild. Then browse to the album and click the buy link: real Stripe test
 Checkout, card `4242 4242 4242 4242`, any future expiry and CVC.
 
 **No key is ever written to disk.** Local development reads
-`adamficke-com-commerce-test` from Secrets Manager through the same code path
+`/adamficke-com/commerce-test` from Parameter Store through the same code path
 the deployed Lambda uses. Populate it once, with the same command as the
 production secret but with test keys:
 
 ```sh
-aws secretsmanager put-secret-value --secret-id adamficke-com-commerce-test …
+aws ssm put-parameter --overwrite --name /adamficke-com/commerce-test --type SecureString --value …
 ```
 
 If `stripe listen` reissues its signing secret, override just that field for a
@@ -439,9 +450,10 @@ mutating published assets.
   AWS budget alert, the Route 53 hosted zones, and the ACM certificate
 - **RSS** at `/rss.xml`
 
-Runs ≈ $0.50–1.50/month. The store adds no fixed cost: Lambda and Secrets
-Manager sit inside the free tier at this volume, and Stripe charges per sale
-(2.9% + 30¢, plus ~0.5% for Stripe Tax).
+Runs ≈ $0.50–1.50/month. The store adds no fixed cost of its own: Lambda is
+inside the free tier at this volume (and pennies beyond it), and SSM standard-tier
+parameters are free. Stripe charges per sale — 2.9% + 30¢, plus ~0.5% for Stripe
+Tax.
 
 ## Domains
 

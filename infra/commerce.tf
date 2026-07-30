@@ -7,35 +7,56 @@
 
 # ---------- Secrets ----------
 
-# Created empty on purpose. Stripe keys must never pass through Terraform
-# state, so the value is written out-of-band — see the README's go-live
-# checklist. Until it is populated the Lambda answers 500 and nothing sells.
-resource "aws_secretsmanager_secret" "commerce" {
-  name        = "${var.name}-commerce"
+# SSM SecureString rather than Secrets Manager. Both encrypt with KMS and gate
+# on IAM identically; Secrets Manager additionally bills $0.40/secret/month for
+# managed rotation, cross-region replication, and resource policies, none of
+# which this uses — rotation here is pasting a new key from the Stripe
+# dashboard. At ~283 bytes against the 4 KB standard-tier limit, this is free.
+
+# Created holding `{}` on purpose. Stripe keys must never pass through Terraform
+# state, so the real value is written out-of-band — see the README's go-live
+# checklist — and ignored here forever after. Until it is populated the Lambda
+# answers 500 and nothing sells.
+resource "aws_ssm_parameter" "commerce" {
+  name        = "/${var.name}/commerce"
   description = "Stripe restricted API key, webhook signing secret, and download token key"
+  type        = "SecureString"
+  tier        = "Standard"
+  value       = "{}"
   tags        = local.tags
 
-  # Long enough to notice a mistaken destroy, short enough that the name frees
-  # up without a support ticket.
-  recovery_window_in_days = 7
+  lifecycle {
+    ignore_changes = [value]
+  }
 }
 
 # Test-mode keys for `bun run commerce:dev`, so local development needs no key
-# on disk. Deliberately a second secret rather than a second field in the one
-# above: the deployed Lambda's IAM policy names only the production secret, so
-# it cannot read this, and local development cannot reach live keys. Also empty
-# on creation.
-resource "aws_secretsmanager_secret" "commerce_test" {
-  name        = "${var.name}-commerce-test"
+# on disk. Deliberately a second parameter rather than more fields in the one
+# above: the deployed Lambda's IAM policy names only the production parameter,
+# so it cannot read this, and local development cannot reach live keys.
+resource "aws_ssm_parameter" "commerce_test" {
+  name        = "/${var.name}/commerce-test"
   description = "Stripe TEST keys for local development. Never read by the deployed Lambda."
+  type        = "SecureString"
+  tier        = "Standard"
+  value       = "{}"
   tags        = local.tags
 
-  recovery_window_in_days = 7
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+# SecureString values are encrypted under the account's default SSM key. Its key
+# policy cannot be edited, so the decrypt grant has to be scoped from the IAM
+# side instead — see the ViaService condition below.
+data "aws_kms_alias" "ssm" {
+  name = "alias/aws/ssm"
 }
 
 # The one shared secret Terraform does hold. CloudFront has to send it as an
 # origin header and the Lambda has to compare against it, so a single generator
-# is the only way both agree; putting it in Secrets Manager instead would mean
+# is the only way both agree; putting it in Parameter Store instead would mean
 # reading it back into state anyway. It authenticates a hop between two things
 # in this account, not access to Stripe.
 resource "random_password" "edge_secret" {
@@ -76,8 +97,23 @@ data "aws_iam_policy_document" "commerce" {
 
   statement {
     sid       = "ReadCommerceSecret"
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_secretsmanager_secret.commerce.arn]
+    actions   = ["ssm:GetParameter"]
+    resources = [aws_ssm_parameter.commerce.arn]
+  }
+
+  # Reading a SecureString needs the decrypt too. The default SSM key takes no
+  # key policy of its own, so this is where it gets constrained: only through
+  # SSM, never as a general-purpose decrypt grant.
+  statement {
+    sid       = "DecryptCommerceSecret"
+    actions   = ["kms:Decrypt"]
+    resources = [data.aws_kms_alias.ssm.target_key_arn]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["ssm.us-east-1.amazonaws.com"]
+    }
   }
 
   # Presigning is a local signing operation, but the role still needs the
@@ -158,12 +194,12 @@ resource "aws_lambda_function" "commerce" {
 
   environment {
     variables = {
-      COMMERCE_SECRET_ID = aws_secretsmanager_secret.commerce.name
-      ORIGINALS_BUCKET   = aws_s3_bucket.originals.bucket
-      SITE_BUCKET        = aws_s3_bucket.site.bucket
-      SITE_URL           = "https://${var.domain_name}"
-      FROM_EMAIL         = var.commerce_from_email
-      EDGE_SECRET        = random_password.edge_secret.result
+      COMMERCE_SECRET_PARAM = aws_ssm_parameter.commerce.name
+      ORIGINALS_BUCKET      = aws_s3_bucket.originals.bucket
+      SITE_BUCKET           = aws_s3_bucket.site.bucket
+      SITE_URL              = "https://${var.domain_name}"
+      FROM_EMAIL            = var.commerce_from_email
+      EDGE_SECRET           = random_password.edge_secret.result
     }
   }
 
@@ -189,13 +225,13 @@ locals {
   )
 }
 
-output "commerce_secret_name" {
-  value = aws_secretsmanager_secret.commerce.name
+output "commerce_secret_param" {
+  value = aws_ssm_parameter.commerce.name
 }
 
-output "commerce_test_secret_name" {
+output "commerce_test_secret_param" {
   description = "Test-mode keys read by `bun run commerce:dev`"
-  value       = aws_secretsmanager_secret.commerce_test.name
+  value       = aws_ssm_parameter.commerce_test.name
 }
 
 output "commerce_webhook_url" {
