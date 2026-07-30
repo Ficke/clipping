@@ -31,6 +31,7 @@ infra/tfplan*
 # Per-machine Claude Code permissions, not shared
 .claude/settings.local.json
 
-# Stripe *test* keys for `bun run commerce:dev`. Live keys never go here —
-# they only ever live in AWS Secrets Manager.
+# Belt and braces: no Stripe key should ever be in a file here. Local dev reads
+# adamficke-com-commerce-test from Secrets Manager, so nothing is written to disk.
+.env
 .env.local

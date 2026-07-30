@@ -287,11 +287,19 @@ Use a [restricted key](https://docs.stripe.com/keys/restricted-api-keys) (`rk_`)
 not a secret key, with write access to Checkout Sessions and nothing else.
 Rotating `downloadTokenKey` voids every live download link.
 
-**Where keys live.** Live keys exist in exactly two places: the Stripe dashboard
-and Secrets Manager. Copy one to the other and nowhere else — not a file, not a
-shell export, not an environment variable on the Lambda. Test keys go in
-`.env.local`, which is gitignored; `.githooks/pre-commit` refuses to commit
-either kind, and `commerce:dev` refuses to run against a live one.
+**Where keys live.** In Secrets Manager, and nowhere else — not a file, not a
+shell export, not a Lambda environment variable. Two secrets:
+
+| Secret | Holds | Read by |
+| --- | --- | --- |
+| `adamficke-com-commerce` | live keys | the deployed Lambda |
+| `adamficke-com-commerce-test` | test keys | `bun run commerce:dev` |
+
+Separate secrets rather than one, because the Lambda's IAM policy names only the
+first: local development cannot reach a live key, and the deployed function
+cannot accidentally run on test ones. `commerce:dev` refuses to start if the
+secret it reads holds a live key, and `.githooks/pre-commit` refuses to commit
+either kind.
 
 ### Running the store locally
 
@@ -302,7 +310,7 @@ viewer-request function resolves them. It runs the real handler, so what passes
 here is the code that runs in production.
 
 ```sh
-cp .env.local.example .env.local      # then paste your test keys in
+aws login                             # keys come from Secrets Manager
 bun run build                         # the store reads dist/, so build first
 bun run commerce:dev                  # → http://localhost:8787
 bun run commerce:listen               # other shell: forwards Stripe webhooks
@@ -312,13 +320,30 @@ Nothing is for sale until an album says so, so add `forSale: true` to one and
 rebuild. Then browse to the album and click the buy link: real Stripe test
 Checkout, card `4242 4242 4242 4242`, any future expiry and CVC.
 
-Two things are faked, and only two: secrets come from `.env.local` instead of
-Secrets Manager, and the catalog is read from `dist/downloads-catalog.json`
-instead of the site bucket — so putting a photo on sale locally needs no deploy.
-Everything else is real, which means **redeeming a download link needs `aws
-login`**, because the file is genuinely presigned out of the archive bucket.
+**No key is ever written to disk.** Local development reads
+`adamficke-com-commerce-test` from Secrets Manager through the same code path
+the deployed Lambda uses. Populate it once, with the same command as the
+production secret but with test keys:
 
-`commerce:dev` refuses to start against an `rk_live`/`sk_live` key.
+```sh
+aws secretsmanager put-secret-value --secret-id adamficke-com-commerce-test …
+```
+
+If `stripe listen` reissues its signing secret, override just that field for a
+run — no file needed:
+
+```sh
+STRIPE_WEBHOOK_SECRET=whsec_… bun run commerce:dev
+```
+
+Exactly one thing is faked: the catalog is read from
+`dist/downloads-catalog.json` instead of the site bucket, so putting a photo on
+sale locally needs no deploy. Everything else is real, which is why **redeeming
+a download link needs a working AWS session** — the file is genuinely presigned
+out of the archive bucket.
+
+`commerce:dev` refuses to start if the secret it reads holds an `rk_live`/`sk_live`
+key.
 
 Because `dist/` is served rather than watched, rerun `bun run build` after a
 change. For pure UI work with hot reload, `bun run dev` is still the right tool —

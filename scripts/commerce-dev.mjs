@@ -7,16 +7,21 @@
  *   bun run commerce:listen                               # stripe -> :8787
  *   open http://localhost:8787/api/checkout?sku=<sku>
  *
- * It runs the real handler against real AWS and real Stripe test keys, so what
- * passes here is the same code path that runs in production. That means it needs
- * `aws login` first, and Stripe *test* keys in the environment:
+ * It runs the real handler, so what passes here is the code that runs in
+ * production. Keys come from Secrets Manager exactly as they do on the deployed
+ * Lambda — nothing is written to disk — so this needs `aws login` first.
  *
- *   export STRIPE_API_KEY=rk_test_…       # restricted key, Checkout write
- *   export STRIPE_WEBHOOK_SECRET=whsec_…  # printed by `stripe listen`
+ * It reads the *test* secret (`adamficke-com-commerce-test`), not the production
+ * one. Those are separate secrets on purpose: the deployed Lambda's IAM policy
+ * names only the production secret, so a laptop never holds a live key and a
+ * local checkout can never take real money. Point COMMERCE_SECRET_ID elsewhere
+ * to override, though it refuses outright to run against a live key.
  *
- * The catalog is read from the site bucket, so `bun run build` and a deploy (or
- * a manual `aws s3 cp dist/downloads-catalog.json s3://…`) have to have happened
- * for a SKU to be purchasable.
+ * `stripe listen` may reissue its signing secret per session; export
+ * STRIPE_WEBHOOK_SECRET to override just that field for a run.
+ *
+ * The catalog is read from `dist/`, so `bun run build` has to have happened —
+ * but no deploy, which is what lets a photo be put on sale and bought locally.
  */
 
 import { createServer } from 'node:http';
@@ -30,55 +35,64 @@ const PORT = Number(process.env.COMMERCE_PORT ?? process.env.PORT ?? 8787);
 const EDGE_SECRET = randomBytes(24).toString('hex');
 
 /*
- * Test keys come from .env.local, which is gitignored — so there is no step to
- * forget and no key sitting in shell history. Live keys never belong here; they
- * only ever live in Secrets Manager.
+ * The handler reads its environment at import time, so all of this has to be set
+ * before the dynamic import below.
  */
-const envFile = path.join(repoRoot, '.env.local');
-if (existsSync(envFile)) {
-  for (const line of readFileSync(envFile, 'utf8').split('\n')) {
-    const match = line.match(/^\s*(?:export\s+)?([A-Z0-9_]+)\s*=\s*(.*)$/);
-    if (!match || line.trimStart().startsWith('#')) continue;
-    process.env[match[1]] ??= match[2].trim().replace(/^["']|["']$/g, '');
-  }
-  console.log('commerce:dev: loaded .env.local');
-}
+const DEFAULT_SECRET_ID = 'adamficke-com-commerce-test';
 
-function required(name) {
-  const value = process.env[name];
-  if (!value) {
-    console.error(`commerce:dev: ${name} is not set — see the comment at the top of this script`);
-    process.exit(1);
-  }
-  return value;
-}
-
-const stripeApiKey = required('STRIPE_API_KEY');
-if (stripeApiKey.startsWith('rk_live') || stripeApiKey.startsWith('sk_live')) {
-  console.error('commerce:dev: refusing to run against a live Stripe key');
-  process.exit(1);
-}
-
-/*
- * The handler reads its environment at import time, so this has to be set before
- * the dynamic import below. Secrets normally come from Secrets Manager; locally
- * they are faked by pointing the loader at a value we already hold.
- */
-process.env.COMMERCE_SECRET_ID ??= 'adamficke-com-commerce';
+process.env.COMMERCE_SECRET_ID ??= DEFAULT_SECRET_ID;
 process.env.ORIGINALS_BUCKET ??= 'adamficke-com-originals';
 process.env.SITE_BUCKET ??= 'adamficke-com-site';
 process.env.SITE_URL ??= `http://localhost:${PORT}`;
 process.env.EDGE_SECRET = EDGE_SECRET;
 
-/* Stand in for Secrets Manager without reaching for it. */
-const { SecretsManagerClient } = await import('@aws-sdk/client-secrets-manager');
-SecretsManagerClient.prototype.send = async () => ({
-  SecretString: JSON.stringify({
-    stripeApiKey,
-    stripeWebhookSecret: required('STRIPE_WEBHOOK_SECRET'),
-    downloadTokenKey: process.env.DOWNLOAD_TOKEN_KEY ?? 'local-development-token-key',
-  }),
-});
+/*
+ * This never runs on EC2, so the instance-metadata fallback can only ever be a
+ * dead end. Left enabled, an unresolvable profile hangs for tens of seconds
+ * waiting on 169.254.169.254 instead of saying the credentials are wrong.
+ */
+process.env.AWS_EC2_METADATA_DISABLED ??= 'true';
+
+const secretId = process.env.COMMERCE_SECRET_ID;
+const { SecretsManagerClient, GetSecretValueCommand } = await import('@aws-sdk/client-secrets-manager');
+
+/*
+ * Read the secret for real, up front, for one reason the handler cannot do for
+ * us: refuse to run against live keys. Nothing else about the path changes —
+ * the value below is what Secrets Manager returned, and the handler still parses
+ * and validates it itself.
+ */
+let fields;
+try {
+  const stored = await new SecretsManagerClient({ maxAttempts: 2 }).send(
+    new GetSecretValueCommand({ SecretId: secretId }),
+  );
+  fields = JSON.parse(stored.SecretString ?? '{}');
+} catch (error) {
+  console.error(`commerce:dev: could not read ${secretId} — ${error.message}`);
+  console.error(error.name === 'ResourceNotFoundException'
+    ? '             It does not exist yet. `cd infra && terraform apply` creates it empty,\n'
+      + '             then put test keys in it — see the README\'s "Selling downloads".'
+    : '             Check your AWS session: `aws login`.');
+  process.exit(1);
+}
+
+if (/^[sr]k_live/.test(fields.stripeApiKey ?? '')) {
+  console.error(`commerce:dev: ${secretId} holds a LIVE Stripe key — refusing to run.`);
+  console.error(secretId === DEFAULT_SECRET_ID
+    ? `             Put test keys in ${DEFAULT_SECRET_ID}, and roll that live key: it is in the wrong secret.`
+    : `             Unset COMMERCE_SECRET_ID to use ${DEFAULT_SECRET_ID}.`);
+  process.exit(1);
+}
+
+/* `stripe listen` may reissue its signing secret per session. */
+if (process.env.STRIPE_WEBHOOK_SECRET) {
+  fields.stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  console.log('commerce:dev: using STRIPE_WEBHOOK_SECRET from the environment');
+}
+
+SecretsManagerClient.prototype.send = async () => ({ SecretString: JSON.stringify(fields) });
+console.log(`commerce:dev: secrets from ${secretId}`);
 
 /*
  * Serve the catalog from the last `bun run build` instead of the site bucket, so

@@ -20,6 +20,19 @@ resource "aws_secretsmanager_secret" "commerce" {
   recovery_window_in_days = 7
 }
 
+# Test-mode keys for `bun run commerce:dev`, so local development needs no key
+# on disk. Deliberately a second secret rather than a second field in the one
+# above: the deployed Lambda's IAM policy names only the production secret, so
+# it cannot read this, and local development cannot reach live keys. Also empty
+# on creation.
+resource "aws_secretsmanager_secret" "commerce_test" {
+  name        = "${var.name}-commerce-test"
+  description = "Stripe TEST keys for local development. Never read by the deployed Lambda."
+  tags        = local.tags
+
+  recovery_window_in_days = 7
+}
+
 # The one shared secret Terraform does hold. CloudFront has to send it as an
 # origin header and the Lambda has to compare against it, so a single generator
 # is the only way both agree; putting it in Secrets Manager instead would mean
@@ -178,6 +191,11 @@ locals {
 
 output "commerce_secret_name" {
   value = aws_secretsmanager_secret.commerce.name
+}
+
+output "commerce_test_secret_name" {
+  description = "Test-mode keys read by `bun run commerce:dev`"
+  value       = aws_secretsmanager_secret.commerce_test.name
 }
 
 output "commerce_webhook_url" {
