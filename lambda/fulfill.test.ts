@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type Stripe from 'stripe';
 import type { DownloadCatalog } from '../src/lib/downloads';
-import { NotForSale } from './catalog';
 import { fulfillCheckout } from './fulfill';
 import { readToken } from './tokens';
 
@@ -52,7 +51,11 @@ describe('fulfillment', () => {
 
     expect(result.status).toBe('paid');
     expect(result.email).toBe('buyer@example.test');
-    expect(result.item?.priceCents).toBe(4000);
+    expect(result.item).toMatchObject({
+      albumTitle: 'Lost Coast',
+      file: 'DSCF1250.jpg',
+      dimensions: { width: 6000, height: 4000 },
+    });
     expect(result.downloadUrl).toStartWith('https://adamficke.com/api/download?t=');
   });
 
@@ -82,14 +85,49 @@ describe('fulfillment', () => {
     expect(result.downloadUrl).toBeUndefined();
   });
 
-  test('refuses a session whose SKU is no longer for sale', async () => {
+  test('still delivers a photo that has since been delisted', async () => {
+    /*
+     * The buyer paid while it was listed, or a bank debit settled after it was
+     * pulled. Refusing here would 404 the webhook until Stripe stopped retrying
+     * and tell them their own purchase was unavailable.
+     */
     const stripe = stripeReturning({
       id: 'cs_test_1',
       payment_status: 'paid',
       metadata: { sku: 'yosemite/DSCF0001.jpg/personal' },
     });
 
-    await expect(fulfillCheckout('cs_test_1', deps(stripe))).rejects.toThrow(NotForSale);
+    const result = await fulfillCheckout('cs_test_1', deps(stripe));
+
+    expect(result.status).toBe('paid');
+    expect(result.downloadUrl).toBeTruthy();
+    expect(result.item).toMatchObject({ storyId: 'yosemite', file: 'DSCF0001.jpg' });
+    /* No catalog entry, so no dimensions — and the id stands in for the title. */
+    expect(result.item?.dimensions).toBeUndefined();
+    expect(result.item?.albumTitle).toBe('yosemite');
+  });
+
+  test('the delisted photo still resolves to its real S3 key', async () => {
+    const stripe = stripeReturning({
+      id: 'cs_test_1',
+      payment_status: 'paid',
+      metadata: { sku: 'yosemite/DSCF0001.jpg/personal' },
+    });
+
+    const { downloadUrl } = await fulfillCheckout('cs_test_1', deps(stripe));
+    const token = new URL(downloadUrl!).searchParams.get('t')!;
+
+    expect(readToken(token, KEY, NOW).sku).toBe('yosemite/DSCF0001.jpg/personal');
+  });
+
+  test('refuses a session whose SKU is malformed', async () => {
+    const stripe = stripeReturning({
+      id: 'cs_test_1',
+      payment_status: 'paid',
+      metadata: { sku: '../etc/personal' },
+    });
+
+    await expect(fulfillCheckout('cs_test_1', deps(stripe))).rejects.toThrow(/safe path segment/);
   });
 
   test('refuses a session with no SKU rather than guessing what was bought', async () => {

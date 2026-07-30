@@ -15,8 +15,11 @@ import Layout from '../../layouts/Layout.astro';
 <Layout
   title="Your download — Adam Ficke"
   description="Your full-resolution download."
+  noindex
 >
-  <section class="purchase rise">
+  <!-- The outcome arrives after load, so announce it rather than letting a
+       screen reader sit on "Preparing your download…". -->
+  <section class="purchase rise" aria-live="polite" aria-busy="true" data-region>
     <p class="kicker">Thank you</p>
     <h1 data-heading>Preparing your download…</h1>
 
@@ -61,6 +64,7 @@ import Layout from '../../layouts/Layout.astro';
 
   function show(name: string) {
     for (const [key, el] of states) el.hidden = key !== name;
+    document.querySelector<HTMLElement>('[data-region]')!.setAttribute('aria-busy', 'false');
   }
 
   function fail(message: string) {
@@ -83,8 +87,20 @@ import Layout from '../../layouts/Layout.astro';
       } else if (!response.ok) {
         fail(body.error ?? 'Your order could not be confirmed.');
       } else {
+        /*
+         * Never assign a URL straight from a response to href — a `javascript:`
+         * value there would execute on click. Check the scheme rather than the
+         * origin: the Lambda builds this from SITE_URL, which is the canonical
+         * host and so not always the host being browsed, and a buyer losing
+         * their download to a hostname mismatch would be the worse failure.
+         */
+        const target = new URL(body.downloadUrl, location.origin);
+        if (target.protocol !== 'https:' && target.protocol !== 'http:') {
+          throw new Error(`refusing a ${target.protocol} download URL`);
+        }
+
         const link = document.querySelector<HTMLAnchorElement>('[data-download]')!;
-        link.href = body.downloadUrl;
+        link.href = target.href;
         heading.textContent = 'Your download is ready';
         document.querySelector<HTMLElement>('[data-summary]')!.textContent =
           `${body.albumTitle} — ${body.file}`;

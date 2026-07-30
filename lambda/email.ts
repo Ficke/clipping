@@ -24,6 +24,10 @@ export function deliveryEmail(fulfillment: Fulfillment): { subject: string; text
     dateStyle: 'long',
     timeZone: 'UTC',
   });
+  /* Dimensions come from the catalog, which a delisted photo has left. */
+  const size = item.dimensions
+    ? ` (${item.dimensions.width} × ${item.dimensions.height} pixels)`
+    : '';
 
   return {
     subject: `Your download — ${item.albumTitle}`,
@@ -32,7 +36,7 @@ export function deliveryEmail(fulfillment: Fulfillment): { subject: string; text
       '',
       downloadUrl,
       '',
-      `${item.albumTitle} — ${item.file} (${item.width} × ${item.height} pixels)`,
+      `${item.albumTitle} — ${item.file}${size}`,
       `This link works until ${expires}. Download it somewhere you keep things.`,
       '',
       'Your licence',

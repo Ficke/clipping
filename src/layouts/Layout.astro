@@ -12,6 +12,8 @@ interface Props {
   type?: 'website' | 'article';
   publishedTime?: Date;
   section?: 'photography' | 'about';
+  /** Keep a page out of search results. Also exclude it from the sitemap. */
+  noindex?: boolean;
 }
 
 const {
@@ -22,6 +24,7 @@ const {
   type = 'website',
   publishedTime,
   section,
+  noindex = false,
 } = Astro.props;
 const canonical = new URL(Astro.url.pathname, Astro.site);
 const photographyCurrent = section === 'photography'
@@ -37,6 +40,7 @@ const photographyCurrent = section === 'photography'
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />

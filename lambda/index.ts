@@ -81,8 +81,10 @@ export async function handler(event: FunctionUrlEvent): Promise<FunctionUrlResul
     return problem(404, 'Not found.');
   } catch (error) {
     if (error instanceof NotForSale) {
-      console.warn('Request for an item that is not for sale', error.message);
-      return problem(404, 'That photograph is not available for download.');
+      /* Only reachable from checkout — fulfillment no longer consults the
+         catalog, so a delisted photo still delivers to whoever bought it. */
+      console.warn('Request to buy an item that is not for sale', error.message);
+      return problem(404, 'That photograph is not for sale.');
     }
     if (error instanceof InvalidToken) {
       /* 410: the link was real once, or was never real. Do not say which. */

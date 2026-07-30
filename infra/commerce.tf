@@ -215,6 +215,50 @@ resource "aws_lambda_function_url" "commerce" {
   authorization_type = "NONE"
 }
 
+# ---------- Alarm ----------
+
+# The one failure here that costs money silently. A webhook that 500s makes
+# Stripe retry and then give up, so a buyer pays and never receives their file,
+# and nothing on this side says so — the Lambda's own logs are the only trace,
+# and nobody reads logs they have no reason to open.
+#
+# Free: one alarm sits inside the CloudWatch free allowance, and SNS email is
+# well within its own.
+resource "aws_sns_topic" "commerce_alarms" {
+  name = "${var.name}-commerce-alarms"
+  tags = local.tags
+}
+
+# Confirm this by clicking the link AWS emails on first apply; until then the
+# alarm fires into a subscription that delivers nowhere.
+resource "aws_sns_topic_subscription" "commerce_alarms" {
+  topic_arn = aws_sns_topic.commerce_alarms.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
+resource "aws_cloudwatch_metric_alarm" "commerce_errors" {
+  alarm_name        = "${var.name}-commerce-errors"
+  alarm_description = "The commerce Lambda threw. A buyer may have paid without being delivered."
+  namespace         = "AWS/Lambda"
+  metric_name       = "Errors"
+  dimensions        = { FunctionName = aws_lambda_function.commerce.function_name }
+
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+
+  # A quiet function reports no datapoints at all, which is the normal state
+  # here and must not read as a failure.
+  treat_missing_data = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.commerce_alarms.arn]
+  ok_actions    = [aws_sns_topic.commerce_alarms.arn]
+  tags          = local.tags
+}
+
 # ---------- CloudFront wiring ----------
 
 locals {
