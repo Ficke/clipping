@@ -224,6 +224,11 @@ site build emits `/downloads-catalog.json`, and the Lambda reads that as the
 authority on what is purchasable and at what price. **Putting an album on sale is
 a content deploy.** Nothing in `infra/` changes.
 
+The Lambda reads that object straight from the site bucket rather than through
+CloudFront, so a price change takes effect within its 60-second cache however the
+CDN is behaving. The deploy invalidates the public copy too, which matters only
+to anything fetching the URL directly.
+
 Prices and licence terms live in `src/lib/downloads.ts`, in one table. A new
 licence tier added there appears on every photo already for sale.
 
