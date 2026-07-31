@@ -217,7 +217,8 @@ resource "aws_cloudfront_distribution" "site" {
     }
 
     custom_header {
-      name  = "x-edge-secret"
+      # x-edge-* is a reserved CloudFront prefix; anything else works.
+      name  = "x-origin-secret"
       value = random_password.edge_secret.result
     }
   }

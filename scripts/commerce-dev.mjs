@@ -175,7 +175,7 @@ createServer((request, response) => {
       rawPath: url.pathname,
       rawQueryString: url.searchParams.toString(),
       /* CloudFront adds this in production; add it here so the gate passes. */
-      headers: { ...request.headers, 'x-edge-secret': EDGE_SECRET },
+      headers: { ...request.headers, 'x-origin-secret': EDGE_SECRET },
       requestContext: { http: { method: request.method } },
       body: body.length ? body.toString('utf8') : undefined,
       isBase64Encoded: false,

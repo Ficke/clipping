@@ -21,8 +21,8 @@ export interface FunctionUrlResult {
   body?: string;
 }
 
-/** The header CloudFront adds to every request it forwards to this origin. */
-export const EDGE_SECRET_HEADER = 'x-edge-secret';
+/** Header CloudFront adds to every request it forwards here. */
+export const EDGE_SECRET_HEADER = 'x-origin-secret';
 
 export function method(event: FunctionUrlEvent): string {
   return event.requestContext.http.method.toUpperCase();
@@ -35,7 +35,7 @@ export function query(event: FunctionUrlEvent): URLSearchParams {
 /**
  * Stripe signs the exact bytes it sent, so the body must be recovered without
  * re-encoding. Function URLs base64 the body whenever they consider it binary,
- * which includes any request without a recognised text content type.
+ * which includes any request without a recognized text content type.
  */
 export function rawBody(event: FunctionUrlEvent): string {
   if (!event.body) return '';

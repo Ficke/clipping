@@ -184,9 +184,7 @@ resource "aws_lambda_function" "commerce" {
   # hung call fails rather than sitting on the buyer's redirect.
   timeout = 15
 
-  # A portfolio store needs no more, and it caps what a flood against the
-  # Function URL can cost before CloudFront's own limits engage.
-  reserved_concurrent_executions = 10
+  # No reservation: account-wide quota is already 10, so this is the ceiling.
 
   filename         = data.archive_file.commerce.output_path
   source_code_hash = data.archive_file.commerce.output_base64sha256
