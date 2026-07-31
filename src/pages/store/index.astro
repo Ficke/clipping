@@ -34,12 +34,14 @@ const total = albums.reduce((count, { photos }) => count + photos.length, 0);
           <ul class="grid">
             {photos.map(({ photo, offers }) => {
               const alt = photo.alt ?? photo.caption ?? `${album.data.title} — ${photo.file}`;
+              const photoId = offers[0]!.photoId;
               return (
-                <li class="item rise">
+                <li class="item rise" id={photoId}>
                   <a
                     href={photo.image.variants.lightbox.src}
                     class="thumb"
                     data-lightbox
+                    data-photo-id={photoId}
                     data-alt={alt}
                     data-caption={photo.caption}
                     data-srcset={lightboxSrcset(photo.image)}
@@ -63,7 +65,7 @@ const total = albums.reduce((count, { photos }) => count + photos.length, 0);
     )
   }
 
-  <Lightbox photoCount={total} />
+  <Lightbox photoCount={total} single />
 </Layout>
 
 <style>

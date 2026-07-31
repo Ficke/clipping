@@ -82,7 +82,9 @@ worth remembering. One to three short paragraphs; plain markdown.
 - **`draft: true`** while you're arranging; delete the line to publish.
 - **`forSale: true` plus `price`** offers that photograph as a full-resolution
   download at the given USD price. `photos:push` asks once for each new photo;
-  `photos:store` lists, reprices, delists, or purges an existing one.
+  `photos:store` lists, reprices, delists, or purges an existing one. The store
+  URL exposes its opaque `photo_…` ID, which the command accepts without an
+  album or filename.
 - **`hidden: true`** removes a photograph from public album/store pages while
   retaining its original and private fulfillment mapping. Prefer
   `photos:site --hide` and `--show` over editing it directly.

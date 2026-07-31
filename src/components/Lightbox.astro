@@ -2,19 +2,21 @@
 /**
  * Full-screen photo viewer. Drop one per page; it drives every
  * `a[data-lightbox]` on that page (see StoryPhoto.astro) and is deep-linkable
- * as `#photo-N`. Behavior lives in scripts/lightbox.ts.
+ * with a page-supplied stable fragment or the `#photo-N` fallback. Behavior
+ * lives in scripts/lightbox.ts.
  */
 interface Props {
   photoCount: number;
+  single?: boolean;
 }
 
-const { photoCount } = Astro.props;
+const { photoCount, single = false } = Astro.props;
 ---
 
-<dialog id="lightbox" aria-label="Photograph viewer">
+<dialog id="lightbox" aria-label="Photograph viewer" data-single={single || undefined}>
   <button id="lightbox-close" class="kicker">Close</button>
   {
-    photoCount > 1 && (
+    !single && photoCount > 1 && (
       <>
         <button id="lightbox-prev" class="lightbox-nav" aria-label="Previous photograph">‹</button>
         <button id="lightbox-next" class="lightbox-nav" aria-label="Next photograph">›</button>
