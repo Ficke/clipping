@@ -3,27 +3,20 @@ import {
   CURRENCY,
   PRODUCT_TAX_CODE,
   formatPrice,
+  licenseTerms,
   licenseTier,
   parseSku,
-  slugForStoryId,
   type CatalogItem,
   type DownloadCatalog,
 } from '../src/lib/downloads';
 import { requireItem } from './catalog';
 
 /**
- * Creating the Checkout Session a buy link redirects to.
- *
- * The price is read from the published catalog, never from the request: the only
- * thing the browser supplies is a SKU. That is what makes a plain `<a href>` a
- * safe buy button, and it is why the buy link needs no signing.
+ * The browser supplies only a SKU; the price comes from the catalog. That is
+ * what makes a plain `<a href>` a safe buy button, needing no signing.
  */
 
-/**
- * Labels this flow in the Stripe Dashboard so it can be compared against any
- * later one (prints, a different licence tier). Stable by design — changing it
- * splits the reporting history.
- */
+/** Stable by design: changing it splits the Stripe Dashboard's reporting history. */
 const INTEGRATION_IDENTIFIER = 'photo-download-qkzvhrmw';
 
 export interface CheckoutDeps {
@@ -37,18 +30,15 @@ export async function createCheckoutSession(
   { stripe, catalog, siteUrl }: CheckoutDeps,
 ): Promise<Stripe.Checkout.Session> {
   /* Shape first, so a malformed SKU never reaches the catalog or Stripe. */
-  const { storyId, license } = parseSku(sku);
+  const { license } = parseSku(sku);
   const tier = licenseTier(license);
-  if (!tier) throw new Error(`Unknown licence tier "${license}"`);
+  if (!tier) throw new Error(`Unknown license tier "${license}"`);
   const item = requireItem(catalog, sku);
 
   return stripe.checkout.sessions.create({
     mode: 'payment',
     integration_identifier: INTEGRATION_IDENTIFIER,
-    /*
-     * No payment_method_types: omitting it enables dynamic payment methods, so
-     * what a buyer is offered is configured in the Dashboard rather than here.
-     */
+    /* No payment_method_types: omitting it lets the Dashboard decide. */
     line_items: [
       {
         quantity: 1,
@@ -65,21 +55,17 @@ export async function createCheckoutSession(
         },
       },
     ],
-    /*
-     * Tax is calculated only where there is an active registration in Stripe.
-     * With none, this silently collects nothing — see the go-live checklist in
-     * the README.
-     */
+    /* Collects nothing, silently, in any state with no active Stripe
+       registration — see the README's go-live checklist. */
     automatic_tax: { enabled: true },
-    /* The licence is the product, so state it on the pay button. */
-    custom_text: { submit: { message: tier.terms } },
+    custom_text: { submit: { message: licenseTerms(tier) } },
     metadata: { sku },
     client_reference_id: sku,
     payment_intent_data: {
       description: `${formatPrice(item.priceCents)} — ${item.albumTitle} (${item.file})`,
     },
     success_url: `${siteUrl}/purchase/?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${siteUrl}/photography/${slugForStoryId(storyId)}/`,
+    cancel_url: `${siteUrl}/store/`,
   });
 }
 

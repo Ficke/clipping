@@ -224,18 +224,23 @@ site build emits `/downloads-catalog.json`, and the Lambda reads that as the
 authority on what is purchasable and at what price. **Putting an album on sale is
 a content deploy.** Nothing in `infra/` changes.
 
+Everything for sale appears at `/store/`, grouped by album, and that is the only
+place with a buy button — album pages stay reading pages. The store is linked in
+the header but kept out of search; `/license/`, in the footer, states the grant
+in full.
+
 The Lambda reads that object straight from the site bucket rather than through
 CloudFront, so a price change takes effect within its 60-second cache however the
 CDN is behaving. The deploy invalidates the public copy too, which matters only
 to anything fetching the URL directly.
 
-Prices and licence terms live in `src/lib/downloads.ts`, in one table. A new
-licence tier added there appears on every photo already for sale.
+Prices and license terms live in `src/lib/downloads.ts`, in one table. A new
+license tier added there appears on every photo already for sale.
 
 ### The money path
 
 ```
-album page  ─ <a href="/api/checkout?sku=…">        (a plain link: no JS, no CSP change)
+/store/     ─ <a href="/api/checkout?sku=…">        (a plain link: no JS, no CSP change)
                  │
 CloudFront   /api/*  ──►  commerce Lambda ──►  Stripe Checkout Session ──► 303
                  │
@@ -376,7 +381,7 @@ buy links render there, they just have no store behind them.
 - [ ] **Product tax code**: `PRODUCT_TAX_CODE` in `src/lib/downloads.ts` is
       `txcd_10501000` (*Digital Photographs/Images — downloaded, permanent
       rights*). The alternative is `txcd_10505001` (*Digital Finished Artwork*),
-      a better fit if a licence ever grants reproduction rights. Confirm with a
+      a better fit if a license ever grants reproduction rights. Confirm with a
       tax advisor — it changes what is collected.
 - [ ] **Webhook endpoint**: register `https://adamficke.com/api/stripe/webhook`
       for `checkout.session.completed` and

@@ -89,13 +89,15 @@ describe('checkout session', () => {
     expect(calls[0]!.line_items![0]!.price_data!.product_data!.metadata).toEqual({ sku: SKU });
   });
 
-  test('shows the licence terms on the pay button', async () => {
+  test('shows the license terms on the pay button', async () => {
     const { stripe, calls } = recordingStripe();
 
     await createCheckoutSession(SKU, deps(stripe));
 
     const submit = calls[0]!.custom_text!.submit;
-    expect(submit && typeof submit === 'object' ? submit.message : '').toContain('non-commercial');
+    const message = submit && typeof submit === 'object' ? submit.message : '';
+    expect(message).toContain('You may not');
+    expect(message).toContain('Copyright stays with Adam Ficke.');
   });
 
   test('returns the buyer to the delivery page with the session id', async () => {
@@ -106,12 +108,12 @@ describe('checkout session', () => {
     expect(calls[0]!.success_url).toBe('https://adamficke.com/purchase/?session_id={CHECKOUT_SESSION_ID}');
   });
 
-  test('cancels back to the album, dropping a legacy date prefix from the URL', async () => {
+  test('cancels back to the store, the only place a buy link lives', async () => {
     const { stripe, calls } = recordingStripe();
 
     await createCheckoutSession('2024-12-japan/roll-01.jpg/personal', deps(stripe));
 
-    expect(calls[0]!.cancel_url).toBe('https://adamficke.com/photography/japan/');
+    expect(calls[0]!.cancel_url).toBe('https://adamficke.com/store/');
   });
 
   test('refuses a photo that is not in the catalog', async () => {
@@ -122,11 +124,11 @@ describe('checkout session', () => {
     expect(calls).toHaveLength(0);
   });
 
-  test('refuses an unknown licence tier before touching the catalog', async () => {
+  test('refuses an unknown license tier before touching the catalog', async () => {
     const { stripe, calls } = recordingStripe();
 
     await expect(createCheckoutSession('lost-coast/DSCF1250.jpg/commercial', deps(stripe)))
-      .rejects.toThrow(/Unknown licence tier/);
+      .rejects.toThrow(/Unknown license tier/);
     expect(calls).toHaveLength(0);
   });
 

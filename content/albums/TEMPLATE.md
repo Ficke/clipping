@@ -78,5 +78,5 @@ worth remembering. One to three short paragraphs; plain markdown.
 - **`forSale`** offers the album's photographs as full-resolution downloads.
   Set it on a photo to override the album either way, so one frame can be sold
   out of an album that otherwise isn't — or held back from one that is.
-  `photos:push` preserves these flags. Prices and licence terms live in
+  `photos:push` preserves these flags. Prices and license terms live in
   `src/lib/downloads.ts`; see the README's *Selling downloads*.

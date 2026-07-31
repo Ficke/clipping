@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   catalogItem,
   formatPrice,
+  licenseTerms,
   licenseTier,
   originalKey,
   parseSku,
@@ -9,13 +10,22 @@ import {
   type DownloadCatalog,
 } from './downloads';
 
-describe('licence tiers', () => {
-  test('every tier has a price, a summary, and terms', () => {
+describe('license tiers', () => {
+  test('every tier has a price, a summary, and both halves of the grant', () => {
     for (const tier of [licenseTier('personal')!]) {
       expect(tier.priceCents).toBeGreaterThan(0);
       expect(tier.summary.length).toBeGreaterThan(0);
-      expect(tier.terms.length).toBeGreaterThan(0);
+      expect(tier.grants.length).toBeGreaterThan(0);
+      expect(tier.restrictions.length).toBeGreaterThan(0);
     }
+  });
+
+  test('licenseTerms states both halves and who holds the copyright', () => {
+    const terms = licenseTerms(licenseTier('personal')!);
+
+    expect(terms).toContain('You may keep the file');
+    expect(terms).toContain('You may not sell');
+    expect(terms).toContain('Copyright stays with Adam Ficke.');
   });
 
   test('unknown tiers resolve to undefined rather than a default', () => {

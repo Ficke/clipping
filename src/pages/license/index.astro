@@ -1,0 +1,122 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import { COPYRIGHT_LINE, LICENSE_TIERS } from '../../lib/downloads';
+
+const named = LICENSE_TIERS.length > 1;
+---
+
+<Layout
+  title="License — Adam Ficke"
+  description="What you may and may not do with a photograph bought from this site."
+  section="license"
+>
+  <article class="license rise">
+    <h1>License</h1>
+    <p class="lead">
+      Buying a photograph gets you the original full-resolution file and the
+      license below. You are buying the right to use the photograph, not the
+      copyright in it.
+    </p>
+
+    {
+      LICENSE_TIERS.map((tier) => (
+        <section class="tier">
+          {named && <h2>{tier.summary}</h2>}
+
+          <h3>You may</h3>
+          <ul class="may">
+            {tier.grants.map((grant) => <li>{grant.charAt(0).toUpperCase() + grant.slice(1)}.</li>)}
+          </ul>
+
+          <h3>You may not</h3>
+          <ul class="may-not">
+            {tier.restrictions.map((limit) => <li>{limit.charAt(0).toUpperCase() + limit.slice(1)}.</li>)}
+          </ul>
+        </section>
+      ))
+    }
+
+    <p class="closing">
+      {COPYRIGHT_LINE} The license is yours alone and cannot be transferred. If
+      you want to use a photograph in a way this does not cover, write to me and
+      we will sort something out.
+    </p>
+  </article>
+</Layout>
+
+<style>
+  .license {
+    margin-top: clamp(1rem, 4vw, 3rem);
+    max-width: var(--measure);
+  }
+
+  .license h1 {
+    font-size: clamp(1.8rem, 5vw, 3rem);
+    margin-bottom: 1rem;
+  }
+
+  .lead {
+    font-size: 1.02rem;
+    line-height: 1.7;
+  }
+
+  .tier {
+    margin-top: clamp(2rem, 5vw, 3rem);
+  }
+
+  .tier h2 {
+    font-size: 1.35rem;
+    font-variation-settings: 'opsz' 24;
+    margin-bottom: 1.2rem;
+  }
+
+  .tier h3 {
+    font-family: 'Figtree Variable', system-ui, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 1.8rem;
+    margin-bottom: 0.7rem;
+  }
+
+  ul {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  li {
+    padding-left: 1.5rem;
+    position: relative;
+    line-height: 1.55;
+  }
+
+  /* Marks rather than bullets: which list you are in should survive skimming. */
+  li::before {
+    position: absolute;
+    left: 0;
+    font-weight: 600;
+  }
+
+  .may li::before {
+    content: '✓';
+    color: var(--accent);
+  }
+
+  .may-not li::before {
+    content: '✕';
+    color: var(--muted);
+  }
+
+  .closing {
+    margin-top: clamp(2rem, 5vw, 3rem);
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--hairline);
+    font-size: 0.9rem;
+    line-height: 1.65;
+    color: var(--muted);
+  }
+</style>

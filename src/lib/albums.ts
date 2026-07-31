@@ -33,7 +33,7 @@ export interface AlbumPhoto {
 
 /**
  * URL slug, derived from storyId rather than the folder so albums can be
- * reorganised on disk.
+ * reorganized on disk.
  */
 export function slugOf(album: Album): string {
   return slugForStoryId(album.data.storyId);

@@ -35,7 +35,7 @@ import { isFulfillable, verifyWebhook } from './webhook';
  * print order, say — is a new file and a new case, not a rewrite.
  */
 
-/* Pin the API version so a Stripe-side default change cannot alter behaviour. */
+/* Pin the API version so a Stripe-side default change cannot alter behavior. */
 const STRIPE_API_VERSION = '2026-06-24.dahlia';
 
 const env: Env = readEnv();
@@ -174,7 +174,7 @@ async function fulfill(secrets: Secrets, event: FunctionUrlEvent): Promise<Funct
     });
   } catch (error) {
     if (error instanceof Stripe.errors.StripeInvalidRequestError) {
-      /* An id that Stripe does not recognise: a stale or hand-edited URL. */
+      /* An id that Stripe does not recognize: a stale or hand-edited URL. */
       return problem(404, 'That order could not be found.');
     }
     throw error;

@@ -7,45 +7,37 @@ interface Props {
 }
 
 const { offers } = Astro.props;
+/* Several tiers need naming to tell the buttons apart; one does not. */
+const named = offers.length > 1;
 ---
 
 {
-  /*
-   * A plain link, not a form or a fetch. The redirect to Stripe happens on the
-   * server side of /api/checkout, so the strict CSP — which allows no external
-   * scripts and sets form-action 'none' — needs no exception for this to work.
-   */
+  /* A link, not a form: the CSP sets form-action 'none', and the redirect to
+     Stripe happens server-side in /api/checkout. */
   offers.map((offer) => (
     <a class="buy" href={offer.href} rel="nofollow">
-      <span class="buy-label">{offer.tier.summary}</span>
-      <span class="buy-price">{formatPrice(offer.tier.priceCents)}</span>
+      {named ? `${offer.tier.summary} — ` : 'Buy — '}
+      {formatPrice(offer.tier.priceCents)}
     </a>
   ))
 }
 
 <style>
   .buy {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.5rem;
-    font-size: 0.78rem;
+    display: inline-block;
+    padding: 0.7rem 1.15rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-size: 0.85rem;
     font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--muted);
-    border-bottom: 1px solid var(--hairline);
-    padding-bottom: 0.12rem;
-    transition: color 0.2s ease, border-color 0.2s ease;
+    letter-spacing: 0.03em;
+    font-variant-numeric: tabular-nums;
+    border-radius: 2px;
+    transition: background 0.2s ease;
   }
 
   .buy:hover,
   .buy:focus-visible {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-
-  .buy-price {
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.02em;
+    background: var(--accent);
   }
 </style>

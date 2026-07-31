@@ -7,12 +7,6 @@ import {
   type LicenseTier,
 } from './downloads';
 
-/**
- * Joins album content to the licence tiers, producing one item per sellable
- * photo per tier. Used twice in the build: to render buy links on album pages,
- * and to publish `/downloads-catalog.json` for the commerce Lambda.
- */
-
 export interface SellablePhoto {
   photo: AlbumPhoto;
   tier: LicenseTier;
@@ -21,11 +15,6 @@ export interface SellablePhoto {
   href: string;
 }
 
-/**
- * The offers for one photo, empty when it is not for sale. `index` is the
- * photo's position in the album, used only to label the line item when a photo
- * has no caption to borrow.
- */
 export function offersFor(album: Album, photo: AlbumPhoto): SellablePhoto[] {
   if (!photo.forSale) return [];
   return LICENSE_TIERS.map((tier) => {
@@ -45,11 +34,7 @@ function labelFor(album: Album, photo: AlbumPhoto, index: number, total: number)
     ?? `${album.data.title}, photograph ${index + 1} of ${total}`;
 }
 
-/**
- * Every offer on the site. The Lambda treats this as the authority on price
- * and on what is purchasable, so a photo missing here cannot be bought no
- * matter what SKU a request carries.
- */
+/** A photo absent here cannot be bought, whatever SKU a request carries. */
 export async function buildCatalog(): Promise<DownloadCatalog> {
   const albums = await getAlbums();
   const items: CatalogItem[] = [];
@@ -82,14 +67,22 @@ export async function buildCatalog(): Promise<DownloadCatalog> {
   return { version: 1, generated: new Date().toISOString(), items };
 }
 
-/** Albums that have at least one photo for sale, newest first. */
-export async function albumsWithDownloads(): Promise<{ album: Album; slug: string; offers: SellablePhoto[] }[]> {
+export interface AlbumDownloads {
+  album: Album;
+  slug: string;
+  /* Grouped, not flattened: a flat list repeats the image once per tier. */
+  photos: { photo: AlbumPhoto; offers: SellablePhoto[] }[];
+}
+
+/** Albums with at least one photo for sale, newest first. */
+export async function albumsWithDownloads(): Promise<AlbumDownloads[]> {
   const albums = await getAlbums();
-  const results = [];
+  const results: AlbumDownloads[] = [];
   for (const album of albums) {
-    const photos = await photosOf(album);
-    const offers = photos.flatMap((photo) => offersFor(album, photo));
-    if (offers.length) results.push({ album, slug: slugOf(album), offers });
+    const photos = (await photosOf(album))
+      .map((photo) => ({ photo, offers: offersFor(album, photo) }))
+      .filter(({ offers }) => offers.length > 0);
+    if (photos.length) results.push({ album, slug: slugOf(album), photos });
   }
   return results;
 }

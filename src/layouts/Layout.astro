@@ -11,7 +11,7 @@ interface Props {
   ogImageAlt?: string;
   type?: 'website' | 'article';
   publishedTime?: Date;
-  section?: 'photography' | 'about';
+  section?: 'photography' | 'store' | 'about' | 'license';
   /** Keep a page out of search results. Also exclude it from the sitemap. */
   noindex?: boolean;
 }
@@ -62,6 +62,7 @@ const photographyCurrent = section === 'photography'
       <a class="wordmark" href="/">Adam Ficke</a>
       <nav class="kicker" aria-label="Primary">
         <a href="/" aria-current={photographyCurrent}>Photography</a>
+        <a href="/store/" aria-current={section === 'store' ? 'page' : undefined}>Store</a>
         <a href="/about/" aria-current={section === 'about' ? 'page' : undefined}>About</a>
       </nav>
     </header>
@@ -73,6 +74,7 @@ const photographyCurrent = section === 'photography'
       <nav aria-label="Footer">
         <a href="https://www.instagram.com/youngficke/" rel="me">Instagram</a>
         <a href="/rss.xml">RSS</a>
+        <a href="/license/" aria-current={section === 'license' ? 'page' : undefined}>License</a>
       </nav>
     </footer>
   </body>

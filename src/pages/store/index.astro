@@ -1,0 +1,151 @@
+---
+import BuyDownload from '../../components/BuyDownload.astro';
+import Lightbox from '../../components/Lightbox.astro';
+import PhotoPicture from '../../components/PhotoPicture.astro';
+import Layout from '../../layouts/Layout.astro';
+import { albumsWithDownloads } from '../../lib/catalog';
+import { lightboxSrcset } from '../../lib/photo-manifest';
+
+const albums = await albumsWithDownloads();
+const total = albums.reduce((count, { photos }) => count + photos.length, 0);
+---
+
+<Layout
+  title="Store — Adam Ficke"
+  description="Full-resolution photograph downloads."
+  section="store"
+  noindex
+>
+  <header class="intro rise">
+    <h1>Store</h1>
+  </header>
+
+  {
+    albums.length === 0 ? (
+      <p class="empty">Nothing is for sale at the moment — check back before long.</p>
+    ) : (
+      albums.map(({ album, slug, photos }) => (
+        <section class="group">
+          <h2>
+            <a href={`/photography/${slug}/`}>{album.data.title}</a>
+            <span class="location">{album.data.location}</span>
+          </h2>
+
+          <ul class="grid">
+            {photos.map(({ photo, offers }) => {
+              const alt = photo.alt ?? photo.caption ?? `${album.data.title} — ${photo.file}`;
+              return (
+                <li class="item rise">
+                  <a
+                    href={photo.image.variants.lightbox.src}
+                    class="thumb"
+                    data-lightbox
+                    data-alt={alt}
+                    data-caption={photo.caption}
+                    data-srcset={lightboxSrcset(photo.image)}
+                    data-aspect={(photo.image.width / photo.image.height).toFixed(4)}
+                    aria-label={`View ${alt} larger`}
+                  >
+                    <PhotoPicture
+                      photo={photo.image}
+                      alt={alt}
+                      sizes="(min-width: 900px) 340px, (min-width: 600px) 44vw, 92vw"
+                    />
+                  </a>
+                  {photo.caption && <p class="caption">{photo.caption}</p>}
+                  <BuyDownload offers={offers} />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))
+    )
+  }
+
+  <Lightbox photoCount={total} />
+</Layout>
+
+<style>
+  .intro {
+    margin-top: clamp(1rem, 4vw, 3rem);
+    max-width: var(--measure);
+  }
+
+  .intro h1 {
+    font-size: clamp(1.8rem, 5vw, 3rem);
+  }
+
+  .empty {
+    margin-top: 2.5rem;
+    color: var(--muted);
+  }
+
+  .group {
+    margin-top: clamp(2.5rem, 7vw, 4.5rem);
+  }
+
+  .group h2 {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.9rem;
+    font-size: clamp(1.25rem, 2.6vw, 1.6rem);
+    padding-bottom: 0.7rem;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .group h2 a:hover,
+  .group h2 a:focus-visible {
+    color: var(--accent);
+  }
+
+  .location {
+    font-family: 'Figtree Variable', system-ui, sans-serif;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .grid {
+    list-style: none;
+    padding: 0;
+    margin-top: 1.8rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
+    gap: clamp(1.8rem, 4vw, 2.8rem);
+  }
+
+  .item {
+    display: flex;
+    flex-direction: column;
+    align-items: start;
+    gap: 0.55rem;
+  }
+
+  .thumb {
+    display: block;
+    width: 100%;
+    background: var(--surface);
+    cursor: zoom-in;
+  }
+
+  .thumb :global(img) {
+    width: 100%;
+    border-radius: 2px;
+  }
+
+  .caption {
+    font-size: 0.84rem;
+    line-height: 1.5;
+    color: color-mix(in srgb, var(--ink) 88%, var(--muted));
+  }
+
+  /* Bottom-aligned, so buttons line up across cards of unequal caption length. */
+  .item :global(.buy) {
+    margin-top: auto;
+  }
+
+</style>

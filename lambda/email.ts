@@ -1,12 +1,10 @@
 import { SendEmailCommand, type SESv2Client } from '@aws-sdk/client-sesv2';
-import { licenseTier, parseSku } from '../src/lib/downloads';
+import { licenseTerms, licenseTier, parseSku } from '../src/lib/downloads';
 import type { Fulfillment } from './fulfill';
 
 /**
- * The delivery email. Stripe's own receipt covers the money; this covers the
- * goods, and is the buyer's durable copy of both the link and the licence they
- * bought — which is why the licence text is repeated in full here rather than
- * linked.
+ * The buyer's durable copy of the link and the license, which is why the
+ * license text is repeated in full rather than linked.
  */
 
 export interface EmailDeps {
@@ -39,8 +37,8 @@ export function deliveryEmail(fulfillment: Fulfillment): { subject: string; text
       `${item.albumTitle} — ${item.file}${size}`,
       `This link works until ${expires}. Download it somewhere you keep things.`,
       '',
-      'Your licence',
-      tier?.terms ?? '',
+      'Your license',
+      tier ? licenseTerms(tier) : '',
       '',
       'Reply to this email if anything goes wrong and I will sort it out.',
       '',
