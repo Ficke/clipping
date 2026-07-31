@@ -8,6 +8,8 @@ description: "Tokyo, Kyoto, Osaka, Kanazawa, Matsumoto"
 photos:
   - file: DSCF3191.jpg
   - file: DSCF3289.jpg
+    forSale: true
+    price: 50
   - file: DSCF3325.jpg
   - file: DSCF3331.jpg
   - file: DSCF3401.jpg
