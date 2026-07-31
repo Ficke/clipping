@@ -1,8 +1,8 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import exifr from 'exifr';
@@ -68,41 +68,82 @@ if (!preparedAlbums.length) fail(`No supported images found in ${source}`);
 
 const buildLocally = dryRun ? false : forceLocal || await askWhereToBuild();
 
+const stagingRoot = mkdtempSync(path.join(os.tmpdir(), 'photos-fulfillment-'));
 let sourceBundle;
-for (const { albumDirectory, images, storyId } of preparedAlbums) {
-  const album = storyId;
-  const destination = `${archiveRoot}/${album}`;
-  const syncArgs = [
-    's3', 'sync', albumDirectory, destination,
-    '--exclude', '*',
-    '--include', '*.jpg',
-    '--include', '*.jpeg',
-    '--include', '*.png',
-    '--include', '*.webp',
-    '--include', '*.avif',
-    '--delete',
-    '--checksum-algorithm', 'SHA256',
-  ];
-  if (dryRun) syncArgs.push('--dryrun');
+try {
+  for (const { albumDirectory, images, storyId } of preparedAlbums) {
+    const album = storyId;
+    const { directory: stagedDirectory, metadataPath } = stageAlbum(album, albumDirectory);
+    const destination = `${archiveRoot}/${album}`;
+    const syncArgs = [
+      's3', 'sync', stagedDirectory, destination,
+      '--exclude', '*',
+      '--include', '*.jpg',
+      '--include', '*.jpeg',
+      '--include', '*.png',
+      '--include', '*.webp',
+      '--include', '*.avif',
+      '--delete',
+      '--checksum-algorithm', 'SHA256',
+    ];
+    if (dryRun) syncArgs.push('--dryrun');
 
-  console.log(`\n${dryRun ? 'Previewing' : 'Uploading'} ${images.length} image${images.length === 1 ? '' : 's'} to ${destination}`);
-  run('aws', syncArgs);
+    console.log(`\n${dryRun ? 'Previewing' : 'Uploading'} ${images.length} sanitized image${images.length === 1 ? '' : 's'} to ${destination}`);
+    const metadataArgs = [
+      's3', 'cp', metadataPath, `${manifestRoot}/${album}/source-metadata.json`,
+      '--content-type', 'application/json', '--only-show-errors',
+    ];
+    if (dryRun) metadataArgs.push('--dryrun');
 
-  if (dryRun) {
-    console.log(`Would build immutable media and write ${path.relative(repoRoot, albumDirectory)}/photos.json`);
-    continue;
+    if (dryRun) {
+      await runTogether([
+        runAsync('aws', syncArgs),
+        runAsync('aws', metadataArgs),
+      ]);
+      console.log(`Would build immutable media and write ${path.relative(repoRoot, albumDirectory)}/photos.json`);
+      continue;
+    }
+
+    if (buildLocally) {
+      // The local builder consumes staged files, not S3, so archive upload and
+      // derivative generation can safely overlap. Await every child before the
+      // staging directory is cleaned up, even if one of them fails.
+      await runTogether([
+        runAsync('aws', syncArgs),
+        runAsync('aws', metadataArgs),
+        publishMediaLocally(album, albumDirectory, stagedDirectory, metadataPath),
+      ]);
+      continue;
+    }
+
+    // CodeBuild reads the archive and sidecar from S3, so only these two small
+    // independent upload jobs can overlap on the cloud path.
+    await runTogether([
+      runAsync('aws', syncArgs),
+      runAsync('aws', metadataArgs),
+    ]);
+    sourceBundle ??= createSourceBundle();
+    await publishMedia(album, albumDirectory, sourceBundle);
   }
-
-  if (buildLocally) {
-    publishMediaLocally(album, albumDirectory);
-    continue;
-  }
-
-  sourceBundle ??= createSourceBundle();
-  await publishMedia(album, albumDirectory, sourceBundle);
+} finally {
+  if (sourceBundle) rmSync(sourceBundle.directory, { recursive: true, force: true });
+  rmSync(stagingRoot, { recursive: true, force: true });
 }
 
-if (sourceBundle) rmSync(sourceBundle.directory, { recursive: true, force: true });
+function stageAlbum(album, albumDirectory) {
+  const directory = path.join(stagingRoot, album);
+  const metadataPath = path.join(stagingRoot, `${album}-source-metadata.json`);
+  mkdirSync(directory, { recursive: true });
+  console.log(`\nPreparing metadata-minimized fulfillment files for ${album}`);
+  run('bun', [
+    path.join(repoRoot, 'scripts', 'photos-sanitize.mjs'),
+    '--source', albumDirectory,
+    '--output', directory,
+    '--metadata', metadataPath,
+    '--previous-manifest', path.join(albumDirectory, 'photos.json'),
+  ]);
+  return { directory, metadataPath };
+}
 
 function resolveSource(input) {
   if (!input) return albumsRoot;
@@ -270,12 +311,13 @@ async function askWhereToBuild() {
 }
 
 /** Same generator CodeBuild runs; variant keys derive from the source hash. */
-function publishMediaLocally(album, albumDirectory) {
+async function publishMediaLocally(album, albumDirectory, stagedDirectory, metadataPath) {
   const manifestPath = path.join(albumDirectory, 'photos.json');
   console.log(`Building ${album} locally`);
-  run('bun', [
+  await runAsync('bun', [
     path.join(repoRoot, 'scripts', 'photos-build-media.mjs'),
-    '--source', albumDirectory,
+    '--source', stagedDirectory,
+    '--source-metadata', metadataPath,
     '--album', album,
     '--manifest', manifestPath,
   ], { MEDIA_BUCKET: mediaBucket, MANIFEST_BUCKET: manifestBucket });
@@ -531,6 +573,27 @@ function run(command, commandArgs, extraEnv) {
   });
   if (result.error) fail(`Could not run ${command}: ${result.error.message}`);
   if (result.status !== 0) process.exit(result.status ?? 1);
+}
+
+function runAsync(command, commandArgs, extraEnv) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, commandArgs, {
+      cwd: repoRoot,
+      stdio: 'inherit',
+      env: extraEnv ? { ...process.env, ...extraEnv } : process.env,
+    });
+    child.once('error', (error) => reject(new Error(`Could not run ${command}: ${error.message}`)));
+    child.once('close', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`${command} exited with code ${code ?? 'unknown'}`));
+    });
+  });
+}
+
+async function runTogether(promises) {
+  const results = await Promise.allSettled(promises);
+  const failure = results.find((result) => result.status === 'rejected');
+  if (failure) throw failure.reason;
 }
 
 function runCapture(command, commandArgs, { allowFailure = false } = {}) {

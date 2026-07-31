@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import exifr from 'exifr';
 import sharp from 'sharp';
+import { exifSummary } from './photo-metadata.mjs';
 import {
   derivativeDefinitions,
   derivativeKey,
@@ -21,6 +21,8 @@ const sourceDirectory = path.resolve(sourceInput);
 const album = args.album ?? process.env.ALBUM_ID ?? path.basename(sourceDirectory);
 const outputDirectory = path.resolve(args.output ?? process.env.PHOTO_OUTPUT_DIR ?? '/tmp/photo-media');
 const manifestPath = path.resolve(args.manifest ?? process.env.PHOTO_MANIFEST_PATH ?? '/tmp/photos.json');
+const sourceMetadataPath = args.sourceMetadata ?? process.env.PHOTO_SOURCE_METADATA_PATH;
+const sourceMetadata = loadSourceMetadata(sourceMetadataPath);
 const mediaBucket = process.env.MEDIA_BUCKET;
 const manifestBucket = process.env.MANIFEST_BUCKET;
 const noUpload = args.noUpload;
@@ -45,7 +47,8 @@ if (!files.length) fail(`No supported photos found in ${sourceDirectory}`);
 const photos = [];
 let generatedCount = 0;
 let reusedCount = 0;
-const previousVariants = noUpload ? new Map() : loadPreviousVariants();
+const previousManifest = noUpload ? undefined : loadPreviousManifest();
+const previousVariants = variantsFrom(previousManifest);
 
 for (const file of files) {
   const sourcePath = path.join(sourceDirectory, file);
@@ -100,7 +103,7 @@ for (const file of files) {
     sourceHash,
     width: dimensions.width,
     height: dimensions.height,
-    exif: await exifSummary(sourcePath),
+    exif: sourceMetadata.get(file) ?? await exifSummary(sourcePath),
     variants: { responsive, lightbox, social },
   });
   console.log(`${file}: ${definitions.length} variants (${generatedCount} generated total)`);
@@ -127,7 +130,7 @@ if (!noUpload) {
 console.log(`Manifest: ${manifestPath}`);
 console.log(`Variants: ${generatedCount} generated, ${reusedCount} reused`);
 
-function loadPreviousVariants() {
+function loadPreviousManifest() {
   const previousPath = `${manifestPath}.previous`;
   rmSync(previousPath, { force: true });
   const result = spawnSync('aws', [
@@ -137,19 +140,25 @@ function loadPreviousVariants() {
   if (result.error) fail(`Could not run aws: ${result.error.message}`);
   if (result.status !== 0) {
     const error = result.stderr.trim();
-    if (/404|NoSuchKey|Not Found|does not exist/i.test(error)) return new Map();
+    if (/404|NoSuchKey|Not Found|does not exist/i.test(error)) return undefined;
     fail(error || 'Could not download the previous photo manifest');
   }
 
   let previous;
+  const previousContents = readFileSync(previousPath, 'utf8');
+  rmSync(previousPath, { force: true });
   try {
-    previous = JSON.parse(readFileSync(previousPath, 'utf8'));
+    previous = JSON.parse(previousContents);
   } catch (error) {
     fail(`Could not read the previous photo manifest: ${error.message}`);
   }
 
+  return previous;
+}
+
+function variantsFrom(manifest) {
   const variants = new Map();
-  for (const photo of previous.photos ?? []) {
+  for (const photo of manifest?.photos ?? []) {
     const responsive = Object.values(photo.variants?.responsive ?? {}).flat();
     for (const variant of [...responsive, photo.variants?.lightbox, photo.variants?.social]) {
       if (variant?.src && Number.isInteger(variant.width) && Number.isInteger(variant.height)) {
@@ -176,11 +185,31 @@ function parseArgs(values) {
     const value = values[index];
     if (value === '--no-upload') parsed.noUpload = true;
     else if (value === '--manifest-only') parsed.manifestOnly = true;
-    else if (['--source', '--album', '--output', '--manifest'].includes(value)) parsed[value.slice(2)] = values[++index];
+    else if (['--source', '--album', '--output', '--manifest', '--source-metadata'].includes(value)) parsed[toCamel(value.slice(2))] = values[++index];
     else fail(`Unknown argument: ${value}`);
   }
   if (parsed.manifestOnly) parsed.noUpload = true;
   return parsed;
+}
+
+function toCamel(value) {
+  return value.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+function loadSourceMetadata(input) {
+  if (!input) return new Map();
+  const metadataPath = path.resolve(input);
+  if (!existsSync(metadataPath)) fail(`Source metadata does not exist: ${metadataPath}`);
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(metadataPath, 'utf8'));
+  } catch (error) {
+    fail(`Could not read source metadata: ${error.message}`);
+  }
+  if (parsed.version !== 1 || !parsed.photos || typeof parsed.photos !== 'object') {
+    fail(`Source metadata must be a version 1 photo map: ${metadataPath}`);
+  }
+  return new Map(Object.entries(parsed.photos).filter(([, summary]) => typeof summary === 'string'));
 }
 
 function orientedDimensions(metadata) {
@@ -209,27 +238,6 @@ function listExistingKeys(sourceHash) {
     '--query', 'Contents[].Key', '--output', 'json',
   ]);
   return new Set(JSON.parse(result || '[]') ?? []);
-}
-
-async function exifSummary(file) {
-  try {
-    const exif = await exifr.parse(file, ['Model', 'FNumber', 'FocalLength', 'ExposureTime', 'ISO']);
-    if (!exif) return undefined;
-    const parts = [];
-    if (exif.Model) parts.push(String(exif.Model).trim());
-    if (exif.FocalLength) parts.push(`${Math.round(exif.FocalLength)}mm`);
-    if (exif.FNumber) parts.push(`f/${exif.FNumber}`);
-    if (exif.ExposureTime) parts.push(formatShutter(exif.ExposureTime));
-    if (exif.ISO) parts.push(`ISO ${exif.ISO}`);
-    return parts.length ? parts.join(' · ') : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function formatShutter(seconds) {
-  if (seconds >= 1) return `${seconds}s`;
-  return `1/${Math.round(1 / seconds)}s`;
 }
 
 function run(command, commandArgs) {
