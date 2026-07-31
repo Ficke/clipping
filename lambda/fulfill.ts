@@ -1,36 +1,31 @@
 import type Stripe from 'stripe';
-import { catalogItem, parseSku, type DownloadCatalog } from '../src/lib/downloads';
+import { catalogItem, isPhotoId, type DownloadCatalog } from '../src/lib/downloads';
 import { DOWNLOAD_WINDOW_SECONDS, mintToken } from './tokens';
+import { INTEGRATION_IDENTIFIER } from './integration';
 
 /**
  * Turning a paid Checkout Session into a download link.
  *
- * Both the webhook and the buyer's landing page call this, which is Stripe's
- * recommended shape: the webhook guarantees fulfillment happens even if the
- * buyer closes the tab, the landing page makes it immediate while they are still
- * there. That means it runs more than once per purchase, sometimes concurrently.
- *
- * It is safe to repeat because it writes nothing. The entitlement is derived
- * from the session, so calling it twice produces two equivalent tokens rather
- * than two of anything. The one side effect — the delivery email — is triggered
- * only from the webhook, so it happens once.
+ * The buyer's landing page calls this immediately after Checkout. It writes
+ * nothing: the entitlement is derived from the paid Session, so repeating it
+ * during the bounded return window produces an equivalent token.
  */
 
 /**
- * What was bought. The SKU is permanent and is the whole entitlement; the
- * catalog only describes what is *currently* for sale.
+ * What was bought. Stripe carries only the opaque photo ID. The catalog maps it
+ * to the private original and retains delisted published photos for recovery.
  *
  * So fulfillment deliberately does not require a catalog entry. Delisting a
- * photo, or changing your mind between a bank debit being authorised and it
- * settling days later, must not strand someone who already paid — it would
- * 404 the webhook until Stripe gave up retrying, and tell the buyer their
- * purchase was unavailable. Purchase is gated by the catalog; delivery is not.
+ * photo after a purchase must not strand someone who already paid. Purchase is
+ * gated by the catalog; delivery is not.
  */
 export interface PurchasedItem {
-  sku: string;
+  photoId: string;
   storyId: string;
   file: string;
   albumTitle: string;
+  label: string;
+  previewSrc: string;
   /** Only known while the photo is listed. */
   dimensions?: { width: number; height: number };
 }
@@ -40,9 +35,12 @@ export interface Fulfillment {
   item?: PurchasedItem;
   downloadUrl?: string;
   expiresAt?: number;
-  /** Where Stripe says to send the file. Absent if Checkout collected no email. */
-  email?: string;
 }
+
+/** A Checkout return URL is for immediate delivery, not permanent recovery. */
+export const CHECKOUT_RETURN_GRACE_SECONDS = 60 * 60;
+
+export class CheckoutReturnExpired extends Error {}
 
 export interface FulfillDeps {
   stripe: Stripe;
@@ -50,13 +48,43 @@ export interface FulfillDeps {
   siteUrl: string;
   downloadTokenKey: string;
   now?: number;
+  /** Enforce the browser return window. Trusted operator reissues omit this. */
+  requireFreshReturn?: boolean;
 }
 
 export async function fulfillCheckout(
   sessionId: string,
-  { stripe, catalog, siteUrl, downloadTokenKey, now = Date.now() }: FulfillDeps,
+  {
+    stripe,
+    catalog,
+    siteUrl,
+    downloadTokenKey,
+    now = Date.now(),
+    requireFreshReturn = false,
+  }: FulfillDeps,
 ): Promise<Fulfillment> {
   const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+  return fulfillmentForSession(session, {
+    catalog,
+    siteUrl,
+    downloadTokenKey,
+    now,
+    requireFreshReturn,
+  });
+}
+
+export function fulfillmentForSession(
+  session: Stripe.Checkout.Session,
+  {
+    catalog,
+    siteUrl,
+    downloadTokenKey,
+    now = Date.now(),
+    requireFreshReturn = false,
+  }: Omit<FulfillDeps, 'stripe'>,
+): Fulfillment {
+  const sessionId = session.id;
 
   /*
    * `paid` is the only status that entitles a download. A delayed payment method
@@ -66,29 +94,41 @@ export async function fulfillCheckout(
    */
   if (session.payment_status !== 'paid') return { status: 'unpaid' };
 
-  const sku = session.metadata?.sku;
-  if (!sku) throw new Error(`Checkout Session ${sessionId} carries no sku in metadata`);
+  if (session.metadata?.integration !== INTEGRATION_IDENTIFIER) {
+    throw new Error(`Checkout Session ${sessionId} was not created by this store`);
+  }
 
-  /* Shape is still enforced: a SKU that cannot be parsed cannot name an S3 key. */
-  const { storyId, file } = parseSku(sku);
-  const listed = catalogItem(catalog, sku);
+  if (requireFreshReturn) {
+    const checkoutExpiresAt = session.expires_at;
+    if (!checkoutExpiresAt || now / 1000 > checkoutExpiresAt + CHECKOUT_RETURN_GRACE_SECONDS) {
+      throw new CheckoutReturnExpired(`Checkout Session ${sessionId} is outside its return window`);
+    }
+  }
+
+  const photoId = session.metadata?.photo_id;
+  if (!photoId || !isPhotoId(photoId)) {
+    throw new Error(`Checkout Session ${sessionId} carries no valid photo_id in metadata`);
+  }
+  const listed = catalogItem(catalog, photoId);
+  if (!listed) throw new Error(`Photo ID ${photoId} is absent from the fulfillment catalog`);
+  const { storyId, file } = listed;
   const item: PurchasedItem = {
-    sku,
+    photoId,
     storyId,
     file,
-    /* Falls back to the permanent id when the album is no longer listed. */
-    albumTitle: listed?.albumTitle ?? storyId,
-    ...(listed && { dimensions: { width: listed.width, height: listed.height } }),
+    albumTitle: listed.albumTitle,
+    label: listed.label,
+    previewSrc: listed.previewSrc,
+    dimensions: { width: listed.width, height: listed.height },
   };
 
   const expiresAt = Math.floor(now / 1000) + DOWNLOAD_WINDOW_SECONDS;
-  const token = mintToken({ sku, sessionId, expiresAt }, downloadTokenKey);
+  const token = mintToken({ photoId, sessionId, expiresAt }, downloadTokenKey);
 
   return {
     status: 'paid',
     item,
     expiresAt,
     downloadUrl: `${siteUrl}/api/download?t=${token}`,
-    email: session.customer_details?.email ?? undefined,
   };
 }

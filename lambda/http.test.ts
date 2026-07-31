@@ -1,8 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  constantTimeEquals,
-  EDGE_SECRET_HEADER,
-  fromEdge,
   header,
   method,
   problem,
@@ -28,8 +25,8 @@ describe('request parsing', () => {
   });
 
   test('reads the query string', () => {
-    const event = request({ rawQueryString: 'sku=lost-coast%2FDSCF1250.jpg%2Fpersonal' });
-    expect(query(event).get('sku')).toBe('lost-coast/DSCF1250.jpg/personal');
+    const event = request({ rawQueryString: 'photo_id=photo_1234567890abcdef12345678' });
+    expect(query(event).get('photo_id')).toBe('photo_1234567890abcdef12345678');
   });
 
   test('finds a header regardless of case', () => {
@@ -55,27 +52,6 @@ describe('request parsing', () => {
   });
 });
 
-describe('edge gating', () => {
-  const secret = 's'.repeat(48);
-
-  test('accepts a request carrying the shared secret', () => {
-    expect(fromEdge(request({ headers: { [EDGE_SECRET_HEADER]: secret } }), secret)).toBe(true);
-  });
-
-  test('refuses a request that reached the Function URL directly', () => {
-    expect(fromEdge(request(), secret)).toBe(false);
-  });
-
-  test('refuses a wrong secret, including a prefix of the right one', () => {
-    expect(fromEdge(request({ headers: { [EDGE_SECRET_HEADER]: 's'.repeat(47) } }), secret)).toBe(false);
-    expect(fromEdge(request({ headers: { [EDGE_SECRET_HEADER]: `${secret}x` } }), secret)).toBe(false);
-  });
-
-  test('compares unequal lengths without throwing', () => {
-    expect(constantTimeEquals('short', 'much longer value')).toBe(false);
-  });
-});
-
 describe('responses', () => {
   test('never lets a payment response be cached', () => {
     for (const response of [problem(404, 'Not found.'), redirect('https://checkout.stripe.com/c/pay/cs_test')]) {
@@ -89,6 +65,6 @@ describe('responses', () => {
   });
 
   test('carries a message and nothing else', () => {
-    expect(JSON.parse(problem(400, 'Missing sku.').body!)).toEqual({ error: 'Missing sku.' });
+    expect(JSON.parse(problem(400, 'Missing photo_id.').body!)).toEqual({ error: 'Missing photo_id.' });
   });
 });

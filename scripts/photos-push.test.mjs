@@ -195,7 +195,58 @@ exit 0
     expect(awsCalls).toContain('manifests/local-test/photos.json');
   });
 
-  test('keeps per-photo forSale flags across a push', async () => {
+  test('asks whether each newly added photo is for sale and records its price', async () => {
+    const repoRoot = path.resolve(import.meta.dir, '..');
+    const album = path.join(repoRoot, 'content', 'albums', `2099-01-new-sale-test-${process.pid}`);
+    const temporary = mkdtempSync(path.join(os.tmpdir(), 'photos-push-test-'));
+    const bin = path.join(temporary, 'bin');
+    temporaryAlbums.push(album);
+    temporaryDirectories.push(temporary);
+    mkdirSync(album);
+    mkdirSync(bin);
+    for (const file of ['existing.jpg', 'new.jpg']) {
+      await sharp({ create: { width: 30, height: 20, channels: 3, background: '#234567' } })
+        .jpeg().toFile(path.join(album, file));
+    }
+    writeFileSync(path.join(album, 'index.md'), [
+      '---',
+      'storyId: "new-sale-test"',
+      'title: "New Sale Test"',
+      'date: 2099-01-01',
+      'location: "Nowhere"',
+      'photos:',
+      '  - file: existing.jpg',
+      '---',
+      '',
+    ].join('\n'));
+    const fakeAws = path.join(bin, 'aws');
+    writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3 cp" ]; then
+  case "$3" in
+    s3://*manifests*) echo "An error occurred (404)" >&2; exit 1 ;;
+  esac
+fi
+exit 0
+`);
+    chmodSync(fakeAws, 0o755);
+
+    const result = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local',
+    ], {
+      cwd: repoRoot,
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, PHOTOS_PUSH_PROMPT: '1' },
+      input: '55\n',
+      encoding: 'utf8',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Store settings for 1 new photo');
+    const rewritten = readFileSync(path.join(album, 'index.md'), 'utf8');
+    expect(rewritten).toContain('  - file: new.jpg\n    forSale: true\n    price: 55');
+    expect(rewritten).not.toContain('  - file: existing.jpg\n    forSale');
+  });
+
+  test('keeps per-photo sale settings across a push', async () => {
     const repoRoot = path.resolve(import.meta.dir, '..');
     const album = path.join(repoRoot, 'content', 'albums', `2099-01-forsale-test-${process.pid}`);
     const temporary = mkdtempSync(path.join(os.tmpdir(), 'photos-push-test-'));
@@ -216,13 +267,12 @@ exit 0
       'title: "For Sale Test"',
       'date: 2099-01-01',
       'location: "Nowhere"',
-      'forSale: true',
       'photos:',
       '  - file: a.jpg',
-      '    forSale: false',
       '  - file: b.jpg',
       '    caption: "Kept."',
       '    forSale: true',
+      '    price: 55',
       '---',
       '',
     ].join('\n'));
@@ -243,9 +293,9 @@ exit 0
 
     expect(result.status).toBe(0);
     const rewritten = readFileSync(path.join(album, 'index.md'), 'utf8');
-    expect(rewritten).toContain('  - file: a.jpg\n    forSale: false');
-    expect(rewritten).toContain('  - file: b.jpg\n    caption: "Kept."\n    forSale: true');
-    // The album default covers the new file, so it needs no flag of its own.
+    expect(rewritten).toContain('  - file: a.jpg\n');
+    expect(rewritten).toContain('  - file: b.jpg\n    caption: "Kept."\n    forSale: true\n    price: 55');
+    // Non-interactive pushes safely default new files to not for sale.
     expect(rewritten).toContain('  - file: c.jpg\n');
     expect(rewritten).not.toContain('  - file: c.jpg\n    forSale');
   });

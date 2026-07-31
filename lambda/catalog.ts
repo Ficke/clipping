@@ -28,8 +28,8 @@ export async function loadCatalog(
   if (!body) throw new Error(`Download catalog ${CATALOG_PATH} is empty`);
 
   const catalog = JSON.parse(body) as DownloadCatalog;
-  if (catalog.version !== 1 || !Array.isArray(catalog.items)) {
-    throw new Error(`Download catalog ${CATALOG_PATH} is not a version 1 catalog`);
+  if (catalog.version !== 2 || !Array.isArray(catalog.items)) {
+    throw new Error(`Download catalog ${CATALOG_PATH} is not a version 2 catalog`);
   }
 
   cache = { at: now, catalog };
@@ -44,12 +44,16 @@ export function forgetCatalog(): void {
 export class NotForSale extends Error {}
 
 /**
- * Resolves a SKU to its listed item, or refuses. A SKU that is well-formed but
- * absent from the catalog is not an error on our side — it is a photo that is
- * not for sale, or no longer is — so it reads as a 404 to the caller.
+ * Resolves an opaque photo ID and requires its current sale flag. The catalog
+ * retains delisted photos so paid sessions can still resolve their originals.
  */
-export function requireItem(catalog: DownloadCatalog, sku: string): CatalogItem {
-  const item = catalogItem(catalog, sku);
-  if (!item) throw new NotForSale(`No catalog item for SKU ${sku}`);
-  return item;
+export function requireItem(
+  catalog: DownloadCatalog,
+  photoId: string,
+): CatalogItem & { forSale: true; priceCents: number } {
+  const item = catalogItem(catalog, photoId);
+  if (!item?.forSale || !Number.isInteger(item.priceCents) || item.priceCents! <= 0) {
+    throw new NotForSale(`No sale offer for photo ID ${photoId}`);
+  }
+  return item as CatalogItem & { forSale: true; priceCents: number };
 }

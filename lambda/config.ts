@@ -12,8 +12,8 @@ import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
  *
  * Parameter Store rather than Secrets Manager: both encrypt with KMS and gate on
  * IAM identically, but Secrets Manager bills $0.40 per secret per month for
- * rotation, replication, and resource policies this uses none of. At 283 bytes
- * against a 4 KB standard-tier limit, this is free.
+ * rotation, replication, and resource policies this uses none of. The payload
+ * is well inside the 4 KB standard-tier limit, so this is free.
  */
 
 export interface Env {
@@ -21,28 +21,17 @@ export interface Env {
   originalsBucket: string;
   siteBucket: string;
   siteUrl: string;
-  /** Verified SES identity. When unset, delivery emails are skipped. */
-  fromEmail: string | undefined;
-  /**
-   * Shared secret CloudFront adds as a custom origin header. The Function URL is
-   * reachable from the internet, so this is what keeps requests that skipped
-   * CloudFront — and therefore skipped the canonical host, the access logs, and
-   * the response headers policy — from being served.
-   *
-   * It sits here rather than in Parameter Store for two reasons: Terraform has
-   * to know it anyway to configure the CloudFront origin, and reading it from an
-   * environment variable means an unauthenticated request is refused without
-   * spending a Parameter Store call. It authenticates a hop between two things
-   * we own, not access to anyone's money.
-   */
-  edgeSecret: string;
 }
 
 export interface Secrets {
   /** Restricted API key (`rk_`), scoped to Checkout Sessions. */
   stripeApiKey: string;
-  /** Signing secret for the webhook endpoint (`whsec_`). */
-  stripeWebhookSecret: string;
+  /**
+   * Environment-specific Stripe Product carrying the Managed Payments tax
+   * classification. It is not secret, but keeping it beside the key prevents a
+   * sandbox function from ever naming a live Product (or vice versa).
+   */
+  stripeProductId: string;
   /** HMAC key for download entitlement tokens. Rotating it voids live links. */
   downloadTokenKey: string;
 }
@@ -58,14 +47,12 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     originalsBucket: required('ORIGINALS_BUCKET'),
     siteBucket: required('SITE_BUCKET'),
     siteUrl: required('SITE_URL').replace(/\/$/, ''),
-    fromEmail: source.FROM_EMAIL || undefined,
-    edgeSecret: required('EDGE_SECRET'),
   };
 }
 
 const SECRET_FIELDS = [
   'stripeApiKey',
-  'stripeWebhookSecret',
+  'stripeProductId',
   'downloadTokenKey',
 ] as const;
 
@@ -86,6 +73,9 @@ export function parseSecrets(payload: string): Secrets {
     /* Names only. The values are the thing we are protecting. */
     throw new Error(`Commerce secret is missing: ${missing.join(', ')}`);
   }
+  if (!/^prod_[A-Za-z0-9]+$/.test(record.stripeProductId as string)) {
+    throw new Error('Commerce secret stripeProductId is not a Stripe Product ID');
+  }
   return Object.fromEntries(SECRET_FIELDS.map((field) => [field, record[field]])) as unknown as Secrets;
 }
 
@@ -93,8 +83,7 @@ let cached: Promise<Secrets> | undefined;
 
 /**
  * Cached for the life of the execution environment. A rotation therefore takes
- * effect as containers recycle rather than instantly; for the webhook secret
- * that means keeping both old and new registered in Stripe during a rotation.
+ * effect as containers recycle rather than instantly.
  */
 export function loadSecrets(env: Env, client = new SSMClient({})): Promise<Secrets> {
   cached ??= client

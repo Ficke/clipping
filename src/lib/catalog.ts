@@ -1,7 +1,7 @@
-import { getAlbums, photosOf, slugOf, type Album, type AlbumPhoto } from './albums';
+import { allPhotosOf, getAlbums, photosOf, slugOf, type Album, type AlbumPhoto } from './albums';
 import {
-  LICENSE_TIERS,
-  skuFor,
+  DOWNLOAD_PRODUCTS,
+  photoIdFor,
   type CatalogItem,
   type DownloadCatalog,
   type LicenseTier,
@@ -10,20 +10,23 @@ import {
 export interface SellablePhoto {
   photo: AlbumPhoto;
   tier: LicenseTier;
-  sku: string;
+  priceCents: number;
+  photoId: string;
   /** Where the buy link points. Same-origin, so the strict CSP is unaffected. */
   href: string;
 }
 
 export function offersFor(album: Album, photo: AlbumPhoto): SellablePhoto[] {
-  if (!photo.forSale) return [];
-  return LICENSE_TIERS.map((tier) => {
-    const sku = skuFor({ storyId: album.data.storyId, file: photo.file, license: tier.id });
+  if (!photo.forSale || photo.priceCents === undefined) return [];
+  const priceCents = photo.priceCents;
+  return DOWNLOAD_PRODUCTS.map((tier) => {
+    const photoId = photoIdFor(photo.image.sourceHash);
     return {
       photo,
       tier,
-      sku,
-      href: `/api/checkout?sku=${encodeURIComponent(sku)}`,
+      priceCents,
+      photoId,
+      href: `/api/checkout?photo_id=${encodeURIComponent(photoId)}`,
     };
   });
 }
@@ -34,37 +37,40 @@ function labelFor(album: Album, photo: AlbumPhoto, index: number, total: number)
     ?? `${album.data.title}, photograph ${index + 1} of ${total}`;
 }
 
-/** A photo absent here cannot be bought, whatever SKU a request carries. */
+/** A photo not flagged for sale cannot be bought, whatever ID a request carries. */
 export async function buildCatalog(): Promise<DownloadCatalog> {
   const albums = await getAlbums();
   const items: CatalogItem[] = [];
 
   for (const album of albums) {
-    const photos = await photosOf(album);
+    const photos = await allPhotosOf(album);
     for (const [index, photo] of photos.entries()) {
-      for (const offer of offersFor(album, photo)) {
-        items.push({
-          sku: offer.sku,
-          storyId: album.data.storyId,
-          file: photo.file,
-          license: offer.tier.id,
-          albumTitle: album.data.title,
-          label: labelFor(album, photo, index, photos.length),
-          priceCents: offer.tier.priceCents,
-          width: photo.image.width,
-          height: photo.image.height,
-        });
-      }
+      if (!photo.inCatalog) continue;
+      const preview = photo.image.variants.responsive.webp
+        .find((variant) => variant.width >= 1080)
+        ?? photo.image.variants.lightbox;
+      items.push({
+        photoId: photoIdFor(photo.image.sourceHash),
+        storyId: album.data.storyId,
+        file: photo.file,
+        forSale: photo.forSale,
+        albumTitle: album.data.title,
+        label: labelFor(album, photo, index, photos.length),
+        previewSrc: preview.src,
+        ...(photo.priceCents !== undefined && { priceCents: photo.priceCents }),
+        width: photo.image.width,
+        height: photo.image.height,
+      });
     }
   }
 
   const seen = new Set<string>();
   for (const item of items) {
-    if (seen.has(item.sku)) throw new Error(`Duplicate download SKU: ${item.sku}`);
-    seen.add(item.sku);
+    if (seen.has(item.photoId)) throw new Error(`Duplicate photo ID: ${item.photoId}`);
+    seen.add(item.photoId);
   }
 
-  return { version: 1, generated: new Date().toISOString(), items };
+  return { version: 2, generated: new Date().toISOString(), items };
 }
 
 export interface AlbumDownloads {

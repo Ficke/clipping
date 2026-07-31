@@ -1,46 +1,36 @@
 import { S3Client } from '@aws-sdk/client-s3';
-import { SESv2Client } from '@aws-sdk/client-sesv2';
 import Stripe from 'stripe';
 import { loadCatalog, NotForSale } from './catalog';
 import { createCheckoutSession } from './checkout';
 import { loadSecrets, readEnv, type Env, type Secrets } from './config';
 import { resolveDownload } from './download';
-import { sendDelivery } from './email';
-import { fulfillCheckout, type Fulfillment } from './fulfill';
+import { CheckoutReturnExpired, fulfillCheckout, type Fulfillment } from './fulfill';
 import {
-  fromEdge,
-  header,
   json,
   method,
   problem,
   query,
-  rawBody,
   redirect,
   type FunctionUrlEvent,
   type FunctionUrlResult,
 } from './http';
 import { InvalidToken } from './tokens';
-import { isFulfillable, verifyWebhook } from './webhook';
+import { STRIPE_API_VERSION } from './integration';
 
 /**
- * The whole money path: four routes behind one Lambda.
+ * The whole money path: three routes behind one Lambda.
  *
- *   GET  /api/checkout?sku=…       → 303 to Stripe Checkout
- *   POST /api/stripe/webhook       → fulfil and email, signature-verified
+ *   GET  /api/checkout?photo_id=…  → 303 to Stripe Checkout
  *   GET  /api/fulfill?session_id=… → the landing page's copy of the same result
  *   GET  /api/download?t=…         → 302 to a freshly presigned S3 URL
  *
- * One function rather than four keeps a single deploy artifact, one IAM role, and
- * one cold start. They are separate route modules so that adding a fifth — a
+ * One function rather than three keeps a single deploy artifact, one IAM role, and
+ * one cold start. They are separate route modules so that adding a fourth — a
  * print order, say — is a new file and a new case, not a rewrite.
  */
 
-/* Pin the API version so a Stripe-side default change cannot alter behavior. */
-const STRIPE_API_VERSION = '2026-06-24.dahlia';
-
 const env: Env = readEnv();
 const s3 = new S3Client({});
-const ses = new SESv2Client({});
 
 let stripeClient: Stripe | undefined;
 function stripe(secrets: Secrets): Stripe {
@@ -49,19 +39,6 @@ function stripe(secrets: Secrets): Stripe {
 }
 
 export async function handler(event: FunctionUrlEvent): Promise<FunctionUrlResult> {
-  /*
-   * Gate on having come through CloudFront before doing anything else, so a
-   * request that found the Function URL directly costs no Parameter Store call.
-   *
-   * The Function URL has to be public rather than OAC-signed: Stripe must POST to
-   * it, and an OAC-signed POST requires the caller to send an
-   * x-amz-content-sha256 payload hash, which Stripe knows nothing about. This
-   * header stands in for that.
-   */
-  if (!fromEdge(event, env.edgeSecret)) {
-    return problem(403, 'Not found.');
-  }
-
   const path = event.rawPath.replace(/\/$/, '');
   const verb = method(event);
 
@@ -75,7 +52,6 @@ export async function handler(event: FunctionUrlEvent): Promise<FunctionUrlResul
 
   try {
     if (verb === 'GET' && path === '/api/checkout') return await checkout(secrets, event);
-    if (verb === 'POST' && path === '/api/stripe/webhook') return await webhook(secrets, event);
     if (verb === 'GET' && path === '/api/fulfill') return await fulfill(secrets, event);
     if (verb === 'GET' && path === '/api/download') return await download(secrets, event);
     return problem(404, 'Not found.');
@@ -97,67 +73,23 @@ export async function handler(event: FunctionUrlEvent): Promise<FunctionUrlResul
 }
 
 async function checkout(secrets: Secrets, event: FunctionUrlEvent): Promise<FunctionUrlResult> {
-  const sku = query(event).get('sku');
-  if (!sku) return problem(400, 'Missing sku.');
+  const photoId = query(event).get('photo_id');
+  if (!photoId) return problem(400, 'Missing photo_id.');
 
   const catalog = await loadCatalog(env.siteBucket, s3);
-  const session = await createCheckoutSession(sku, {
+  const session = await createCheckoutSession(photoId, {
     stripe: stripe(secrets),
     catalog,
     siteUrl: env.siteUrl,
+    stripeProductId: secrets.stripeProductId,
   });
   if (!session.url) throw new Error(`Checkout Session ${session.id} came back without a URL`);
   return redirect(session.url);
 }
 
-async function webhook(secrets: Secrets, event: FunctionUrlEvent): Promise<FunctionUrlResult> {
-  const signature = header(event, 'stripe-signature');
-  if (!signature) return problem(400, 'Missing signature.');
-
-  let received: Stripe.Event;
-  try {
-    received = await verifyWebhook(
-      stripe(secrets),
-      rawBody(event),
-      signature,
-      secrets.stripeWebhookSecret,
-    );
-  } catch (error) {
-    /* An unverified body is not to be parsed, logged, or acted on. */
-    console.warn('Rejected webhook with a bad signature', error instanceof Error ? error.message : error);
-    return problem(400, 'Invalid signature.');
-  }
-
-  if (!isFulfillable(received)) {
-    return json(200, { ignored: received.type });
-  }
-
-  const session = received.data.object;
-  const catalog = await loadCatalog(env.siteBucket, s3);
-  const fulfillment = await fulfillCheckout(session.id, {
-    stripe: stripe(secrets),
-    catalog,
-    siteUrl: env.siteUrl,
-    downloadTokenKey: secrets.downloadTokenKey,
-  });
-
-  if (fulfillment.status !== 'paid') {
-    /* Not an error: the money has not arrived yet. Wait for the later event. */
-    return json(200, { pending: session.id });
-  }
-
-  if (!env.fromEmail) {
-    console.warn(`No FROM_EMAIL configured; ${session.id} was not emailed its download link`);
-    return json(200, { fulfilled: session.id, emailed: false });
-  }
-  await sendDelivery(fulfillment, { ses, fromEmail: env.fromEmail });
-  return json(200, { fulfilled: session.id, emailed: true });
-}
-
 /**
- * What the buyer's landing page calls. Returns the same entitlement the webhook
- * mints, so the file is available the moment they land — before, or instead of,
- * the email arriving.
+ * What the buyer's landing page calls. The Session ID is accepted only around
+ * the original Checkout return; later recovery uses the trusted local command.
  */
 async function fulfill(secrets: Secrets, event: FunctionUrlEvent): Promise<FunctionUrlResult> {
   const sessionId = query(event).get('session_id');
@@ -171,8 +103,12 @@ async function fulfill(secrets: Secrets, event: FunctionUrlEvent): Promise<Funct
       catalog,
       siteUrl: env.siteUrl,
       downloadTokenKey: secrets.downloadTokenKey,
+      requireFreshReturn: true,
     });
   } catch (error) {
+    if (error instanceof CheckoutReturnExpired) {
+      return problem(410, 'This checkout return link is no longer renewable. Reply to your Stripe receipt for a fresh download link.');
+    }
     if (error instanceof Stripe.errors.StripeInvalidRequestError) {
       /* An id that Stripe does not recognize: a stale or hand-edited URL. */
       return problem(404, 'That order could not be found.');
@@ -188,7 +124,8 @@ async function fulfill(secrets: Secrets, event: FunctionUrlEvent): Promise<Funct
     downloadUrl: fulfillment.downloadUrl,
     expiresAt: fulfillment.expiresAt,
     albumTitle: fulfillment.item?.albumTitle,
-    file: fulfillment.item?.file,
+    label: fulfillment.item?.label,
+    previewSrc: fulfillment.item?.previewSrc,
   });
 }
 
@@ -196,10 +133,12 @@ async function download(secrets: Secrets, event: FunctionUrlEvent): Promise<Func
   const token = query(event).get('t');
   if (!token) return problem(400, 'Missing token.');
 
+  const catalog = await loadCatalog(env.siteBucket, s3);
   const url = await resolveDownload(token, {
     s3,
     originalsBucket: env.originalsBucket,
     downloadTokenKey: secrets.downloadTokenKey,
+    catalog,
   });
   /* 302, not 303: this is a GET redirecting to a GET of the same resource. */
   return redirect(url, 302);

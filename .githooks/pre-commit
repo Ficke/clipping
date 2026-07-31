@@ -2,7 +2,7 @@
 # Refuse to commit a Stripe API key. Key exposure in a repository is the leading
 # cause of API key takeover, and this repo is public — see NOTICE.
 #
-# Keys belong in AWS Secrets Manager (production) or a shell export (local); see
+# Keys belong in SSM Parameter Store; see
 # the README's "Selling downloads". Bypass with --no-verify if this ever misfires
 # on documentation, but read what it matched first.
 
@@ -16,7 +16,7 @@ if [ -n "$hits" ]; then
   echo "pre-commit: refusing to commit — a Stripe key or signing secret appears in:" >&2
   echo "$hits" | sed 's/^/          /' >&2
   echo "" >&2
-  echo "          Store it in Secrets Manager or a shell export, not in the repo." >&2
+  echo "          Store it in SSM Parameter Store, not in the repo." >&2
   echo "          If the key was ever real, roll it: https://dashboard.stripe.com/apikeys" >&2
   exit 1
 fi

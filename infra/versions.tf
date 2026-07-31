@@ -7,15 +7,10 @@ terraform {
       version = ">= 5.80"
     }
 
-    # Zips the bundled commerce Lambda; generates the CloudFront origin secret.
+    # Zips the bundled commerce Lambda.
     archive = {
       source  = "hashicorp/archive"
       version = ">= 2.4"
-    }
-
-    random = {
-      source  = "hashicorp/random"
-      version = ">= 3.6"
     }
   }
 }

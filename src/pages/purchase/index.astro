@@ -6,9 +6,9 @@ import Layout from '../../layouts/Layout.astro';
  * fetched from /api/fulfill with the session id Stripe puts in the URL, which is
  * same-origin and so allowed by `connect-src 'self'` without a CSP change.
  *
- * The webhook is what guarantees fulfillment — a buyer who closes the tab still
- * gets their email. This page exists so the file is there immediately for the
- * buyer who does not.
+ * This is the immediate fulfillment path. Stripe sends the payment receipt; a
+ * buyer who loses this page can reply to that receipt for a manually reissued
+ * download link.
  */
 ---
 
@@ -28,21 +28,32 @@ import Layout from '../../layouts/Layout.astro';
     </div>
 
     <div class="state" data-state="paid" hidden>
-      <p data-summary></p>
-      <p class="action">
-        <a class="download" data-download href="#" download>Download the full-resolution file</a>
-      </p>
-      <p class="note" data-expiry></p>
-      <p class="note">
-        A copy of this link is on its way to your email. Keep the file somewhere
-        safe — the link itself does not last forever.
-      </p>
+      <article class="download-card">
+        <figure class="preview" data-preview-wrap hidden>
+          <img data-preview alt="" />
+        </figure>
+        <div class="details">
+          <p class="kicker">Purchase confirmed</p>
+          <h2 data-summary></h2>
+          <p class="product">Full-resolution photograph, personal-use license</p>
+          <a class="download" data-download href="#" download>
+            <span>Download photograph</span>
+            <span aria-hidden="true">↓</span>
+          </a>
+          <p class="expiry">
+            <span data-expiry></span> Reply to your Stripe receipt if you need a
+            new link.
+          </p>
+        </div>
+      </article>
+
+      <p><a class="back" href="/store/">Return to the store</a></p>
     </div>
 
     <div class="state" data-state="pending" hidden>
       <p>
-        Your payment is still clearing — some payment methods take a few days.
-        You will get an email with the download link the moment it lands.
+        Your payment has not completed. Return to Checkout or reply to your
+        Stripe receipt if you need help.
       </p>
     </div>
 
@@ -101,15 +112,20 @@ import Layout from '../../layouts/Layout.astro';
 
         const link = document.querySelector<HTMLAnchorElement>('[data-download]')!;
         link.href = target.href;
-        heading.textContent = 'Your download is ready';
+        heading.textContent = 'Your photograph is ready';
         document.querySelector<HTMLElement>('[data-summary]')!.textContent =
-          `${body.albumTitle} — ${body.file}`;
+          body.albumTitle;
+        if (body.previewSrc) {
+          const preview = document.querySelector<HTMLImageElement>('[data-preview]')!;
+          preview.src = body.previewSrc;
+          preview.alt = body.label ?? `Purchased photograph from ${body.albumTitle}`;
+          document.querySelector<HTMLElement>('[data-preview-wrap]')!.hidden = false;
+        }
         document.querySelector<HTMLElement>('[data-expiry]')!.textContent =
-          `This link works until ${new Date(body.expiresAt * 1000).toLocaleDateString(undefined, { dateStyle: 'long' })}.`;
+          `Link expires ${new Date(body.expiresAt * 1000).toLocaleDateString(undefined, { dateStyle: 'long' })}.`;
         show('paid');
       }
     } catch {
-      /* A network failure here costs the buyer nothing: the email still comes. */
       fail('I could not reach the store to confirm your order.');
     }
   }
@@ -117,18 +133,24 @@ import Layout from '../../layouts/Layout.astro';
 
 <style>
   .purchase {
-    margin-top: clamp(1rem, 4vw, 3rem);
-    max-width: var(--measure);
+    margin-top: clamp(1rem, 3vw, 2rem);
   }
 
   .purchase h1 {
-    font-size: clamp(1.8rem, 5vw, 3rem);
-    margin: 0.3rem 0 1.4rem;
+    max-width: none;
+    font-size: clamp(2.35rem, 4vw, 3.6rem);
+    margin: 0.3rem 0 1.2rem;
   }
 
   .state {
     display: grid;
-    gap: 0.9rem;
+    gap: 1rem;
+  }
+
+  .state[data-state='loading'],
+  .state[data-state='pending'],
+  .state[data-state='error'] {
+    max-width: var(--measure);
   }
 
   /* An author `display` beats the UA stylesheet's [hidden] { display: none },
@@ -137,15 +159,61 @@ import Layout from '../../layouts/Layout.astro';
     display: none;
   }
 
-  .action {
-    margin-top: 0.4rem;
+  .download-card {
+    width: min(100%, 68rem);
+    margin-top: 0.5rem;
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(18rem, 0.8fr);
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 3px;
+  }
+
+  .preview {
+    min-height: 18rem;
+    background: color-mix(in srgb, var(--ink) 5%, var(--paper));
+  }
+
+  .preview[hidden] {
+    display: none;
+  }
+
+  .preview img {
+    width: 100%;
+    height: 100%;
+    min-height: 18rem;
+    max-height: 28rem;
+    object-fit: cover;
+  }
+
+  .details {
+    padding: clamp(1.4rem, 3vw, 2.1rem);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .details h2 {
+    margin-top: 0.35rem;
+    font-size: clamp(1.7rem, 3vw, 2.35rem);
+  }
+
+  .product {
+    margin-top: 0.65rem;
+    font-size: 0.84rem;
+    color: var(--muted);
   }
 
   .download {
-    display: inline-block;
-    padding: 0.75rem 1.15rem;
+    margin-top: auto;
+    padding: 0.9rem 1rem;
     background: var(--ink);
     color: var(--paper);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
     font-weight: 600;
     font-size: 0.9rem;
     letter-spacing: 0.03em;
@@ -158,8 +226,44 @@ import Layout from '../../layouts/Layout.astro';
     background: var(--accent);
   }
 
-  .note {
-    font-size: 0.86rem;
+  .expiry {
+    margin-top: 0.7rem;
+    font-size: 0.74rem;
+    line-height: 1.45;
     color: var(--muted);
+  }
+
+  .back {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .back:hover,
+  .back:focus-visible {
+    color: var(--accent);
+  }
+
+  @media (max-width: 720px) {
+    .download-card {
+      grid-template-columns: 1fr;
+    }
+
+    .preview,
+    .preview img {
+      min-height: 0;
+      max-height: none;
+      aspect-ratio: 4 / 3;
+    }
+
+    .preview img {
+      object-fit: contain;
+    }
+
+    .download {
+      margin-top: 1.8rem;
+    }
   }
 </style>

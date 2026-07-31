@@ -4,8 +4,7 @@
  * deployed function, the way photos-media-dev.mjs is to the CodeBuild job.
  *
  *   bun run commerce:dev                                  # serves :8787
- *   bun run commerce:listen                               # stripe -> :8787
- *   open http://localhost:8787/api/checkout?sku=<sku>
+ *   open http://localhost:8787/api/checkout?photo_id=<photo_id>
  *
  * It runs the real handler, so what passes here is the code that runs in
  * production. Keys come from Parameter Store exactly as they do on the deployed
@@ -18,22 +17,17 @@
  * COMMERCE_SECRET_PARAM elsewhere to override, though it refuses outright to
  * run against a live key.
  *
- * `stripe listen` may reissue its signing secret per session; export
- * STRIPE_WEBHOOK_SECRET to override just that field for a run.
- *
  * The catalog is read from `dist/`, so `bun run build` has to have happened —
  * but no deploy, which is what lets a photo be put on sale and bought locally.
  */
 
 import { createServer } from 'node:http';
-import { randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.COMMERCE_PORT ?? process.env.PORT ?? 8787);
-const EDGE_SECRET = randomBytes(24).toString('hex');
 
 /*
  * The handler reads its environment at import time, so all of this has to be set
@@ -45,7 +39,6 @@ process.env.COMMERCE_SECRET_PARAM ??= DEFAULT_SECRET_PARAM;
 process.env.ORIGINALS_BUCKET ??= 'adamficke-com-originals';
 process.env.SITE_BUCKET ??= 'adamficke-com-site';
 process.env.SITE_URL ??= `http://localhost:${PORT}`;
-process.env.EDGE_SECRET = EDGE_SECRET;
 
 /*
  * This never runs on EC2, so the instance-metadata fallback can only ever be a
@@ -86,12 +79,6 @@ if (/^[sr]k_live/.test(fields.stripeApiKey ?? '')) {
     ? `             Put test keys in ${DEFAULT_SECRET_PARAM}, and roll that live key: it is in the wrong parameter.`
     : `             Unset COMMERCE_SECRET_PARAM to use ${DEFAULT_SECRET_PARAM}.`);
   process.exit(1);
-}
-
-/* `stripe listen` may reissue its signing secret per session. */
-if (process.env.STRIPE_WEBHOOK_SECRET) {
-  fields.stripeWebhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  console.log('commerce:dev: using STRIPE_WEBHOOK_SECRET from the environment');
 }
 
 SSMClient.prototype.send = async () => ({ Parameter: { Value: JSON.stringify(fields) } });
@@ -143,6 +130,10 @@ const MIME = {
  */
 function serveStatic(url, response) {
   let pathname = decodeURIComponent(url.pathname);
+  if (pathname === '/downloads-catalog.json') {
+    response.writeHead(404, { 'cache-control': 'no-store' });
+    return response.end('Not found.');
+  }
   if (pathname.endsWith('/')) pathname += 'index.html';
   else if (!path.extname(pathname)) pathname += '/index.html';
 
@@ -174,8 +165,7 @@ createServer((request, response) => {
     const result = await handler({
       rawPath: url.pathname,
       rawQueryString: url.searchParams.toString(),
-      /* CloudFront adds this in production; add it here so the gate passes. */
-      headers: { ...request.headers, 'x-origin-secret': EDGE_SECRET },
+      headers: request.headers,
       requestContext: { http: { method: request.method } },
       body: body.length ? body.toString('utf8') : undefined,
       isBase64Encoded: false,
@@ -190,7 +180,6 @@ createServer((request, response) => {
   });
 }).listen(PORT, () => {
   console.log(`commerce:dev serving dist/ and the store on http://localhost:${PORT}`);
-  console.log(`  webhooks:  stripe listen --forward-to localhost:${PORT}/api/stripe/webhook`);
   if (!existsSync(path.join(repoRoot, 'dist', 'index.html'))) {
     console.log('  note:      dist/ is empty — run `bun run build`');
   }

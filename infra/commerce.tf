@@ -11,7 +11,7 @@
 # on IAM identically; Secrets Manager additionally bills $0.40/secret/month for
 # managed rotation, cross-region replication, and resource policies, none of
 # which this uses — rotation here is pasting a new key from the Stripe
-# dashboard. At ~283 bytes against the 4 KB standard-tier limit, this is free.
+# dashboard. The payload is well inside the 4 KB standard-tier limit, so it is free.
 
 # Created holding `{}` on purpose. Stripe keys must never pass through Terraform
 # state, so the real value is written out-of-band — see the README's go-live
@@ -19,7 +19,7 @@
 # answers 500 and nothing sells.
 resource "aws_ssm_parameter" "commerce" {
   name        = "/${var.name}/commerce"
-  description = "Stripe restricted API key, webhook signing secret, and download token key"
+  description = "Stripe restricted API key, Managed Payments Product ID, and download token key"
   type        = "SecureString"
   tier        = "Standard"
   value       = "{}"
@@ -36,7 +36,7 @@ resource "aws_ssm_parameter" "commerce" {
 # so it cannot read this, and local development cannot reach live keys.
 resource "aws_ssm_parameter" "commerce_test" {
   name        = "/${var.name}/commerce-test"
-  description = "Stripe TEST keys for local development. Never read by the deployed Lambda."
+  description = "Stripe TEST key, sandbox Product ID, and token key for local development. Never read by the deployed Lambda."
   type        = "SecureString"
   tier        = "Standard"
   value       = "{}"
@@ -52,16 +52,6 @@ resource "aws_ssm_parameter" "commerce_test" {
 # side instead — see the ViaService condition below.
 data "aws_kms_alias" "ssm" {
   name = "alias/aws/ssm"
-}
-
-# The one shared secret Terraform does hold. CloudFront has to send it as an
-# origin header and the Lambda has to compare against it, so a single generator
-# is the only way both agree; putting it in Parameter Store instead would mean
-# reading it back into state anyway. It authenticates a hop between two things
-# in this account, not access to Stripe.
-resource "random_password" "edge_secret" {
-  length  = 48
-  special = false
 }
 
 # ---------- Lambda ----------
@@ -139,32 +129,6 @@ resource "aws_iam_role_policy" "commerce" {
   policy = data.aws_iam_policy_document.commerce.json
 }
 
-# Delivery email is optional: with no verified SES identity the Lambda logs a
-# warning and the buyer still gets their file from the landing page. This grant
-# only appears once an address is configured, and is pinned to that address.
-data "aws_iam_policy_document" "commerce_email" {
-  count = var.commerce_from_email == "" ? 0 : 1
-
-  statement {
-    sid       = "SendDeliveryEmail"
-    actions   = ["ses:SendEmail"]
-    resources = ["*"]
-
-    condition {
-      test     = "StringEquals"
-      variable = "ses:FromAddress"
-      values   = [var.commerce_from_email]
-    }
-  }
-}
-
-resource "aws_iam_role_policy" "commerce_email" {
-  count  = var.commerce_from_email == "" ? 0 : 1
-  name   = "${var.name}-commerce-email"
-  role   = aws_iam_role.commerce.id
-  policy = data.aws_iam_policy_document.commerce_email[0].json
-}
-
 # Bounded retention, matching the site's other logs: these carry order ids.
 resource "aws_cloudwatch_log_group" "commerce" {
   name              = "/aws/lambda/${var.name}-commerce"
@@ -196,30 +160,38 @@ resource "aws_lambda_function" "commerce" {
       ORIGINALS_BUCKET      = aws_s3_bucket.originals.bucket
       SITE_BUCKET           = aws_s3_bucket.site.bucket
       SITE_URL              = "https://${var.domain_name}"
-      FROM_EMAIL            = var.commerce_from_email
-      EDGE_SECRET           = random_password.edge_secret.result
     }
   }
 
   depends_on = [aws_cloudwatch_log_group.commerce]
 }
 
-# AuthType NONE rather than AWS_IAM with OAC. OAC would be stronger, but it
-# requires the caller to sign POST bodies with an x-amz-content-sha256 header,
-# and Stripe's webhook sender knows nothing about that. The origin header below
-# is what takes its place; the webhook's real guarantee is its own signature.
 resource "aws_lambda_function_url" "commerce" {
   function_name      = aws_lambda_function.commerce.function_name
-  authorization_type = "NONE"
+  authorization_type = "AWS_IAM"
+}
+
+# Lambda Function URLs created after October 2025 require both permissions.
+# SourceArn pins them to this one CloudFront distribution.
+resource "aws_lambda_permission" "commerce_cloudfront_url" {
+  statement_id           = "AllowCloudFrontFunctionUrl"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.commerce.function_name
+  principal              = "cloudfront.amazonaws.com"
+  source_arn             = aws_cloudfront_distribution.site.arn
+  function_url_auth_type = "AWS_IAM"
+}
+
+resource "aws_lambda_permission" "commerce_cloudfront_invoke" {
+  statement_id  = "AllowCloudFrontInvokeFunction"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.commerce.function_name
+  principal     = "cloudfront.amazonaws.com"
+  source_arn    = aws_cloudfront_distribution.site.arn
 }
 
 # ---------- Alarm ----------
 
-# The one failure here that costs money silently. A webhook that 500s makes
-# Stripe retry and then give up, so a buyer pays and never receives their file,
-# and nothing on this side says so — the Lambda's own logs are the only trace,
-# and nobody reads logs they have no reason to open.
-#
 # Free: one alarm sits inside the CloudWatch free allowance, and SNS email is
 # well within its own.
 resource "aws_sns_topic" "commerce_alarms" {
@@ -237,7 +209,7 @@ resource "aws_sns_topic_subscription" "commerce_alarms" {
 
 resource "aws_cloudwatch_metric_alarm" "commerce_errors" {
   alarm_name        = "${var.name}-commerce-errors"
-  alarm_description = "The commerce Lambda threw. A buyer may have paid without being delivered."
+  alarm_description = "The commerce Lambda threw during checkout or download delivery."
   namespace         = "AWS/Lambda"
   metric_name       = "Errors"
   dimensions        = { FunctionName = aws_lambda_function.commerce.function_name }
@@ -274,9 +246,4 @@ output "commerce_secret_param" {
 output "commerce_test_secret_param" {
   description = "Test-mode keys read by `bun run commerce:dev`"
   value       = aws_ssm_parameter.commerce_test.name
-}
-
-output "commerce_webhook_url" {
-  description = "Register this as the Stripe webhook endpoint"
-  value       = "https://${var.domain_name}/api/stripe/webhook"
 }

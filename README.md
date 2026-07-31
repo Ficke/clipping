@@ -18,11 +18,6 @@ downloading photos. For album work, run `aws login` first. `bun run
 photos:pull` hydrates the gitignored originals from S3 when you need to update
 an existing album.
 
-For work on the store, also install the [Stripe
-CLI](https://docs.stripe.com/stripe-cli) (`npm i -g @stripe/cli`) — it forwards
-webhooks to `bun run commerce:dev`. See [Selling
-downloads](#selling-downloads).
-
 `predev` clears `.astro/`, whose cached frontmatter goes stale against schema
 changes in `src/content.config.ts`.
 
@@ -67,7 +62,14 @@ changes in `src/content.config.ts`.
      date       [2026-08-14]
      cover      [DSCF1234.jpg]
      location   [] Mendocino Coast
+
+   Store settings:
+     DSCF1234.jpg sale price USD [not for sale]
+     DSCF1250.jpg sale price USD [not for sale] 40
    ```
+
+   Each new photo gets one store prompt. Press Enter to leave it unlisted, or
+   enter a USD price. Existing photos are not re-prompted on later pushes.
 
    The story ID is permanent: it keys the S3 archive, the manifest, the URL,
    and any future comments. The script checks it is unused both locally and
@@ -171,7 +173,7 @@ branch and a pull request.
 
 The `.githooks/pre-push` hook refuses pushes to `main` to keep an accidental
 deploy from being one command away, and `.githooks/pre-commit` refuses a staged
-Stripe key or webhook signing secret — this repo is public, and a committed key
+Stripe API key — this repo is public, and a committed key
 is the usual way one gets taken over. Both are advisory: `--no-verify` skips
 them, and they only apply once a clone has run the `core.hooksPath` line above.
 GitHub's own branch protection would need Pro on a private repo.
@@ -202,27 +204,65 @@ nothing but the site build.
 
 ## Selling downloads
 
-Photographs can be sold as full-resolution downloads. Payment is Stripe
-Checkout; the file is the original out of the archive bucket, presigned for the
+Photographs can be sold as full-resolution downloads. Payment is Stripe-hosted
+Checkout with Managed Payments: Stripe/Link is merchant of record and handles
+covered sales tax, VAT, GST, fraud, disputes, transaction support, and payment
+emails. The file is the original out of the archive bucket, presigned for the
 buyer. There is still no database — a signed token carries the entitlement.
+
+Every photograph shares one generic Stripe Product, **Full-resolution
+photograph download**. Its description carries the personal-license terms, and
+the Product carries Stripe's
+Managed Payments classification (`Digital Finished Artwork — downloaded —
+non-subscription — limited rights`) and the personal-license offering. The site
+remains authoritative for price, availability, and the mapping from each opaque
+`photo_…` identifier to its private original. Stripe never receives the album
+slug, filename, or S3 key.
 
 ### Putting a photo on sale
 
-Two frontmatter fields, no code and no Lambda deploy:
+Use the store command with an album folder, permanent story ID, or public slug:
 
-```yaml
-forSale: true               # offer every photo in the album
-photos:
-  - file: DSCF7556.jpg
-    forSale: false          # …except this one
-  - file: DSCF7640.jpg
+```sh
+bun run photos:store -- olympics DSCF7588.jpg --price 40
+bun run photos:store -- olympics DSCF7588.jpg --price 55    # reprice
+bun run photos:store -- olympics DSCF7588.jpg --remove      # delist
 ```
 
-`forSale` on a photo overrides the album in either direction, so a single photo
-can be sold out of an album that otherwise is not. Publish it the usual way; the
-site build emits `/downloads-catalog.json`, and the Lambda reads that as the
-authority on what is purchasable and at what price. **Putting an album on sale is
-a content deploy.** Nothing in `infra/` changes.
+Omit the action flag for an interactive price/update prompt; add `--dry-run` to
+preview without writing. The command writes readable photo-level content:
+
+```yaml
+photos:
+  - file: DSCF7588.jpg
+    forSale: true
+    price: 40
+```
+
+The site build converts dollars to integer cents and emits the private catalog,
+which the Lambda treats as authoritative. A store or price change is a content
+deploy; it needs no media upload or Lambda deploy.
+
+Photo removal has deliberately separate scopes:
+
+```sh
+bun run photos:store -- olympics DSCF7588.jpg --remove
+# Delists, but keeps the public album photo and private fulfillment mapping.
+
+bun run photos:site -- olympics DSCF7588.jpg --hide
+bun run photos:site -- olympics DSCF7588.jpg --show
+# Reversibly removes/restores the public photo; hiding also delists it.
+
+bun run photos:store -- olympics DSCF7588.jpg --purge-catalog
+# Also removes fulfillment mapping. Requires confirmation because old purchases break.
+
+bun run photos:store -- olympics DSCF7588.jpg --restore-catalog
+# Restores the private mapping; it does not relist the photo for sale.
+```
+
+Use `photos:site --hide` instead of deleting an original when the goal is only
+to remove it from the website. Physical deletion remains removing the local file
+and running `photos:push`; S3 versioning provides a 90-day recovery window.
 
 Everything for sale appears at `/store/`, grouped by album, and that is the only
 place with a buy button — album pages stay reading pages. The store is linked in
@@ -230,43 +270,56 @@ the header but kept out of search; `/license/`, in the footer, states the grant
 in full.
 
 The Lambda reads that object straight from the site bucket rather than through
-CloudFront, so a price change takes effect within its 60-second cache however the
-CDN is behaving. The deploy invalidates the public copy too, which matters only
-to anything fetching the URL directly.
+CloudFront, so a price change takes effect within its 60-second cache regardless
+of CDN state.
 
-Prices and license terms live in `src/lib/downloads.ts`, in one table. A new
-license tier added there appears on every photo already for sale.
+The catalog object is private application data despite sharing the site bucket:
+the CloudFront viewer function returns 404 for `/downloads-catalog.json` while
+the commerce Lambda and `commerce:link` read it directly from S3 using IAM.
+
+Each photo's price lives in its album entry. License terms live in
+`src/lib/downloads.ts`; a genuinely different license later becomes a separate
+Stripe Product and offer without changing the photograph's `photo_id`.
 
 ### The money path
 
 ```
-/store/     ─ <a href="/api/checkout?sku=…">        (a plain link: no JS, no CSP change)
+/store/     ─ <a href="/api/checkout?photo_id=…">   (a plain link: no JS, no CSP change)
                  │
-CloudFront   /api/*  ──►  commerce Lambda ──►  Stripe Checkout Session ──► 303
+CloudFront   /api/*  ──►  commerce Lambda ──►  Managed Payments Checkout ──► 303
                  │
 buyer pays on checkout.stripe.com
                  │
-                 ├─ POST /api/stripe/webhook  → verify signature → mint token → email
-                 └─ GET  /purchase/?session_id=…  → same token, shown immediately
+                 └─ GET  /purchase/?session_id=…  → verify paid → mint token
                                                         │
                           GET /api/download?t=…  ──►  302 to a presigned S3 URL
 ```
 
-The webhook is what guarantees delivery; the landing page is what makes it
-instant. Both run the same `fulfillCheckout`, which writes nothing, so running
-twice is harmless — only the webhook sends the email, so that happens once.
+Three GET routes, one Lambda, behind the existing distribution at `/api/*`.
+CloudFront signs every origin request with SigV4; the Function URL uses IAM auth
+and is not directly public.
 
-Four routes, one Lambda, behind the existing distribution at `/api/*`. Its
-Function URL is public because Stripe has to POST to it (an OAC-signed POST
-needs an `x-amz-content-sha256` header Stripe knows nothing about), so
-CloudFront adds a shared secret header and the Lambda refuses anything without
-it. The webhook's real guarantee is its own signature.
+Entitlements are signed tokens rather than rows: a token names only the opaque
+photo ID and Checkout Session, expires in seven days, and is exchanged through
+the catalog for a *fresh* 15-minute presigned URL on every download. So a leaked
+link is useful for minutes while the buyer's own link keeps working, and the
+originals bucket stays private and un-fronted by CloudFront.
 
-Entitlements are signed tokens rather than rows: a token names the SKU and the
-session and expires in seven days, and is exchanged for a *fresh* 15-minute
-presigned URL on every download. So a leaked link is useful for minutes while
-the buyer's own link keeps working, and the originals bucket stays private and
-un-fronted by CloudFront.
+The Checkout return URL is only an immediate handoff. It stops minting new
+entitlements shortly after the Checkout Session expires, so retaining browser
+history is not permanent access. Stripe/Link sends and owns the payment receipt.
+If a buyer
+loses an expired link, reissue one from a trusted machine:
+
+```sh
+aws login
+bun run commerce:link -- cs_test_…   # sandbox; link points at localhost:8787
+bun run commerce:link -- cs_live_…   # production, later
+```
+
+The command re-reads the purchase from Stripe, refuses unpaid, refunded, or
+disputed charges, and prints a fresh seven-day link. There is no public admin
+route, database, or custom delivery-email service.
 
 ### Deploying it
 
@@ -289,14 +342,15 @@ aws ssm put-parameter --overwrite \
   --name /adamficke-com/commerce \
   --type SecureString \
   --value "$(jq -nc \
-      --arg k "rk_test_…" \
-      --arg w "whsec_…" \
+      --arg k "rk_live_…" \
+      --arg p "prod_…" \
       --arg d "$(openssl rand -hex 32)" \
-      '{stripeApiKey:$k, stripeWebhookSecret:$w, downloadTokenKey:$d}')"
+      '{stripeApiKey:$k, stripeProductId:$p, downloadTokenKey:$d}')"
 ```
 
 Use a [restricted key](https://docs.stripe.com/keys/restricted-api-keys) (`rk_`),
-not a secret key, with write access to Checkout Sessions and nothing else.
+not a secret key, with read/write access to Checkout Sessions and read access to
+PaymentIntents and Charges for manual refund/dispute checks.
 Rotating `downloadTokenKey` voids every live download link.
 
 **Where keys live.** In SSM Parameter Store as KMS-encrypted `SecureString`
@@ -305,8 +359,8 @@ environment variable. Two parameters:
 
 | Parameter | Holds | Read by |
 | --- | --- | --- |
-| `/adamficke-com/commerce` | live keys | the deployed Lambda |
-| `/adamficke-com/commerce-test` | test keys | `bun run commerce:dev` |
+| `/adamficke-com/commerce` | live key, live Product ID, token key | the deployed Lambda |
+| `/adamficke-com/commerce-test` | test key, sandbox Product ID, token key | `bun run commerce:dev` |
 
 Separate parameters rather than one, because the Lambda's IAM policy names only
 the first: local development cannot reach a live key, and the deployed function
@@ -320,7 +374,7 @@ this — both KMS-encrypted under a KMS key, both IAM-gated, both audited in
 CloudTrail — while Secrets Manager charges $0.40 per secret per month for managed
 rotation, cross-region replication, and resource policies that go unused here.
 Rotation is pasting a new key from the Stripe dashboard. Standard-tier parameters
-are free up to 4 KB; this payload is about 283 bytes.
+are free up to 4 KB.
 
 ### Running the store locally
 
@@ -334,11 +388,10 @@ here is the code that runs in production.
 aws login                             # keys come from Parameter Store
 bun run build                         # the store reads dist/, so build first
 bun run commerce:dev                  # → http://localhost:8787
-bun run commerce:listen               # other shell: forwards Stripe webhooks
 ```
 
-Nothing is for sale until an album says so, so add `forSale: true` to one and
-rebuild. Then browse to the album and click the buy link: real Stripe test
+Nothing is for sale until a photo has both `forSale: true` and `price`, so use
+`photos:store`, rebuild, and browse to the store: real Stripe test
 Checkout, card `4242 4242 4242 4242`, any future expiry and CVC.
 
 **No key is ever written to disk.** Local development reads
@@ -348,13 +401,6 @@ production secret but with test keys:
 
 ```sh
 aws ssm put-parameter --overwrite --name /adamficke-com/commerce-test --type SecureString --value …
-```
-
-If `stripe listen` reissues its signing secret, override just that field for a
-run — no file needed:
-
-```sh
-STRIPE_WEBHOOK_SECRET=whsec_… bun run commerce:dev
 ```
 
 Exactly one thing is faked: the catalog is read from
@@ -370,33 +416,42 @@ Because `dist/` is served rather than watched, rerun `bun run build` after a
 change. For pure UI work with hot reload, `bun run dev` is still the right tool —
 buy links render there, they just have no store behind them.
 
+### Managed Payments boundary
+
+Managed Payments covers indirect transaction taxes where Stripe supports it:
+sales tax, VAT, and GST calculation, collection, registration, filing, and
+remittance. It does not cover the photographer's income tax, self-employment
+tax, deductions, or business accounting. Stripe's published standard pricing is
+3.5% of each successful Managed Payments total (including indirect tax), in
+addition to the applicable Payments processing fee.
+
+Checkout sets `managed_payments.enabled`, references the classified Stripe
+Product, and deliberately sends no `automatic_tax`, `tax_code`, `tax_behavior`,
+tax rate, registration, or jurisdiction logic. Managed Payments collects the
+customer details it requires. Stripe's own Managed Payments emails are not
+controlled by the normal Dashboard receipt-email toggle.
+
 ### Go-live checklist
 
-- [ ] **Stripe Tax**: set the head office address in
-      [tax settings](https://dashboard.stripe.com/settings/tax), then add a
-      registration for the state you are obliged to collect in. `automatic_tax`
-      is enabled in code, but **Stripe collects nothing in a jurisdiction with no
-      active registration and reports no error** — it silently sells tax-free
-      while looking configured.
-- [ ] **Product tax code**: `PRODUCT_TAX_CODE` in `src/lib/downloads.ts` is
-      `txcd_10501000` (*Digital Photographs/Images — downloaded, permanent
-      rights*). The alternative is `txcd_10505001` (*Digital Finished Artwork*),
-      a better fit if a license ever grants reproduction rights. Confirm with a
-      tax advisor — it changes what is collected.
-- [ ] **Webhook endpoint**: register `https://adamficke.com/api/stripe/webhook`
-      for `checkout.session.completed` and
-      `checkout.session.async_payment_succeeded`, and put its signing secret in
-      the secret above.
-- [ ] **Delivery email**: verify an SES identity, set `commerce_from_email` in
-      `infra/variables.tf`, and get the account out of the SES sandbox. Left
-      empty, buyers still get their file from the landing page and the Lambda
-      logs that it emailed nobody.
-- [ ] **Payment methods**: whatever is enabled in the
-      [Dashboard](https://dashboard.stripe.com/settings/payment_methods) is what
-      buyers see. The code never pins `payment_method_types`.
-- [ ] **EU/UK**: out of scope by choice. Digital goods owe VAT there from the
-      first sale with no threshold, so selling outside the US needs a
-      registration decision first.
+- [x] **Sandbox Managed Payments**: activated and verified by creating a hosted
+      Checkout Session through the real test API.
+- [x] **Sandbox Product**: created with tax code `txcd_10505000` (Digital
+      Finished Artwork — downloaded — non-subscription — limited rights), with
+      its `prod_…` ID stored beside the sandbox key.
+- [ ] **Live Stripe setup**: repeat Managed Payments activation and eligibility,
+      create the classified Product, and store its ID beside the live key.
+- [ ] **Presentation**: configure the business name, logo, support contact,
+      statement descriptor, terms, and privacy policy. Receipts show the product
+      as sold through Link.
+- [ ] **Payment methods**: enable only immediate methods for launch — cards,
+      Link, Apple Pay, and Google Pay. The code deliberately does not pin
+      `payment_method_types`, so the Dashboard remains authoritative.
+- [ ] **Restricted key**: the sandbox key is verified; grant the equivalent
+      Checkout Sessions read/write plus PaymentIntents and Charges read to the
+      live key when production is configured.
+- [ ] **Recovery drill**: complete a test purchase, download it, run
+      `commerce:link` against an equivalent live Session when available, and
+      confirm reissue refuses refunded or disputed charges.
 
 ## Where the photos live
 
@@ -437,9 +492,10 @@ mutating published assets.
   paths without evicting immutable `/_astro/*` or `/media/*` assets. `/api/*`
   routes to the commerce Lambda, uncached and with no viewer-request function
 - **Commerce** (`lambda/`): one Node 22 Lambda on ARM behind `/api/*` — Stripe
-  Checkout, the webhook, and presigned downloads. Stateless: Stripe holds the
+  Checkout and presigned downloads. Stateless: Stripe holds the
   order, a signed token holds the entitlement, and `/downloads-catalog.json`
-  from the site build holds the prices. See [Selling downloads](#selling-downloads)
+  from the site build holds the fulfillment mapping, sale state, and prices.
+  See [Selling downloads](#selling-downloads)
 - **Analytics**: GA4 (`G-P2XYT72XL6`) for visitor and page-level reporting;
   privacy-reduced CloudFront standard logs in S3 for operational analysis.
   Access logs omit viewer IPs, query strings, forwarded-for values, and
@@ -457,8 +513,9 @@ mutating published assets.
 
 Runs ≈ $0.50–1.50/month. The store adds no fixed cost of its own: Lambda is
 inside the free tier at this volume (and pennies beyond it), and SSM standard-tier
-parameters are free. Stripe charges per sale — 2.9% + 30¢, plus ~0.5% for Stripe
-Tax.
+parameters are free. Stripe charges per sale — standard US card processing is
+2.9% + 30¢, plus 3.5% of the Managed Payments transaction total (including
+indirect tax).
 
 ## Domains
 

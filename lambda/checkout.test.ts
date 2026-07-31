@@ -1,32 +1,35 @@
 import { describe, expect, test } from 'bun:test';
 import type Stripe from 'stripe';
-import { PRODUCT_TAX_CODE, type DownloadCatalog } from '../src/lib/downloads';
+import type { DownloadCatalog } from '../src/lib/downloads';
 import { NotForSale } from './catalog';
 import { createCheckoutSession } from './checkout';
 
-const SKU = 'lost-coast/DSCF1250.jpg/personal';
+const PHOTO_ID = 'photo_1234567890abcdef12345678';
+const OTHER_PHOTO_ID = 'photo_abcdef1234567890abcdef12';
 
 const catalog: DownloadCatalog = {
-  version: 1,
+  version: 2,
   generated: '2026-07-29T00:00:00.000Z',
   items: [{
-    sku: SKU,
+    photoId: PHOTO_ID,
     storyId: 'lost-coast',
     file: 'DSCF1250.jpg',
-    license: 'personal',
+    forSale: true,
     albumTitle: 'Lost Coast',
     label: 'Fog coming over Punta Gorda.',
+    previewSrc: '/media/photo-lost-coast.webp',
     priceCents: 4000,
     width: 6000,
     height: 4000,
   }, {
     /* A legacy id, to prove the cancel URL drops the date prefix. */
-    sku: '2024-12-japan/roll-01.jpg/personal',
+    photoId: OTHER_PHOTO_ID,
     storyId: '2024-12-japan',
     file: 'roll-01.jpg',
-    license: 'personal',
+    forSale: true,
     albumTitle: "Japan '24",
     label: 'A platform in Kanazawa.',
+    previewSrc: '/media/photo-japan.webp',
     priceCents: 4000,
     width: 6000,
     height: 4000,
@@ -48,62 +51,79 @@ function recordingStripe() {
   return { stripe, calls };
 }
 
-const deps = (stripe: Stripe) => ({ stripe, catalog, siteUrl: 'https://adamficke.com' });
+const deps = (stripe: Stripe) => ({
+  stripe,
+  catalog,
+  siteUrl: 'https://adamficke.com',
+  stripeProductId: 'prod_download',
+});
 
 describe('checkout session', () => {
   test('prices from the catalog, not from anything the caller sent', async () => {
     const { stripe, calls } = recordingStripe();
 
-    await createCheckoutSession(SKU, deps(stripe));
+    await createCheckoutSession(PHOTO_ID, deps(stripe));
 
     const [params] = calls;
     expect(params!.line_items![0]!.price_data!.unit_amount).toBe(4000);
     expect(params!.line_items![0]!.price_data!.currency).toBe('usd');
   });
 
-  test('tags the line item with the digital-goods tax code and enables Stripe Tax', async () => {
+  test('enables Managed Payments and leaves tax entirely to Stripe', async () => {
     const { stripe, calls } = recordingStripe();
 
-    await createCheckoutSession(SKU, deps(stripe));
+    await createCheckoutSession(PHOTO_ID, deps(stripe));
 
     const [params] = calls;
-    expect(params!.line_items![0]!.price_data!.product_data!.tax_code).toBe(PRODUCT_TAX_CODE);
-    expect(params!.line_items![0]!.price_data!.tax_behavior).toBe('exclusive');
-    expect(params!.automatic_tax).toEqual({ enabled: true });
+    expect(params!.managed_payments).toEqual({ enabled: true });
+    expect(params).not.toHaveProperty('automatic_tax');
+    expect(params!.line_items![0]!.price_data).not.toHaveProperty('tax_behavior');
+  });
+
+  test('uses one classified Stripe Product while keeping the photo identity in Session metadata', async () => {
+    const { stripe, calls } = recordingStripe();
+
+    await createCheckoutSession(PHOTO_ID, deps(stripe));
+
+    const price = calls[0]!.line_items![0]!.price_data!;
+    expect(price.product).toBe('prod_download');
+    expect(price).not.toHaveProperty('product_data');
   });
 
   test('never pins payment_method_types, so Dashboard settings decide', async () => {
     const { stripe, calls } = recordingStripe();
 
-    await createCheckoutSession(SKU, deps(stripe));
+    await createCheckoutSession(PHOTO_ID, deps(stripe));
 
     expect(calls[0]).not.toHaveProperty('payment_method_types');
   });
 
-  test('carries the SKU into metadata so fulfillment knows what was bought', async () => {
+  test('carries only the opaque photo ID into transaction metadata', async () => {
     const { stripe, calls } = recordingStripe();
 
-    await createCheckoutSession(SKU, deps(stripe));
+    await createCheckoutSession(PHOTO_ID, deps(stripe));
 
-    expect(calls[0]!.metadata).toEqual({ sku: SKU });
-    expect(calls[0]!.line_items![0]!.price_data!.product_data!.metadata).toEqual({ sku: SKU });
+    expect(calls[0]!.metadata).toEqual({ photo_id: PHOTO_ID, integration: 'photo-download-qkzvhrmw' });
+    expect(calls[0]!.payment_intent_data!.metadata).toEqual({
+      photo_id: PHOTO_ID,
+      integration: 'photo-download-qkzvhrmw',
+    });
+    expect(calls[0]!.payment_intent_data!.description).not.toContain('Lost Coast');
+    expect(calls[0]!.payment_intent_data!.description).not.toContain('DSCF1250');
   });
 
-  test('shows the license terms on the pay button', async () => {
+  test('leaves Checkout disclosures to Managed Payments', async () => {
     const { stripe, calls } = recordingStripe();
 
-    await createCheckoutSession(SKU, deps(stripe));
+    await createCheckoutSession(PHOTO_ID, deps(stripe));
 
-    const submit = calls[0]!.custom_text!.submit;
-    const message = submit && typeof submit === 'object' ? submit.message : '';
-    expect(message).toContain('You may not');
-    expect(message).toContain('Copyright stays with Adam Ficke.');
+    expect(calls[0]).not.toHaveProperty('custom_text');
   });
 
   test('returns the buyer to the delivery page with the session id', async () => {
     const { stripe, calls } = recordingStripe();
 
-    await createCheckoutSession(SKU, deps(stripe));
+    await createCheckoutSession(PHOTO_ID, deps(stripe));
 
     expect(calls[0]!.success_url).toBe('https://adamficke.com/purchase/?session_id={CHECKOUT_SESSION_ID}');
   });
@@ -111,7 +131,7 @@ describe('checkout session', () => {
   test('cancels back to the store, the only place a buy link lives', async () => {
     const { stripe, calls } = recordingStripe();
 
-    await createCheckoutSession('2024-12-japan/roll-01.jpg/personal', deps(stripe));
+    await createCheckoutSession(OTHER_PHOTO_ID, deps(stripe));
 
     expect(calls[0]!.cancel_url).toBe('https://adamficke.com/store/');
   });
@@ -119,24 +139,18 @@ describe('checkout session', () => {
   test('refuses a photo that is not in the catalog', async () => {
     const { stripe, calls } = recordingStripe();
 
-    await expect(createCheckoutSession('yosemite/DSCF0001.jpg/personal', deps(stripe)))
+    await expect(createCheckoutSession('photo_000000000000000000000000', deps(stripe)))
       .rejects.toThrow(NotForSale);
     expect(calls).toHaveLength(0);
   });
 
-  test('refuses an unknown license tier before touching the catalog', async () => {
+  test('refuses a delisted photo even though fulfillment retains its mapping', async () => {
     const { stripe, calls } = recordingStripe();
+    const delisted = structuredClone(catalog);
+    delisted.items[0]!.forSale = false;
 
-    await expect(createCheckoutSession('lost-coast/DSCF1250.jpg/commercial', deps(stripe)))
-      .rejects.toThrow(/Unknown license tier/);
-    expect(calls).toHaveLength(0);
-  });
-
-  test('refuses a SKU crafted to escape the album prefix', async () => {
-    const { stripe, calls } = recordingStripe();
-
-    await expect(createCheckoutSession('../etc/personal', deps(stripe)))
-      .rejects.toThrow(/safe path segment/);
+    await expect(createCheckoutSession(PHOTO_ID, { ...deps(stripe), catalog: delisted }))
+      .rejects.toThrow(NotForSale);
     expect(calls).toHaveLength(0);
   });
 });

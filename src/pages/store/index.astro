@@ -143,8 +143,8 @@ const total = albums.reduce((count, { photos }) => count + photos.length, 0);
     color: color-mix(in srgb, var(--ink) 88%, var(--muted));
   }
 
-  /* Bottom-aligned, so buttons line up across cards of unequal caption length. */
-  .item :global(.buy) {
+  /* Bottom-aligned, so offer rows line up across unequal caption lengths. */
+  .item :global(.purchase) {
     margin-top: auto;
   }
 

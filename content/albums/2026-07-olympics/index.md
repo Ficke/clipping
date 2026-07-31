@@ -10,9 +10,11 @@ photos:
   - file: DSCF7581.jpg
   - file: DSCF7588.jpg
     forSale: true
+    price: 40
   - file: DSCF7590.jpg
   - file: DSCF7609.jpg
   - file: DSCF7616.jpg
   - file: DSCF7640.jpg
     forSale: true
+    price: 40
 ---

@@ -12,8 +12,10 @@
     "preview": "astro preview",
     "lambda:build": "bun build lambda/index.ts --target=node --outfile=dist-lambda/index.mjs --minify",
     "commerce:dev": "bun scripts/commerce-dev.mjs",
-    "commerce:listen": "stripe listen --forward-to localhost:8787/api/stripe/webhook",
+    "commerce:link": "bun scripts/commerce-link.mjs",
     "photos:push": "bun scripts/photos-push.mjs",
+    "photos:store": "bun scripts/photos-store.mjs",
+    "photos:site": "bun scripts/photos-site.mjs",
     "photos:build-media": "bun scripts/photos-build-media.mjs",
     "photos:build-media:local": "bun scripts/photos-media-dev.mjs",
     "photos:pull": "aws s3 sync s3://adamficke-com-originals/albums content/albums --exclude '*' --include '*.jpg' --include '*.jpeg' --include '*.png' --include '*.webp' --include '*.avif'"
@@ -22,15 +24,14 @@
     "@astrojs/rss": "^4.0.19",
     "@astrojs/sitemap": "^3.7.3",
     "@aws-sdk/client-s3": "^3.1098.0",
-    "@aws-sdk/client-sesv2": "^3.1098.0",
     "@aws-sdk/client-ssm": "^3.1098.0",
     "@aws-sdk/s3-request-presigner": "^3.1098.0",
     "@fontsource-variable/figtree": "^5.1.0",
     "@fontsource-variable/source-serif-4": "^5.3.0",
-    "astro": "^7.1.1",
+    "astro": "^7.1.6",
     "exifr": "^7.1.3",
     "sharp": "^0.35.3",
-    "stripe": "^22.3.0"
+    "stripe": "22.4.0"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",

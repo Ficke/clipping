@@ -6,7 +6,7 @@ const NOW = Date.UTC(2026, 6, 29);
 
 function entitlement(overrides: Partial<Parameters<typeof mintToken>[0]> = {}) {
   return {
-    sku: 'lost-coast/DSCF1250.jpg/personal',
+    photoId: 'photo_1234567890abcdef12345678',
     sessionId: 'cs_test_abc123',
     expiresAt: Math.floor(NOW / 1000) + DOWNLOAD_WINDOW_SECONDS,
     ...overrides,
@@ -33,7 +33,7 @@ describe('download tokens', () => {
     const token = mintToken(entitlement(), KEY);
     const [, signature] = token.split('.');
     const forged = Buffer.from(
-      JSON.stringify(entitlement({ sku: 'yosemite/DSCF9999.jpg/personal' })),
+      JSON.stringify(entitlement({ photoId: 'photo_abcdef1234567890abcdef12' })),
     ).toString('base64url');
     expect(() => readToken(`${forged}.${signature}`, KEY, NOW)).toThrow(/signature does not match/);
   });
@@ -52,7 +52,7 @@ describe('download tokens', () => {
   test('honours the entitlement right up to its expiry', () => {
     const expiresAt = Math.floor(NOW / 1000) + 60;
     const token = mintToken(entitlement({ expiresAt }), KEY);
-    expect(readToken(token, KEY, expiresAt * 1000 - 1).sku).toBe('lost-coast/DSCF1250.jpg/personal');
+    expect(readToken(token, KEY, expiresAt * 1000 - 1).photoId).toBe('photo_1234567890abcdef12345678');
     expect(() => readToken(token, KEY, expiresAt * 1000)).toThrow(/expired/);
   });
 

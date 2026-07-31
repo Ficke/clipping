@@ -1,8 +1,8 @@
 ---
 import Layout from '../../layouts/Layout.astro';
-import { COPYRIGHT_LINE, LICENSE_TIERS } from '../../lib/downloads';
+import { COPYRIGHT_LINE, DOWNLOAD_PRODUCTS } from '../../lib/downloads';
 
-const named = LICENSE_TIERS.length > 1;
+const named = DOWNLOAD_PRODUCTS.length > 1;
 ---
 
 <Layout
@@ -19,7 +19,7 @@ const named = LICENSE_TIERS.length > 1;
     </p>
 
     {
-      LICENSE_TIERS.map((tier) => (
+      DOWNLOAD_PRODUCTS.map((tier) => (
         <section class="tier">
           {named && <h2>{tier.summary}</h2>}
 

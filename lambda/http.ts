@@ -1,5 +1,3 @@
-import { timingSafeEqual } from 'node:crypto';
-
 /**
  * The Lambda Function URL payload (format 2.0) and the small amount of HTTP
  * plumbing the routes need. Kept separate from the routes so both can be
@@ -20,9 +18,6 @@ export interface FunctionUrlResult {
   headers?: Record<string, string>;
   body?: string;
 }
-
-/** Header CloudFront adds to every request it forwards here. */
-export const EDGE_SECRET_HEADER = 'x-origin-secret';
 
 export function method(event: FunctionUrlEvent): string {
   return event.requestContext.http.method.toUpperCase();
@@ -51,24 +46,6 @@ export function header(event: FunctionUrlEvent, name: string): string | undefine
   return undefined;
 }
 
-export function constantTimeEquals(a: string, b: string): boolean {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  /* timingSafeEqual throws on a length mismatch, which would itself leak. */
-  if (left.length !== right.length) return false;
-  return timingSafeEqual(left, right);
-}
-
-/**
- * Whether the request came through CloudFront. Requests that reach the Function
- * URL directly are refused: they bypass the canonical host, the access logs, and
- * the response headers policy.
- */
-export function fromEdge(event: FunctionUrlEvent, edgeSecret: string): boolean {
-  const provided = header(event, EDGE_SECRET_HEADER);
-  return provided !== undefined && constantTimeEquals(provided, edgeSecret);
-}
-
 const NO_STORE = {
   'cache-control': 'no-store, private',
 } as const;
@@ -87,7 +64,7 @@ export function redirect(location: string, statusCode = 303): FunctionUrlResult 
 }
 
 /**
- * Error responses carry a human sentence and nothing else. Stack traces, SKUs
+ * Error responses carry a human sentence and nothing else. Stack traces, IDs
  * that failed to parse, and bucket names go to CloudWatch, not to the client.
  */
 export function problem(statusCode: number, message: string): FunctionUrlResult {
