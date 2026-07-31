@@ -73,8 +73,10 @@ describe('media manifest builder', () => {
     await sharp({ create: { width: 1200, height: 800, channels: 3, background: '#222222' } })
       .jpeg().toFile(path.join(source, 'two.jpg'));
 
+    const previousManifest = path.join(directory, 'previous.json');
     buildManifest(source, manifest);
     const initialText = readFileSync(manifest, 'utf8');
+    writeFileSync(previousManifest, initialText);
     buildManifest(source, manifest);
     expect(readFileSync(manifest, 'utf8')).toBe(initialText);
     const initial = JSON.parse(initialText);
@@ -83,11 +85,15 @@ describe('media manifest builder', () => {
     await sharp({ create: { width: 1200, height: 800, channels: 3, background: '#333333' } })
       .jpeg().toFile(path.join(source, 'one.jpg'));
     rmSync(path.join(source, 'two.jpg'));
-    buildManifest(source, manifest);
+    buildManifest(source, manifest, previousManifest);
     const updated = JSON.parse(readFileSync(manifest, 'utf8'));
 
     expect(updated.photos.map((photo) => photo.file)).toEqual(['one.jpg']);
     expect(updated.photos[0].sourceHash).not.toBe(initialHash);
+    expect(updated.obsoleteMedia).toEqual([
+      { profile: 'photo-v1', sourceHash: initial.photos[0].sourceHash },
+      { profile: 'photo-v1', sourceHash: initial.photos[1].sourceHash },
+    ].sort((left, right) => left.sourceHash.localeCompare(right.sourceHash)));
   });
 
   test('reuses actual dimensions from the published manifest', async () => {
@@ -151,13 +157,14 @@ fi
   });
 });
 
-function buildManifest(source, manifest) {
+function buildManifest(source, manifest, previousManifest) {
   const result = spawnSync('bun', [
     path.join(import.meta.dir, 'photos-build-media.mjs'),
     '--source', source,
     '--album', '2026-08-test',
     '--manifest', manifest,
     '--manifest-only',
+    ...(previousManifest ? ['--previous-manifest', previousManifest] : []),
   ], { encoding: 'utf8' });
   expect(result.status).toBe(0);
 }

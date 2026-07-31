@@ -68,7 +68,8 @@ worth remembering. One to three short paragraphs; plain markdown.
   communicates to someone who cannot see it; do not copy camera details.
 - **Cover** is the image used on the home page card and in link previews. It
   defaults to the first photo, so set it only when the card should differ
-  from the opening frame.
+  from the opening frame. If an explicit cover file is deleted,
+  `photos:push` automatically selects the first remaining visible photo.
 - **Album text** is optional. When you use it, tell the story of the trip —
   never just restate the date or the title. It appears after the first
   photograph so the image opens the story before the writing adds context.
