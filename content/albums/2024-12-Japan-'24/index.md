@@ -17,13 +17,21 @@ photos:
   - file: DSCF3469.jpg
   - file: DSCF3477.jpg
   - file: DSCF3511.jpg
+    forSale: true
+    price: 50
   - file: DSCF3574.jpg
   - file: DSCF3588.jpg
+    forSale: true
+    price: 50
   - file: DSCF3681.jpg
   - file: DSCF3756.jpg
   - file: DSCF3820.jpg
   - file: DSCF3826.jpg
+    forSale: true
+    price: 50
   - file: DSCF4157.jpg
   - file: DSCF4188.jpg
+    forSale: true
+    price: 50
   - file: DSCF4195.jpg
 ---
