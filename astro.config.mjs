@@ -7,7 +7,11 @@ export default defineConfig({
   // domain would point search engines at a URL that redirects elsewhere.
   // Override in CI if the canonical domain changes in the future.
   site: process.env.SITE_URL ?? 'https://adamficke.com',
-  integrations: [sitemap()],
+  // /purchase/ is reached only by redirect from Stripe with a session id in the
+  // query string; /store/ is kept unlisted by choice. Both also send noindex.
+  integrations: [
+    sitemap({ filter: (page) => !page.includes('/purchase/') && !page.includes('/store/') }),
+  ],
   output: 'static',
   trailingSlash: 'always',
   build: {

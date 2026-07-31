@@ -1,0 +1,100 @@
+---
+import { formatPrice } from '../lib/downloads';
+import type { SellablePhoto } from '../lib/catalog';
+
+interface Props {
+  offers: SellablePhoto[];
+}
+
+const { offers } = Astro.props;
+---
+
+<div class="purchase">
+  {
+    /* A link, not a form: the CSP sets form-action 'none', and the redirect to
+       Stripe happens server-side in /api/checkout. */
+    offers.map((offer) => {
+      const price = formatPrice(offer.priceCents);
+      return (
+        <div class="offer">
+          <span class="license">{offer.tier.summary}</span>
+          <span class="price">{price}</span>
+          <a
+            class="buy"
+            href={offer.href}
+            rel="nofollow"
+            aria-label={`Buy ${offer.tier.summary.toLowerCase()} download for ${price}`}
+          >
+            Buy download
+          </a>
+        </div>
+      );
+    })
+  }
+</div>
+
+<style>
+  .purchase {
+    width: 100%;
+  }
+
+  .offer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: clamp(0.65rem, 2vw, 1rem);
+  }
+
+  .offer + .offer {
+    margin-top: 0.65rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .license {
+    min-width: 0;
+    color: var(--muted);
+    font-size: 0.76rem;
+    line-height: 1.25;
+  }
+
+  .price {
+    font-size: 0.88rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .buy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0.65rem 0.95rem;
+    background: var(--ink);
+    color: var(--paper);
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    border-radius: 2px;
+    transition: background 0.2s ease;
+  }
+
+  .buy:hover,
+  .buy:focus-visible {
+    background: var(--accent);
+  }
+
+  @media (max-width: 380px) {
+    .offer {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .buy {
+      grid-column: 1 / -1;
+      width: 100%;
+    }
+  }
+</style>

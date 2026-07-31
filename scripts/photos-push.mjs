@@ -6,6 +6,13 @@ import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import exifr from 'exifr';
+import {
+  parsePriceDollars,
+  frontmatterValue,
+  readPhotosBlock,
+  serializePhotos,
+  splitFrontmatter,
+} from './photo-frontmatter.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
@@ -22,6 +29,7 @@ const unsupportedPhotoExtensions = new Set([
   '.bmp', '.dng', '.gif', '.heic', '.heif', '.raf', '.raw', '.tif', '.tiff',
 ]);
 const filenameCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+const defaultPriceDollars = 40;
 
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
 const dryRun = args.includes('--dry-run');
@@ -167,7 +175,7 @@ async function prepareAlbum(albumDirectory) {
   if (!storyId) fail(`${indexPath} has no storyId`);
   assertStoryIdShape(storyId, indexPath);
 
-  const reconciled = reconcilePhotos(existing, images, path.basename(albumDirectory));
+  const reconciled = await reconcilePhotos(existing, images, path.basename(albumDirectory));
   if (reconciled !== existing) {
     console.log(`${dryRun ? 'Would update' : 'Updating'} photos in ${indexPath}`);
     if (!dryRun) writeFileSync(indexPath, reconciled);
@@ -181,7 +189,7 @@ async function prepareAlbum(albumDirectory) {
  * and any hand-ordered sequence. New files slot into filename order when the
  * album has never been reordered, and append when it has.
  */
-function reconcilePhotos(contents, images, album) {
+async function reconcilePhotos(contents, images, album) {
   const { lines, body } = splitFrontmatter(contents, album);
   const { entries, span } = readPhotosBlock(lines);
   const known = new Map(entries.map((entry) => [entry.file, entry]));
@@ -189,12 +197,23 @@ function reconcilePhotos(contents, images, album) {
   const kept = entries.filter((entry) => images.includes(entry.file));
   const dropped = entries.filter((entry) => !images.includes(entry.file));
   const added = images.filter((file) => !known.has(file));
+  const configured = new Map();
+  if (interactive && added.length) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      console.log(`\nStore settings for ${added.length} new photo${added.length === 1 ? '' : 's'}:`);
+      for (const file of added) configured.set(file, await askPhotoSale(rl, file));
+    } finally {
+      rl.close();
+    }
+  }
 
   const wasFilenameOrdered = kept.length === 0
     || kept.map((entry) => entry.file).join('\0') === sortFilenames(kept.map((entry) => entry.file)).join('\0');
   const next = wasFilenameOrdered
-    ? sortFilenames([...kept.map((entry) => entry.file), ...added]).map((file) => known.get(file) ?? { file })
-    : [...kept, ...added.map((file) => ({ file }))];
+    ? sortFilenames([...kept.map((entry) => entry.file), ...added])
+        .map((file) => known.get(file) ?? configured.get(file) ?? { file })
+    : [...kept, ...added.map((file) => configured.get(file) ?? { file })];
 
   if (dropped.length) {
     console.log(`  removing ${dropped.length}: ${dropped.map((entry) => entry.file).join(', ')}`);
@@ -208,51 +227,6 @@ function reconcilePhotos(contents, images, album) {
   if (span) rebuilt.splice(span[0], span[1] - span[0], ...block);
   else rebuilt.push(...block);
   return `---\n${rebuilt.join('\n')}\n---\n${body}`;
-}
-
-function serializePhotos(entries) {
-  const block = ['photos:'];
-  for (const entry of entries) {
-    block.push(`  - file: ${entry.file}`);
-    if (entry.caption) block.push(`    caption: ${JSON.stringify(entry.caption)}`);
-    if (entry.alt) block.push(`    alt: ${JSON.stringify(entry.alt)}`);
-  }
-  return block;
-}
-
-function readPhotosBlock(lines) {
-  const start = lines.findIndex((line) => line === 'photos:');
-  if (start === -1) return { entries: [], span: null };
-  let end = start + 1;
-  while (end < lines.length && /^\s+[-\s]/.test(lines[end])) end += 1;
-
-  const entries = [];
-  for (const line of lines.slice(start + 1, end)) {
-    const item = line.match(/^\s+-\s*file:\s*(.+?)\s*$/);
-    if (item) {
-      entries.push({ file: unquote(item[1]) });
-      continue;
-    }
-    const field = line.match(/^\s+(caption|alt):\s*(.*)$/);
-    if (field && entries.length) entries[entries.length - 1][field[1]] = unquote(field[2]);
-  }
-  return { entries, span: [start, end] };
-}
-
-function splitFrontmatter(contents, album) {
-  const match = contents.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
-  if (!match) fail(`${album}/index.md has no frontmatter`);
-  return { lines: match[1].split('\n'), body: match[2] };
-}
-
-function frontmatterValue(contents, key) {
-  const match = contents.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'));
-  return match ? unquote(match[1].trim()) : undefined;
-}
-
-function unquote(value) {
-  const trimmed = value.trim();
-  return /^".*"$/.test(trimmed) || /^'.*'$/.test(trimmed) ? trimmed.slice(1, -1) : trimmed;
 }
 
 function sortFilenames(files) {
@@ -398,7 +372,7 @@ async function scaffoldIndex(albumDirectory, images) {
   if (answers.cover !== images[0]) lines.push(`cover: ${answers.cover}`);
   if (answers.description) lines.push(`description: ${JSON.stringify(answers.description)}`);
   if (answers.draft) lines.push('draft: true');
-  lines.push(...serializePhotos(images.map((file) => ({ file }))));
+  lines.push(...serializePhotos(answers.photos ?? images.map((file) => ({ file }))));
 
   return { contents: `---\n${lines.join('\n')}\n---\n`, storyId: answers.storyId };
 }
@@ -416,9 +390,24 @@ async function runForm(albumDirectory, images, defaults) {
     answers.location = await askRequired(rl, 'location', '');
     answers.description = (await rl.question('  description  [] ')).trim();
     answers.draft = /^y(es)?$/i.test((await rl.question('  draft        [no] ')).trim());
+    console.log(`\nStore settings:`);
+    answers.photos = [];
+    for (const file of images) answers.photos.push(await askPhotoSale(rl, file));
     return answers;
   } finally {
     rl.close();
+  }
+}
+
+async function askPhotoSale(rl, file) {
+  while (true) {
+    const answer = (await rl.question(`  ${file} sale price USD [not for sale] `)).trim();
+    if (!answer || /^n(o)?$/i.test(answer)) return { file };
+    try {
+      return { file, forSale: true, price: parsePriceDollars(answer) };
+    } catch (error) {
+      console.log(`  ${error.message}; enter a price such as ${defaultPriceDollars}, or press Enter`);
+    }
   }
 }
 

@@ -1,7 +1,7 @@
 # Guardrail: email if the whole account trends past $10/month.
 
-variable "budget_alert_email" {
-  description = "Where AWS Budgets sends overspend alerts"
+variable "alert_email" {
+  description = "Where budget overspend and commerce alarms are sent"
   type        = string
   default     = "aficke@gmail.com"
 }
@@ -18,7 +18,7 @@ resource "aws_budgets_budget" "monthly" {
     threshold                  = 80
     threshold_type             = "PERCENTAGE"
     notification_type          = "ACTUAL"
-    subscriber_email_addresses = [var.budget_alert_email]
+    subscriber_email_addresses = [var.alert_email]
   }
 
   notification {
@@ -26,6 +26,6 @@ resource "aws_budgets_budget" "monthly" {
     threshold                  = 100
     threshold_type             = "PERCENTAGE"
     notification_type          = "FORECASTED"
-    subscriber_email_addresses = [var.budget_alert_email]
+    subscriber_email_addresses = [var.alert_email]
   }
 }

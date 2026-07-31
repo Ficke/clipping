@@ -97,7 +97,14 @@ const captionId = `photo-caption-${index + 1}`;
     color: color-mix(in srgb, var(--ink) 88%, var(--muted));
   }
 
+  /* Explicit columns rather than auto-placement, so the caption and the details
+     keep their sides whether or not the other is present. */
+  .caption {
+    grid-column: 1;
+  }
+
   .photo-details {
+    grid-column: 2;
     color: var(--muted);
     text-align: right;
   }
@@ -117,6 +124,11 @@ const captionId = `photo-caption-${index + 1}`;
   @media (max-width: 620px) {
     figcaption {
       grid-template-columns: 1fr;
+    }
+
+    .caption,
+    .photo-details {
+      grid-column: 1;
     }
 
     .photo-details {

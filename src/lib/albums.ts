@@ -1,4 +1,5 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
+import { slugForStoryId } from './downloads';
 import type { PhotoManifest, PhotoManifestEntry } from './photo-manifest';
 
 export type Album = CollectionEntry<'albums'>;
@@ -26,15 +27,19 @@ export interface AlbumPhoto {
   caption: string | undefined;
   alt: string | undefined;
   exif: string | undefined;
+  /** Whether this photo is offered as a download. See `downloads.ts`. */
+  forSale: boolean;
+  priceCents: number | undefined;
+  hidden: boolean;
+  inCatalog: boolean;
 }
 
 /**
  * URL slug, derived from storyId rather than the folder so albums can be
- * reorganised on disk. The YYYY-MM- prefix is legacy: ids minted before the
- * folder stopped being load-bearing carry one, newer ids do not.
+ * reorganized on disk.
  */
 export function slugOf(album: Album): string {
-  return album.data.storyId.replace(/^\d{4}-\d{2}-/, '');
+  return slugForStoryId(album.data.storyId);
 }
 
 /**
@@ -100,13 +105,18 @@ function imagesIn(album: Album): AlbumPhoto[] {
       caption: photo.caption?.trim() || undefined,
       alt: photo.alt?.trim() || undefined,
       exif: image.exif,
+      forSale: photo.forSale === true,
+      priceCents: photo.price === undefined ? undefined : Math.round(photo.price * 100),
+      hidden: photo.hidden === true,
+      inCatalog: photo.catalog !== false,
     };
   });
 }
 
 /** Card and social image: explicit `cover`, otherwise the first photo. */
 export function coverOf(album: Album): PhotoManifestEntry {
-  const photos = imagesIn(album);
+  const photos = imagesIn(album).filter((photo) => !photo.hidden);
+  if (!photos.length) throw new Error(`Album ${album.id} has no visible photos`);
   if (!album.data.cover) return photos[0]!.image;
   const hit = photos.find(({ file }) => file === album.data.cover);
   if (!hit) {
@@ -117,7 +127,7 @@ export function coverOf(album: Album): PhotoManifestEntry {
 
 /** Alt text for the cover, falling back to its caption then a generic label. */
 export function coverAltOf(album: Album): string {
-  const photos = imagesIn(album);
+  const photos = imagesIn(album).filter((photo) => !photo.hidden);
   const hit = album.data.cover
     ? photos.find(({ file }) => file === album.data.cover)
     : photos[0];
@@ -126,6 +136,11 @@ export function coverAltOf(album: Album): string {
 
 /** Photos in frontmatter order. */
 export async function photosOf(album: Album): Promise<AlbumPhoto[]> {
+  return imagesIn(album).filter((photo) => !photo.hidden);
+}
+
+/** Includes hidden photographs for commerce fulfillment and operator tools. */
+export async function allPhotosOf(album: Album): Promise<AlbumPhoto[]> {
   return imagesIn(album);
 }
 

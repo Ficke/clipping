@@ -1,5 +1,5 @@
 /**
- * Behaviour for components/Lightbox.astro. Drives every `a[data-lightbox]` on
+ * Behavior for components/Lightbox.astro. Drives every `a[data-lightbox]` on
  * the page (StoryPhoto.astro writes those), and keeps the URL in sync as
  * `#photo-N` so a single photograph can be linked and the browser Back gesture
  * closes the viewer instead of leaving the story.

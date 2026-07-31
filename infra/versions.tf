@@ -6,6 +6,12 @@ terraform {
       source  = "hashicorp/aws"
       version = ">= 5.80"
     }
+
+    # Zips the bundled commerce Lambda.
+    archive = {
+      source  = "hashicorp/archive"
+      version = ">= 2.4"
+    }
   }
 }
 
