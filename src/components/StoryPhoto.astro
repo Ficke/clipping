@@ -1,5 +1,6 @@
 ---
 import type { AlbumPhoto } from '../lib/albums';
+import { photoIdFor } from '../lib/downloads';
 import { lightboxSrcset } from '../lib/photo-manifest';
 import PhotoPicture from './PhotoPicture.astro';
 
@@ -22,6 +23,7 @@ const {
 } = Astro.props;
 const orientation = photo.image.height > photo.image.width ? 'portrait' : 'landscape';
 const captionId = `photo-caption-${index + 1}`;
+const photoId = photoIdFor(photo.image.sourceHash);
 ---
 
 <figure class:list={['story-photo', orientation, 'rise']}>
@@ -29,6 +31,7 @@ const captionId = `photo-caption-${index + 1}`;
     href={photo.image.variants.lightbox.src}
     class="zoom"
     data-lightbox
+    data-photo-id={photoId}
     data-alt={alt}
     data-caption={photo.caption}
     data-srcset={lightboxSrcset(photo.image)}
