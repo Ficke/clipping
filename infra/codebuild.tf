@@ -178,6 +178,7 @@ resource "aws_codebuild_project" "site" {
     compute_type                = "BUILD_GENERAL1_SMALL"
     image                       = "aws/codebuild/standard:8.0"
     type                        = "LINUX_CONTAINER"
+    host_kernel                 = "LINUX_KERNEL_6"
     image_pull_credentials_type = "CODEBUILD"
 
     environment_variable {
@@ -223,6 +224,7 @@ resource "aws_codebuild_project" "media" {
     compute_type                = "BUILD_GENERAL1_SMALL"
     image                       = "aws/codebuild/standard:8.0"
     type                        = "LINUX_CONTAINER"
+    host_kernel                 = "LINUX_KERNEL_6"
     image_pull_credentials_type = "CODEBUILD"
 
     environment_variable {
