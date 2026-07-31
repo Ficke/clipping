@@ -238,13 +238,26 @@ slug, filename, or S3 key.
 
 ### Putting a photo on sale
 
-Use the store command with an album folder, permanent story ID, or public slug:
+Each store lightbox URL ends in the photograph's opaque ID, for example
+`/store/#photo_1234567890abcdef12345678`. Use that ID directly for store
+changes:
 
 ```sh
-bun run photos:store -- olympics DSCF7588.jpg --price 40
-bun run photos:store -- olympics DSCF7588.jpg --price 55    # reprice
-bun run photos:store -- olympics DSCF7588.jpg --remove      # delist
+bun run photos:store -- photo_1234567890abcdef12345678 --price 40
+bun run photos:store -- photo_1234567890abcdef12345678 --price 55    # reprice
+bun run photos:store -- photo_1234567890abcdef12345678 --remove      # delist
 ```
+
+The existing `<album> <filename>` form remains available, using an album
+folder, permanent story ID, or public slug:
+
+```sh
+bun run photos:store -- olympics DSCF7588.jpg --remove
+```
+
+The store lightbox previews only the selected photograph; it does not navigate
+or preload the rest of the store. Album lightboxes retain their normal
+previous/next, keyboard, and swipe navigation.
 
 Omit the action flag for an interactive price/update prompt; add `--dry-run` to
 preview without writing. The command writes readable photo-level content:
@@ -263,7 +276,7 @@ deploy; it needs no media upload or Lambda deploy.
 Photo removal has deliberately separate scopes:
 
 ```sh
-bun run photos:store -- olympics DSCF7588.jpg --remove
+bun run photos:store -- photo_1234567890abcdef12345678 --remove
 # Delists, but keeps the public album photo and private fulfillment mapping.
 
 bun run photos:site -- olympics DSCF7588.jpg --hide

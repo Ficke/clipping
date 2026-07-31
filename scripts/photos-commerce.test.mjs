@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parsePriceDollars } from './photo-frontmatter.mjs';
+import { photoIdFor } from '../src/lib/downloads.ts';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
@@ -18,6 +19,8 @@ function fixture() {
   temporaryAlbums.push(album);
   mkdirSync(album);
   const index = path.join(album, 'index.md');
+  const photoHash = 'a'.repeat(64);
+  const otherHash = 'b'.repeat(64);
   writeFileSync(index, [
     '---',
     `storyId: "${name}"`,
@@ -32,7 +35,16 @@ function fixture() {
     '---',
     '',
   ].join('\n'));
-  return { name, index };
+  writeFileSync(path.join(album, 'photos.json'), JSON.stringify({
+    version: 1,
+    profile: 'photo-v1',
+    album: name,
+    photos: [
+      { file: 'photo.jpg', sourceHash: photoHash },
+      { file: 'other.jpg', sourceHash: otherHash },
+    ],
+  }));
+  return { name, index, photoId: photoIdFor(photoHash) };
 }
 
 function run(script, commandArgs) {
@@ -54,15 +66,24 @@ describe('photo commerce commands', () => {
   });
 
   test('delists from the store but retains the private catalog mapping', () => {
-    const { name, index } = fixture();
+    const { name, index, photoId } = fixture();
     run('photos-store.mjs', [name, 'photo.jpg', '--price', '40']);
-    const result = run('photos-store.mjs', [name, 'photo.jpg', '--remove']);
+    const result = run('photos-store.mjs', [photoId, '--remove']);
 
     expect(result.status).toBe(0);
     const contents = readFileSync(index, 'utf8');
     expect(contents).not.toContain('forSale:');
     expect(contents).not.toContain('price:');
     expect(contents).not.toContain('catalog: false');
+    expect(result.stdout).toContain('photo.jpg: not for sale');
+  });
+
+  test('resolves an opaque photo ID within an explicitly named album', () => {
+    const { name, index, photoId } = fixture();
+    const result = run('photos-store.mjs', [name, photoId, '--price', '45']);
+
+    expect(result.status).toBe(0);
+    expect(readFileSync(index, 'utf8')).toContain('forSale: true\n    price: 45');
   });
 
   test('purges and restores the private catalog explicitly', () => {

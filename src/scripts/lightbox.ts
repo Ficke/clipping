@@ -1,8 +1,9 @@
 /**
  * Behavior for components/Lightbox.astro. Drives every `a[data-lightbox]` on
  * the page (StoryPhoto.astro writes those), and keeps the URL in sync as
- * `#photo-N` so a single photograph can be linked and the browser Back gesture
- * closes the viewer instead of leaving the story.
+ * a stable fragment supplied by the page (falling back to `#photo-N`) so a
+ * single photograph can be linked and the browser Back gesture closes the
+ * viewer instead of leaving the story.
  */
 const dialog = document.getElementById('lightbox') as HTMLDialogElement | null;
 const links = [...document.querySelectorAll<HTMLAnchorElement>('a[data-lightbox]')];
@@ -10,6 +11,7 @@ const links = [...document.querySelectorAll<HTMLAnchorElement>('a[data-lightbox]
 if (dialog && links.length > 0) start(dialog, links);
 
 function start(dialog: HTMLDialogElement, links: HTMLAnchorElement[]) {
+  const single = dialog.dataset.single === 'true';
   const figure = dialog.querySelector('.lightbox-figure') as HTMLElement;
   const img = dialog.querySelector('img') as HTMLImageElement;
   const caption = document.getElementById('lightbox-caption') as HTMLElement;
@@ -20,6 +22,10 @@ function start(dialog: HTMLDialogElement, links: HTMLAnchorElement[]) {
   let activeLink: HTMLAnchorElement | undefined;
   let touchStartX: number | undefined;
   let pushedHistory = false;
+
+  function fragmentFor(index: number): string {
+    return links[index]!.dataset.photoId ?? `photo-${index + 1}`;
+  }
 
   /**
    * The width the photo will actually occupy, which the aspect ratio can make
@@ -56,20 +62,22 @@ function start(dialog: HTMLDialogElement, links: HTMLAnchorElement[]) {
     img.srcset = link.dataset.srcset ?? '';
     img.src = link.href;
 
-    if (pushedHistory) history.replaceState(null, '', `#photo-${current + 1}`);
+    if (pushedHistory) history.replaceState(null, '', `#${fragmentFor(current)}`);
 
-    for (const offset of [1, -1]) {
-      const neighbor = links[(current + offset + links.length) % links.length]!;
-      const preload = new Image();
-      preload.sizes = sizesFor(neighbor);
-      preload.srcset = neighbor.dataset.srcset ?? '';
-      preload.src = neighbor.href;
+    if (!single) {
+      for (const offset of [1, -1]) {
+        const neighbor = links[(current + offset + links.length) % links.length]!;
+        const preload = new Image();
+        preload.sizes = sizesFor(neighbor);
+        preload.srcset = neighbor.dataset.srcset ?? '';
+        preload.src = neighbor.href;
+      }
     }
   }
 
   function openAt(index: number) {
     activeLink = links[index];
-    history.pushState(null, '', `#photo-${index + 1}`);
+    history.pushState(null, '', `#${fragmentFor(index)}`);
     pushedHistory = true;
     dialog.showModal();
     show(index);
@@ -88,8 +96,8 @@ function start(dialog: HTMLDialogElement, links: HTMLAnchorElement[]) {
   closeButton.addEventListener('click', () => dialog.close());
 
   dialog.addEventListener('keydown', (event) => {
-    if (event.key === 'ArrowLeft') show(current - 1);
-    if (event.key === 'ArrowRight') show(current + 1);
+    if (!single && event.key === 'ArrowLeft') show(current - 1);
+    if (!single && event.key === 'ArrowRight') show(current + 1);
   });
 
   // The figure fills the dialog, so it — not the dialog — is the backdrop the
@@ -106,7 +114,7 @@ function start(dialog: HTMLDialogElement, links: HTMLAnchorElement[]) {
     if (event.pointerType !== 'touch' || touchStartX === undefined) return;
     const distance = event.clientX - touchStartX;
     touchStartX = undefined;
-    if (Math.abs(distance) < 50 || links.length < 2) return;
+    if (single || Math.abs(distance) < 50 || links.length < 2) return;
     show(distance > 0 ? current - 1 : current + 1);
   });
 
@@ -133,13 +141,11 @@ function start(dialog: HTMLDialogElement, links: HTMLAnchorElement[]) {
     if (dialog.open) dialog.close();
   });
 
-  const deepLink = location.hash.match(/^#photo-(\d+)$/);
-  if (deepLink) {
-    const index = Number(deepLink[1]) - 1;
-    if (index >= 0 && index < links.length) {
-      // Drop the hash first, so closing the viewer lands on a clean story URL.
-      history.replaceState(null, '', location.pathname + location.search);
-      openAt(index);
-    }
+  const fragment = location.hash.slice(1);
+  const index = links.findIndex((_, candidate) => fragmentFor(candidate) === fragment);
+  if (index >= 0) {
+    // Drop the hash first, so closing the viewer lands on a clean page URL.
+    history.replaceState(null, '', location.pathname + location.search);
+    openAt(index);
   }
 }

@@ -1,6 +1,6 @@
 /** List, reprice, delist, or purge an existing photograph from commerce. */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
@@ -12,6 +12,7 @@ import {
   resolveAlbumIndex,
   splitFrontmatter,
 } from './photo-frontmatter.mjs';
+import { isPhotoId, photoIdFor } from '../src/lib/downloads.ts';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
@@ -31,21 +32,31 @@ if (priceAt !== -1) {
 const positional = args.filter((arg) => !consumed.has(arg));
 const actions = [priceInput !== undefined, remove, purgeCatalog, restoreCatalog].filter(Boolean).length;
 
-if (actions > 1 || priceAt !== -1 && priceInput === undefined || positional.length !== 2) {
-  fail('Usage: bun run photos:store -- <album> <file> [--price 40 | --remove | --purge-catalog | --restore-catalog] [--dry-run] [--yes]');
+if (actions > 1 || priceAt !== -1 && priceInput === undefined
+  || positional.length < 1 || positional.length > 2
+  || positional.length === 1 && !isPhotoId(positional[0])) {
+  usage();
 }
 
 let indexPath;
-try {
-  indexPath = resolveAlbumIndex(albumsRoot, positional[0]);
-} catch (error) {
-  fail(error.message);
+let photoReference;
+if (positional.length === 1) {
+  ({ indexPath, file: photoReference } = resolvePhotoId(positional[0]));
+} else {
+  try {
+    indexPath = resolveAlbumIndex(albumsRoot, positional[0]);
+  } catch (error) {
+    fail(error.message);
+  }
+  photoReference = isPhotoId(positional[1])
+    ? fileForPhotoId(indexPath, positional[1])
+    : positional[1];
 }
 const contents = readFileSync(indexPath, 'utf8');
 const { lines } = splitFrontmatter(contents, path.dirname(indexPath));
 const { entries } = readPhotosBlock(lines);
-const photo = entries.find((entry) => entry.file === positional[1]);
-if (!photo) fail(`${positional[1]} is not in ${path.relative(repoRoot, indexPath)}`);
+const photo = entries.find((entry) => entry.file === photoReference);
+if (!photo) fail(`${photoReference} is not in ${path.relative(repoRoot, indexPath)}`);
 
 let action = priceInput === undefined ? undefined : { kind: 'price', price: parsePrice(priceInput) };
 if (remove) action = { kind: 'remove' };
@@ -127,6 +138,48 @@ function parsePrice(value) {
   } catch (error) {
     fail(error.message);
   }
+}
+
+function resolvePhotoId(photoId) {
+  const matches = [];
+  for (const entry of readdirSync(albumsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const indexPath = path.join(albumsRoot, entry.name, 'index.md');
+    if (!existsSync(indexPath)) continue;
+    const file = fileForPhotoId(indexPath, photoId, false);
+    if (file) matches.push({ indexPath, file });
+  }
+  if (!matches.length) fail(`no photo matches ${photoId}; rerun photos:push if its manifest is stale`);
+  if (matches.length > 1) fail(`${photoId} appears in more than one album; specify the album explicitly`);
+  return matches[0];
+}
+
+function fileForPhotoId(indexPath, photoId, required = true) {
+  const manifestPath = path.join(path.dirname(indexPath), 'photos.json');
+  if (!existsSync(manifestPath)) {
+    if (!required) return undefined;
+    fail(`${path.relative(repoRoot, manifestPath)} is missing; rerun photos:push`);
+  }
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  } catch (error) {
+    fail(`could not read ${path.relative(repoRoot, manifestPath)}: ${error.message}`);
+  }
+  const matches = (manifest.photos ?? []).filter((entry) => {
+    try {
+      return photoIdFor(entry.sourceHash) === photoId;
+    } catch {
+      return false;
+    }
+  });
+  if (matches.length > 1) fail(`${photoId} is duplicated in ${path.relative(repoRoot, manifestPath)}`);
+  if (!matches.length && required) fail(`${photoId} is not in ${path.relative(repoRoot, manifestPath)}`);
+  return matches[0]?.file;
+}
+
+function usage() {
+  fail('Usage: bun run photos:store -- <photo-id> | <album> <file-or-photo-id> [--price 40 | --remove | --purge-catalog | --restore-catalog] [--dry-run] [--yes]');
 }
 
 function fail(message) {
