@@ -14,5 +14,5 @@ photos:
   - file: DSCF7616.jpg
   - file: DSCF7640.jpg
     forSale: true
-    price: 40
+    price: 50
 ---
