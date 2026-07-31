@@ -155,8 +155,10 @@ versioned, so overwrites and deletions remain recoverable for 90 days.
 
 The media job hashes source bytes. A replacement gets new immutable URLs;
 unchanged photos reuse their existing variants; removed photos disappear from
-`photos.json`. Old content-addressed derivatives are intentionally retained
-and can be garbage-collected separately without putting a live page at risk.
+`photos.json`. The new manifest records superseded content hashes. After the
+next site deploy has published and invalidated every page that could reference
+them, the deploy automatically removes derivative trees that no committed
+manifest still uses.
 Changing only text — title, description, captions, alt, cover, or the order of
 `photos:` — needs no photo upload; edit `index.md` and publish it normally.
 
@@ -211,7 +213,9 @@ cache. It never downloads originals or historical derivatives.
 
 Media generation has already happened by this point — `photos:push` does it at
 upload time, not at deploy time. A deploy that changes only album text costs
-nothing but the site build.
+nothing but the site build. The deploy also waits for its CloudFront
+invalidation and runs `photos:gc`, which deletes only derivative hashes marked
+obsolete by committed manifests and unused by every current album.
 
 ## Selling downloads
 
@@ -275,7 +279,10 @@ bun run photos:store -- olympics DSCF7588.jpg --restore-catalog
 
 Use `photos:site --hide` instead of deleting an original when the goal is only
 to remove it from the website. Physical deletion remains removing the local file
-and running `photos:push`; S3 versioning provides a 90-day recovery window.
+and running `photos:push`; S3 versioning provides a 90-day recovery window. If
+the deleted file was the explicit cover, `photos:push` selects the first
+remaining visible photo as the new cover. Obsolete public derivatives are
+removed automatically after the updated site is deployed.
 
 Everything for sale appears at `/store/`, grouped by album, and that is the only
 place with a buy button — album pages stay reading pages. The store is linked in

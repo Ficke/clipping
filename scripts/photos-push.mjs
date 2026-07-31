@@ -264,6 +264,14 @@ async function reconcilePhotos(contents, images, album) {
   }
 
   const rebuilt = [...lines];
+  const cover = frontmatterValue(contents, 'cover');
+  if (cover && dropped.some((entry) => entry.file === cover)) {
+    const replacement = next.find((entry) => entry.hidden !== true);
+    if (!replacement) fail(`${album}: deleting cover ${cover} would leave no visible photo`);
+    const coverAt = rebuilt.findIndex((line) => /^cover:\s*/.test(line));
+    rebuilt[coverAt] = `cover: ${replacement.file}`;
+    console.log(`  cover: ${cover} -> ${replacement.file}`);
+  }
   const block = serializePhotos(next);
   if (span) rebuilt.splice(span[0], span[1] - span[0], ...block);
   else rebuilt.push(...block);

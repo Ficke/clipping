@@ -90,8 +90,20 @@ data "aws_iam_policy_document" "site_build" {
 
   statement {
     sid       = "Invalidate"
-    actions   = ["cloudfront:CreateInvalidation"]
+    actions   = ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"]
     resources = [aws_cloudfront_distribution.site.arn]
+  }
+
+  statement {
+    sid       = "ListMediaForCleanup"
+    actions   = ["s3:ListBucket"]
+    resources = [aws_s3_bucket.media.arn]
+  }
+
+  statement {
+    sid       = "DeleteObsoleteMedia"
+    actions   = ["s3:DeleteObject"]
+    resources = ["${aws_s3_bucket.media.arn}/media/*"]
   }
 }
 
@@ -176,6 +188,11 @@ resource "aws_codebuild_project" "site" {
     environment_variable {
       name  = "CLOUDFRONT_DISTRIBUTION_ID"
       value = aws_cloudfront_distribution.site.id
+    }
+
+    environment_variable {
+      name  = "MEDIA_BUCKET"
+      value = aws_s3_bucket.media.bucket
     }
   }
 

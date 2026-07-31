@@ -315,7 +315,7 @@ exit 0
       await sharp({ create: { width: 20, height: 10, channels: 3, background: '#123456' } })
         .jpeg().toFile(path.join(album, file));
     }
-    // b.jpg is captioned and gone from disk; c.jpg is new.
+    // b.jpg is the cover and gone from disk; c.jpg is new.
     rmSync(path.join(album, 'b.jpg'));
     writeFileSync(path.join(album, 'index.md'), [
       '---',
@@ -323,6 +323,7 @@ exit 0
       'title: "Reconcile Test"',
       'date: 2099-01-01',
       'location: "Nowhere"',
+      'cover: b.jpg',
       'photos:',
       '  - file: a.jpg',
       '    caption: "Kept."',
@@ -342,6 +343,7 @@ exit 0
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('removing 1: b.jpg');
     expect(result.stdout).toContain('adding 1: c.jpg');
+    expect(result.stdout).toContain('cover: b.jpg -> a.jpg');
     // --dry-run must not touch the file.
     expect(readFileSync(path.join(album, 'index.md'), 'utf8')).toContain('  - file: b.jpg');
   });

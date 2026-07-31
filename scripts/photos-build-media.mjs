@@ -47,7 +47,7 @@ if (!files.length) fail(`No supported photos found in ${sourceDirectory}`);
 const photos = [];
 let generatedCount = 0;
 let reusedCount = 0;
-const previousManifest = noUpload ? undefined : loadPreviousManifest();
+const previousManifest = loadPreviousManifest(args.previousManifest);
 const previousVariants = variantsFrom(previousManifest);
 
 for (const file of files) {
@@ -109,7 +109,23 @@ for (const file of files) {
   console.log(`${file}: ${definitions.length} variants (${generatedCount} generated total)`);
 }
 
-const manifest = { version: 1, profile: photoProfile.version, album, photos };
+const currentMedia = new Set(photos.map((photo) => mediaIdentity(photoProfile.version, photo.sourceHash)));
+const obsoleteMedia = obsoleteMediaFrom(previousManifest)
+  .concat((previousManifest?.photos ?? []).map((photo) => ({
+    profile: previousManifest?.profile ?? photoProfile.version,
+    sourceHash: photo.sourceHash,
+  })))
+  .filter((entry) => validMediaEntry(entry) && !currentMedia.has(mediaIdentity(entry.profile, entry.sourceHash)))
+  .filter((entry, index, entries) => entries.findIndex((candidate) =>
+    candidate.profile === entry.profile && candidate.sourceHash === entry.sourceHash) === index)
+  .sort((left, right) => mediaIdentity(left.profile, left.sourceHash).localeCompare(mediaIdentity(right.profile, right.sourceHash)));
+const manifest = {
+  version: 1,
+  profile: photoProfile.version,
+  album,
+  photos,
+  ...(obsoleteMedia.length && { obsoleteMedia }),
+};
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
 if (!noUpload) {
@@ -130,7 +146,15 @@ if (!noUpload) {
 console.log(`Manifest: ${manifestPath}`);
 console.log(`Variants: ${generatedCount} generated, ${reusedCount} reused`);
 
-function loadPreviousManifest() {
+function loadPreviousManifest(input) {
+  if (input) {
+    try {
+      return JSON.parse(readFileSync(path.resolve(input), 'utf8'));
+    } catch (error) {
+      fail(`Could not read the previous photo manifest: ${error.message}`);
+    }
+  }
+  if (noUpload) return undefined;
   const previousPath = `${manifestPath}.previous`;
   rmSync(previousPath, { force: true });
   const result = spawnSync('aws', [
@@ -169,6 +193,19 @@ function variantsFrom(manifest) {
   return variants;
 }
 
+function obsoleteMediaFrom(manifest) {
+  return Array.isArray(manifest?.obsoleteMedia) ? manifest.obsoleteMedia : [];
+}
+
+function validMediaEntry(entry) {
+  return entry && /^[a-z0-9][a-z0-9-]*$/.test(entry.profile)
+    && /^[a-f0-9]{64}$/.test(entry.sourceHash);
+}
+
+function mediaIdentity(profile, sourceHash) {
+  return `${profile}:${sourceHash}`;
+}
+
 async function remoteVariantDimensions(key) {
   const destination = path.join(outputDirectory, '.existing', path.basename(key));
   mkdirSync(path.dirname(destination), { recursive: true });
@@ -185,7 +222,7 @@ function parseArgs(values) {
     const value = values[index];
     if (value === '--no-upload') parsed.noUpload = true;
     else if (value === '--manifest-only') parsed.manifestOnly = true;
-    else if (['--source', '--album', '--output', '--manifest', '--source-metadata'].includes(value)) parsed[toCamel(value.slice(2))] = values[++index];
+    else if (['--source', '--album', '--output', '--manifest', '--source-metadata', '--previous-manifest'].includes(value)) parsed[toCamel(value.slice(2))] = values[++index];
     else fail(`Unknown argument: ${value}`);
   }
   if (parsed.manifestOnly) parsed.noUpload = true;
