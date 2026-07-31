@@ -28,12 +28,17 @@ describe('media manifest builder', () => {
     temporaryDirectories.push(directory);
     const source = path.join(directory, 'album');
     const manifest = path.join(directory, 'photos.json');
+    const sourceMetadata = path.join(directory, 'source-metadata.json');
     const output = path.join(directory, 'output');
     await sharp({
       create: { width: 2400, height: 1600, channels: 3, background: '#765432' },
     }).jpeg().toFile(path.join(directory, 'source.jpg'));
     mkdirSync(source);
     copyFileSync(path.join(directory, 'source.jpg'), path.join(source, 'DSCF10.jpg'));
+    writeFileSync(sourceMetadata, JSON.stringify({
+      version: 1,
+      photos: { 'DSCF10.jpg': 'X-T5 · 50mm · f/5.6 · 1/500s · ISO 125' },
+    }));
 
     const result = spawnSync('bun', [
       path.join(import.meta.dir, 'photos-build-media.mjs'),
@@ -41,6 +46,7 @@ describe('media manifest builder', () => {
       '--album', '2026-08-test',
       '--manifest', manifest,
       '--output', output,
+      '--source-metadata', sourceMetadata,
       '--no-upload',
     ], { encoding: 'utf8' });
 
@@ -49,6 +55,7 @@ describe('media manifest builder', () => {
     expect(parsed).toMatchObject({ version: 1, profile: 'photo-v1', album: '2026-08-test' });
     expect(parsed.photos).toHaveLength(1);
     expect(parsed.photos[0]).toMatchObject({ file: 'DSCF10.jpg', width: 2400, height: 1600 });
+    expect(parsed.photos[0].exif).toBe('X-T5 · 50mm · f/5.6 · 1/500s · ISO 125');
     expect(parsed.photos[0].variants.responsive.avif).toHaveLength(4);
     expect(parsed.photos[0].variants.lightbox.src).toMatch(/^\/media\/photo-v1\//);
     expect(parsed.photos[0].variants.social.width).toBe(1200);

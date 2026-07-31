@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,19 +32,35 @@ for (const album of albums) {
   if (existsSync(manifestPath) && allVariantsPresent(manifestPath)) continue;
 
   console.log(`[photos:build-media:local] building ${album}...`);
-  const tmpManifest = path.join(mkdtempSync(path.join(os.tmpdir(), 'photo-media-')), 'photos.json');
-  const result = spawnSync(
-    'bun',
-    [
-      path.join(repoRoot, 'scripts', 'photos-build-media.mjs'),
+  const temporary = mkdtempSync(path.join(os.tmpdir(), 'photo-media-'));
+  const staged = path.join(temporary, 'source');
+  const sourceMetadata = path.join(temporary, 'source-metadata.json');
+  const tmpManifest = path.join(temporary, 'photos.json');
+  mkdirSync(staged);
+  try {
+    run([
+      path.join(repoRoot, 'scripts', 'photos-sanitize.mjs'),
       '--source', albumDir,
+      '--output', staged,
+      '--metadata', sourceMetadata,
+      '--previous-manifest', manifestPath,
+    ], album);
+    run([
+      path.join(repoRoot, 'scripts', 'photos-build-media.mjs'),
+      '--source', staged,
+      '--source-metadata', sourceMetadata,
       '--album', album,
       '--output', publicRoot,
       '--manifest', tmpManifest,
       '--no-upload',
-    ],
-    { stdio: 'inherit' },
-  );
+    ], album);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+function run(args, album) {
+  const result = spawnSync('bun', args, { stdio: 'inherit' });
   if (result.status !== 0) {
     console.error(`[photos:build-media:local] failed to build ${album}`);
     process.exit(result.status ?? 1);

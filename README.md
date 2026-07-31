@@ -76,8 +76,16 @@ changes in `src/content.config.ts`.
    in S3 before writing anything.
 
    It then lowercases image extensions, rejects unsupported photo formats or
-   nested image folders, writes `index.md`, and synchronizes the album's
-   originals to S3.
+   nested image folders, and writes `index.md`. Before upload it makes a
+   temporary, lossless fulfillment copy of every export: GPS, camera, editing,
+   and descriptive metadata are removed while the embedded color profile and
+   copyright/creator/contact fields are retained. Only that sanitized
+   full-resolution copy is synchronized to S3; the temporary copy is deleted.
+
+   The five camera settings shown on album pages are captured before
+   sanitization into a small source-metadata sidecar. A later push from a fresh
+   clone preserves those approved values from the committed `photos.json` even
+   though `photos:pull` returns already-sanitized files.
 
    Finally it asks where to generate the image variants:
 
@@ -88,9 +96,12 @@ changes in `src/content.config.ts`.
      where      [codebuild]
    ```
 
-   Both run the same `photos-build-media.mjs` and write to the same buckets —
-   variant keys derive from each source file's hash, so the two are
-   interchangeable and either warms the cache for the other. CodeBuild is the
+   Both run the same `photos-build-media.mjs` and consume the same contract: the
+   sanitized image bytes plus the approved metadata sidecar. Local generation
+   reads the temporary staging directory directly; CodeBuild reads the exact
+   same bytes after S3 sync. Variant keys derive from each sanitized source
+   file's hash, so the two are interchangeable and either warms the cache for
+   the other. CodeBuild is the
    default because it builds from `HEAD` in a fixed container. Local is
    markedly faster on a cold album, since it skips the source bundle and the
    round trip that pulls the originals back out of S3; use `--local` to skip
@@ -207,8 +218,10 @@ nothing but the site build.
 Photographs can be sold as full-resolution downloads. Payment is Stripe-hosted
 Checkout with Managed Payments: Stripe/Link is merchant of record and handles
 covered sales tax, VAT, GST, fraud, disputes, transaction support, and payment
-emails. The file is the original out of the archive bucket, presigned for the
-buyer. There is still no database — a signed token carries the entitlement.
+emails. The file is the single full-resolution, metadata-minimized fulfillment
+export in the archive bucket, presigned for the buyer. It retains its embedded
+color profile and copyright information, but not GPS, camera, or editing
+metadata. There is still no database — a signed token carries the entitlement.
 
 Every photograph shares one generic Stripe Product, **Full-resolution
 photograph download**. Its description carries the personal-license terms, and
@@ -455,8 +468,11 @@ controlled by the normal Dashboard receipt-email toggle.
 
 ## Where the photos live
 
-Full-quality originals live in the versioned `adamficke-com-originals`
-bucket at `albums/<storyId>/<file>.jpg`. Public derivatives live separately in
+Full-quality fulfillment exports live in the versioned
+`adamficke-com-originals` bucket at `albums/<storyId>/<file>.jpg`. They are
+losslessly stripped of all metadata except color-space and
+copyright/creator/contact fields before upload; an unsanitized duplicate is not
+stored in AWS. Public derivatives live separately in
 the private `adamficke-com-media` bucket and are served by CloudFront under
 `/media/*`. Git contains `index.md` plus `photos.json`; generated image files
 are never committed.
@@ -470,10 +486,10 @@ content-addressed derivatives:
 - JPEG fallbacks at the responsive widths
 - a 1200 px JPEG for Open Graph / social previews
 
-sharp auto-orients photos and strips metadata from derivatives, so EXIF/GPS
-in the originals never reaches the public site—only the selected camera
-settings stored in the manifest do. Export size is your call: larger
-originals are downscaled, and the site serves at most 2000 px wide. Changing
+sharp auto-orients photos and strips metadata from derivatives, so only the
+selected camera settings stored in the manifest reach the public site. Export
+size is your call: larger fulfillment exports are downscaled, and the site
+serves at most 2000 px wide. Changing
 the global media profile creates a new versioned URL namespace instead of
 mutating published assets.
 

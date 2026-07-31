@@ -27,7 +27,7 @@ describe('photos push', () => {
     await sharp({ create: { width: 20, height: 10, channels: 3, background: '#123456' } })
       .jpeg().toFile(path.join(album, 'DSCF1.JPG'));
     const fakeAws = path.join(bin, 'aws');
-    writeFileSync(fakeAws, `#!/bin/sh\nprintf '%s\\n' "$@" > ${JSON.stringify(log)}\n`);
+    writeFileSync(fakeAws, `#!/bin/sh\nprintf '%s\\n' "$@" >> ${JSON.stringify(log)}\n`);
     chmodSync(fakeAws, 0o755);
 
     const result = spawnSync('bun', [
@@ -41,7 +41,9 @@ describe('photos push', () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('Would rename DSCF1.JPG -> DSCF1.jpg');
     expect(result.stdout).toContain('Would build immutable media');
-    expect(readFileSync(log, 'utf8')).toContain('--delete\n--checksum-algorithm\nSHA256\n--dryrun');
+    const awsCalls = readFileSync(log, 'utf8');
+    expect(awsCalls).toContain('--delete\n--checksum-algorithm\nSHA256\n--dryrun');
+    expect(awsCalls).toContain('source-metadata.json');
     expect(result.stdout).not.toContain('Starting adamficke-com-media');
     expect(existsSync(path.join(album, 'index.md'))).toBe(false);
     expect(existsSync(path.join(album, 'DSCF1.JPG'))).toBe(true);

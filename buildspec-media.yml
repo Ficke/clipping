@@ -11,6 +11,7 @@ phases:
       - bun install --frozen-lockfile
       - mkdir -p /tmp/photo-source /tmp/photo-media
       - aws s3 sync "s3://$MANIFEST_BUCKET/albums/$ALBUM_ID" /tmp/photo-source --exclude "*" --include "*.jpg" --include "*.jpeg" --include "*.png" --include "*.webp" --include "*.avif" --only-show-errors
+      - aws s3 cp "s3://$MANIFEST_BUCKET/manifests/$ALBUM_ID/source-metadata.json" /tmp/source-metadata.json --only-show-errors
   build:
     commands:
-      - PHOTO_SOURCE_DIR=/tmp/photo-source PHOTO_OUTPUT_DIR=/tmp/photo-media PHOTO_MANIFEST_PATH=/tmp/photos.json bun scripts/photos-build-media.mjs
+      - PHOTO_SOURCE_DIR=/tmp/photo-source PHOTO_SOURCE_METADATA_PATH=/tmp/source-metadata.json PHOTO_OUTPUT_DIR=/tmp/photo-media PHOTO_MANIFEST_PATH=/tmp/photos.json bun scripts/photos-build-media.mjs
