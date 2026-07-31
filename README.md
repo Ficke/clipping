@@ -213,8 +213,8 @@ buyer. There is still no database — a signed token carries the entitlement.
 Every photograph shares one generic Stripe Product, **Full-resolution
 photograph download**. Its description carries the personal-license terms, and
 the Product carries Stripe's
-Managed Payments classification (`Digital Finished Artwork — downloaded —
-non-subscription — limited rights`) and the personal-license offering. The site
+Managed Payments classification (`Digital Photographs/Images — downloaded —
+non-subscription — permanent rights`) and the personal-license offering. The site
 remains authoritative for price, availability, and the mapping from each opaque
 `photo_…` identifier to its private original. Stripe never receives the album
 slug, filename, or S3 key.
@@ -435,20 +435,20 @@ controlled by the normal Dashboard receipt-email toggle.
 
 - [x] **Sandbox Managed Payments**: activated and verified by creating a hosted
       Checkout Session through the real test API.
-- [x] **Sandbox Product**: created with tax code `txcd_10505000` (Digital
-      Finished Artwork — downloaded — non-subscription — limited rights), with
+- [x] **Sandbox Product**: created with tax code `txcd_10501000` (Digital
+      Photographs/Images — downloaded — non-subscription — permanent rights), with
       its `prod_…` ID stored beside the sandbox key.
-- [ ] **Live Stripe setup**: repeat Managed Payments activation and eligibility,
-      create the classified Product, and store its ID beside the live key.
+- [x] **Live Stripe setup**: Managed Payments eligibility verified with an unpaid
+      live Checkout Session; the classified Product and restricted key are stored
+      in the production SSM parameter.
 - [ ] **Presentation**: configure the business name, logo, support contact,
       statement descriptor, terms, and privacy policy. Receipts show the product
       as sold through Link.
 - [ ] **Payment methods**: enable only immediate methods for launch — cards,
       Link, Apple Pay, and Google Pay. The code deliberately does not pin
       `payment_method_types`, so the Dashboard remains authoritative.
-- [ ] **Restricted key**: the sandbox key is verified; grant the equivalent
-      Checkout Sessions read/write plus PaymentIntents and Charges read to the
-      live key when production is configured.
+- [x] **Restricted key**: sandbox and live keys are verified with Checkout
+      Sessions read/write plus PaymentIntents and Charges read.
 - [ ] **Recovery drill**: complete a test purchase, download it, run
       `commerce:link` against an equivalent live Session when available, and
       confirm reissue refuses refunded or disputed charges.
