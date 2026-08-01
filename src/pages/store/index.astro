@@ -16,7 +16,7 @@ const total = albums.reduce((count, { photos }) => count + photos.length, 0);
   section="store"
   noindex
 >
-  <header class="intro rise">
+  <header class="page-heading rise">
     <h1>Store</h1>
   </header>
 
@@ -69,22 +69,13 @@ const total = albums.reduce((count, { photos }) => count + photos.length, 0);
 </Layout>
 
 <style>
-  .intro {
-    margin-top: clamp(1rem, 4vw, 3rem);
-    max-width: var(--measure);
-  }
-
-  .intro h1 {
-    font-size: clamp(1.8rem, 5vw, 3rem);
-  }
-
   .empty {
     margin-top: 2.5rem;
     color: var(--muted);
   }
 
   .group {
-    margin-top: clamp(2.5rem, 7vw, 4.5rem);
+    margin-top: clamp(1.5rem, 4vw, 3rem);
   }
 
   .group h2 {

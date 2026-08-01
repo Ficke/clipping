@@ -198,6 +198,20 @@ a.kicker:focus-visible {
   color: var(--accent);
 }
 
+.page-heading {
+  margin-top: clamp(1rem, 4vw, 3rem);
+}
+
+.page-heading h1 {
+  font-family: 'Figtree Variable', system-ui, sans-serif;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1.6;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 @media (max-width: 480px) {
   .site-header {
     align-items: center;
