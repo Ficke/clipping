@@ -22,9 +22,9 @@ describe('license tiers', () => {
   test('licenseTerms states both halves and who holds the copyright', () => {
     const terms = licenseTerms(licenseTier('personal')!);
 
-    expect(terms).toContain('You may keep the file');
+    expect(terms).toContain('You may keep the downloaded file');
     expect(terms).toContain('You may not sell');
-    expect(terms).toContain('Copyright stays with Adam Ficke.');
+    expect(terms).toContain('Copyright remains with Adam Ficke.');
   });
 
   test('unknown tiers resolve to undefined rather than a default', () => {

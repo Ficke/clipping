@@ -17,7 +17,7 @@ export interface LicenseTier {
   restrictions: readonly string[];
 }
 
-export const COPYRIGHT_LINE = 'Copyright stays with Adam Ficke.';
+export const COPYRIGHT_LINE = 'Copyright remains with Adam Ficke.';
 
 /** Derived, not written twice, so the page and the receipt cannot disagree. */
 export function licenseTerms(tier: LicenseTier): string {
@@ -35,18 +35,18 @@ export function licenseTerms(tier: LicenseTier): string {
 export const DOWNLOAD_PRODUCTS: readonly LicenseTier[] = [
   {
     id: 'personal',
-    name: 'Full-resolution download, personal license',
-    summary: 'Personal license',
+    name: 'Full-resolution download with personal-use license',
+    summary: 'Personal-use license',
     grants: [
-      'keep the file and back it up',
-      'print it, at any size, for your own home or as a gift',
-      'display it on your own screens and personal website',
+      'keep the downloaded file and make backup copies',
+      'make prints at any size for your own home or to give as gifts',
+      'display the photograph on your own screens and personal, non-commercial website',
     ],
     restrictions: [
-      'sell, license, or give the file to anyone else',
-      'use it to promote or sell anything, your own work included',
-      'list it on a stock, print-on-demand, or NFT site',
-      'use it to train a machine learning model',
+      'sell, sublicense, share, or otherwise distribute the digital file',
+      'use the photograph in advertising, marketing, merchandise, or other commercial or promotional work, including promotion of your own work',
+      'upload the photograph to a stock, print-on-demand, NFT, or similar marketplace',
+      'use the photograph to train a machine-learning or artificial-intelligence model',
     ],
   },
 ];
