@@ -45,3 +45,25 @@ variable "enable_custom_domain" {
   type        = bool
   default     = true
 }
+
+variable "commerce_origin_verify_header_name" {
+  description = "Header CloudFront injects so commerce handlers can detect direct execute-api requests"
+  type        = string
+  default     = "X-Commerce-Origin-Verify"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9-]+$", var.commerce_origin_verify_header_name))
+    error_message = "The origin-verification header name may contain only letters, digits, and hyphens."
+  }
+}
+
+variable "commerce_origin_verify_header_value" {
+  description = "Random origin-verification value generated out of band; this bypass-detection value is stored in Terraform state"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(var.commerce_origin_verify_header_value) >= 32
+    error_message = "The origin-verification value must contain at least 32 characters."
+  }
+}

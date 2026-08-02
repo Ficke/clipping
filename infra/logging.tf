@@ -137,7 +137,6 @@ resource "aws_cloudwatch_log_delivery" "cloudfront_s3" {
     "cs(Host)",
     "cs-uri-stem",
     "sc-status",
-    "cs(Referer)",
     "cs(User-Agent)",
     "x-edge-result-type",
     "x-edge-request-id",

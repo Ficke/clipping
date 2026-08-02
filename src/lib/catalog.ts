@@ -1,6 +1,7 @@
 import { allPhotosOf, getAlbums, photosOf, slugOf, type Album, type AlbumPhoto } from './albums';
 import {
   DOWNLOAD_PRODUCTS,
+  assetRefFor,
   photoIdFor,
   type CatalogItem,
   type DownloadCatalog,
@@ -51,6 +52,7 @@ export async function buildCatalog(): Promise<DownloadCatalog> {
         ?? photo.image.variants.lightbox;
       items.push({
         photoId: photoIdFor(photo.image.sourceHash),
+        assetRef: assetRefFor(photo.image.sourceHash, photo.file),
         storyId: album.data.storyId,
         file: photo.file,
         forSale: photo.forSale,

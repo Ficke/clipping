@@ -36,9 +36,13 @@ const PORT = Number(process.env.COMMERCE_PORT ?? process.env.PORT ?? 8787);
 const DEFAULT_SECRET_PARAM = '/adamficke-com/commerce-test';
 
 process.env.COMMERCE_SECRET_PARAM ??= DEFAULT_SECRET_PARAM;
+const ownsTemporaryTable = !process.env.COMMERCE_TABLE;
+process.env.COMMERCE_TABLE ??= `adamficke-com-commerce-dev-${process.pid}`;
 process.env.ORIGINALS_BUCKET ??= 'adamficke-com-originals';
 process.env.SITE_BUCKET ??= 'adamficke-com-site';
 process.env.SITE_URL ??= `http://localhost:${PORT}`;
+process.env.ORIGIN_VERIFY_HEADER_NAME ??= 'x-commerce-origin';
+process.env.ORIGIN_VERIFY_HEADER_VALUE ??= 'local-commerce-origin';
 
 /*
  * This never runs on EC2, so the instance-metadata fallback can only ever be a
@@ -84,6 +88,26 @@ if (/^[sr]k_live/.test(fields.stripeApiKey ?? '')) {
 SSMClient.prototype.send = async () => ({ Parameter: { Value: JSON.stringify(fields) } });
 console.log(`commerce:dev: secrets from ${secretParam}`);
 
+const {
+  CreateTableCommand,
+  DeleteTableCommand,
+  DynamoDBClient,
+  waitUntilTableExists,
+} = await import('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient } = await import('@aws-sdk/lib-dynamodb');
+const dynamo = new DynamoDBClient({ maxAttempts: 2 });
+if (ownsTemporaryTable) {
+  await dynamo.send(new CreateTableCommand({
+    TableName: process.env.COMMERCE_TABLE,
+    BillingMode: 'PAY_PER_REQUEST',
+    AttributeDefinitions: [{ AttributeName: 'orderId', AttributeType: 'S' }],
+    KeySchema: [{ AttributeName: 'orderId', KeyType: 'HASH' }],
+  }));
+  await waitUntilTableExists({ client: dynamo, maxWaitTime: 60 }, { TableName: process.env.COMMERCE_TABLE });
+  console.log(`commerce:dev: temporary table ${process.env.COMMERCE_TABLE}`);
+  console.log(`  cleanup: aws dynamodb delete-table --table-name ${process.env.COMMERCE_TABLE}`);
+}
+
 /*
  * Serve the catalog from the last `bun run build` instead of the site bucket, so
  * a photo can be put on sale and bought locally without deploying first. Only
@@ -105,6 +129,15 @@ S3Client.prototype.send = function send(command, ...rest) {
 };
 
 const { handler } = await import('../lambda/index.ts');
+const { handleWebhook } = await import('../lambda/webhook.ts');
+const { DynamoOrderRepository } = await import('../lambda/order-repository.ts');
+const { STRIPE_API_VERSION } = await import('../lambda/integration.ts');
+const { default: Stripe } = await import('stripe');
+const webhookStripe = new Stripe(fields.stripeApiKey, { apiVersion: STRIPE_API_VERSION });
+const webhookOrders = new DynamoOrderRepository(
+  process.env.COMMERCE_TABLE,
+  DynamoDBDocumentClient.from(dynamo),
+);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -153,7 +186,7 @@ function serveStatic(url, response) {
   response.end(readFileSync(file));
 }
 
-createServer((request, response) => {
+const server = createServer((request, response) => {
   const chunks = [];
   request.on('data', (chunk) => chunks.push(chunk));
   request.on('end', async () => {
@@ -162,25 +195,66 @@ createServer((request, response) => {
 
     if (!url.pathname.startsWith('/api/')) return serveStatic(url, response);
 
-    const result = await handler({
+    const lambdaEvent = {
       rawPath: url.pathname,
       rawQueryString: url.searchParams.toString(),
-      headers: request.headers,
+      headers: {
+        ...request.headers,
+        [process.env.ORIGIN_VERIFY_HEADER_NAME]: process.env.ORIGIN_VERIFY_HEADER_VALUE,
+      },
       requestContext: { http: { method: request.method } },
       body: body.length ? body.toString('utf8') : undefined,
       isBase64Encoded: false,
-    }).catch((error) => {
+    };
+    const invocation = url.pathname.replace(/\/$/, '') === '/api/stripe-webhook'
+      ? handleWebhook(lambdaEvent, {
+          originHeaderName: process.env.ORIGIN_VERIFY_HEADER_NAME,
+          originHeaderValue: process.env.ORIGIN_VERIFY_HEADER_VALUE,
+          orders: webhookOrders,
+          loadSecrets: async () => ({
+            stripeReadApiKey: fields.stripeApiKey,
+            stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+          }),
+          stripeFor: () => webhookStripe,
+        })
+      : handler(lambdaEvent);
+    const result = await invocation.catch((error) => {
       console.error(error);
-      return { statusCode: 500, body: JSON.stringify({ error: String(error) }) };
+      return { statusCode: 500, body: JSON.stringify({ error: 'Local commerce request failed.' }) };
     });
 
     console.log(`${request.method} ${url.pathname} -> ${result.statusCode}`);
     response.writeHead(result.statusCode, result.headers ?? {});
     response.end(result.body ?? '');
   });
-}).listen(PORT, () => {
+});
+
+server.listen(PORT, () => {
   console.log(`commerce:dev serving dist/ and the store on http://localhost:${PORT}`);
   if (!existsSync(path.join(repoRoot, 'dist', 'index.html'))) {
     console.log('  note:      dist/ is empty — run `bun run build`');
   }
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    console.log('  webhook:   set STRIPE_WEBHOOK_SECRET from `stripe listen` before testing events');
+  }
 });
+
+let cleaning = false;
+async function cleanup(signal) {
+  if (cleaning) return;
+  cleaning = true;
+  await new Promise((resolve) => server.close(resolve));
+  if (ownsTemporaryTable) {
+    try {
+      await dynamo.send(new DeleteTableCommand({ TableName: process.env.COMMERCE_TABLE }));
+      console.log(`commerce:dev: deleted temporary table ${process.env.COMMERCE_TABLE}`);
+    } catch (error) {
+      console.error(`commerce:dev: could not delete ${process.env.COMMERCE_TABLE}: ${error.message}`);
+      process.exitCode = 1;
+    }
+  }
+  if (signal) process.exit();
+}
+
+process.once('SIGINT', () => void cleanup('SIGINT'));
+process.once('SIGTERM', () => void cleanup('SIGTERM'));

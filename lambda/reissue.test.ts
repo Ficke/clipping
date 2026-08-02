@@ -1,73 +1,66 @@
 import { describe, expect, test } from 'bun:test';
 import type Stripe from 'stripe';
-import type { DownloadCatalog } from '../src/lib/downloads';
-import { reissueDownload } from './reissue';
+import { reissueDownload, ReissueRefused } from './reissue';
+import type { OrderRepository } from './order-repository';
+import { createPendingOrder, type Order } from './orders';
 
-const PHOTO_ID = 'photo_1234567890abcdef12345678';
-const catalog: DownloadCatalog = {
-  version: 2,
-  generated: '2026-07-29T00:00:00.000Z',
-  items: [{
-    photoId: PHOTO_ID,
-    storyId: 'lost-coast',
-    file: 'DSCF1250.jpg',
-    forSale: true,
-    albumTitle: 'Lost Coast',
-    label: 'Fog coming over Punta Gorda.',
-    previewSrc: '/media/photo-lost-coast.webp',
-    priceCents: 4000,
-    width: 6000,
-    height: 4000,
-  }],
-};
+const ORDER_ID = `ord_${'1'.repeat(32)}`;
+const SESSION_ID = 'cs_test_1';
 
-function stripeReturning(overrides: Record<string, unknown> = {}): Stripe {
-  const charge = {
-    id: 'ch_1',
-    object: 'charge',
-    disputed: false,
-    refunded: false,
-    amount_refunded: 0,
-    ...overrides,
-  };
+function entitled(): Order {
   return {
-    checkout: {
-      sessions: {
-        retrieve: async () => ({
-          id: 'cs_live_1',
-          payment_status: 'paid',
-          metadata: { photo_id: PHOTO_ID, integration: 'photo-download-qkzvhrmw' },
-          payment_intent: { id: 'pi_1', object: 'payment_intent', latest_charge: charge },
-        }),
-      },
-    },
-  } as unknown as Stripe;
+    ...createPendingOrder({
+      livemode: false,
+      photoId: 'photo_1234567890abcdef12345678',
+      assetRef: `${'ab'.repeat(32)}.jpg`,
+      expectedAmount: 4_000,
+      albumTitle: 'Lost Coast',
+      label: 'Fog',
+    }, 1, ORDER_ID),
+    state: 'entitled',
+    stripeSessionId: SESSION_ID,
+    entitledAt: 2,
+  };
 }
 
-const deps = (stripe: Stripe) => ({
-  stripe,
-  catalog,
-  siteUrl: 'https://adamficke.com',
-  downloadTokenKey: 'k'.repeat(64),
-  now: Date.UTC(2026, 6, 31),
-});
+function harness(charge: Partial<Stripe.Charge> = {}, order = entitled()) {
+  const stripe = {
+    checkout: { sessions: { retrieve: async () => ({
+      id: SESSION_ID,
+      client_reference_id: ORDER_ID,
+      mode: 'payment',
+      metadata: { integration: 'photo-download-qkzvhrmw', order_id: ORDER_ID, photo_id: order.photoId },
+      livemode: false,
+      payment_status: 'paid',
+      currency: 'usd',
+      amount_subtotal: 4_000,
+      payment_intent: {
+        id: 'pi_test_1',
+        latest_charge: { id: 'ch_test_1', disputed: false, refunded: false, amount_refunded: 0, ...charge },
+      },
+    }) } },
+  } as unknown as Stripe;
+  const orders = { get: async () => order } as unknown as OrderRepository;
+  return { stripe, orders };
+}
 
 describe('manual download reissue', () => {
-  test('mints a fresh entitlement for a paid settled charge', async () => {
-    const result = await reissueDownload('cs_live_1', deps(stripeReturning()));
-    expect(result.status).toBe('paid');
-    expect(result.downloadUrl).toStartWith('https://adamficke.com/api/download?t=');
+  test('mints from a currently paid, settled durable order', async () => {
+    const h = harness();
+    await expect(reissueDownload(SESSION_ID, {
+      ...h, siteUrl: 'https://example.test', downloadTokenKey: 'k'.repeat(64),
+    })).resolves.toMatchObject({ status: 'paid', item: { albumTitle: 'Lost Coast' } });
   });
 
-  test('refuses a refunded charge', async () => {
-    await expect(reissueDownload('cs_live_1', deps(stripeReturning({
-      refunded: true,
-      amount_refunded: 4000,
-    })))).rejects.toThrow(/refunded charge/);
-  });
-
-  test('refuses a disputed charge', async () => {
-    await expect(reissueDownload('cs_live_1', deps(stripeReturning({ disputed: true }))))
-      .rejects.toThrow(/disputed charge/);
+  test('refuses refunded, disputed, and revoked orders', async () => {
+    for (const h of [
+      harness({ refunded: true, amount_refunded: 100 }),
+      harness({ disputed: true }),
+      harness({}, { ...entitled(), state: 'revoked' }),
+    ]) {
+      await expect(reissueDownload(SESSION_ID, {
+        ...h, siteUrl: 'https://example.test', downloadTokenKey: 'k'.repeat(64),
+      })).rejects.toBeInstanceOf(ReissueRefused);
+    }
   });
 });

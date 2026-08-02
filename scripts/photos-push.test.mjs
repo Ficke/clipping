@@ -75,6 +75,7 @@ describe('photos push', () => {
     ].join('\n'));
     const fakeAws = path.join(bin, 'aws');
     writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3api head-object" ]; then echo "An error occurred (404): Not Found" >&2; exit 1; fi
 printf '%s ' "$@" >> ${JSON.stringify(log)}
 printf '\n' >> ${JSON.stringify(log)}
 if [ "$1 $2" = "codebuild start-build" ]; then
@@ -126,6 +127,7 @@ fi
     const fakeAws = path.join(bin, 'aws');
     // A first push has no previous manifest in S3; real aws exits non-zero.
     writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3api head-object" ]; then echo "An error occurred (404): Not Found" >&2; exit 1; fi
 if [ "$1 $2" = "s3 cp" ]; then
   case "$3" in
     s3://*manifests*) echo "An error occurred (404) when calling HeadObject: Not Found" >&2; exit 1 ;;
@@ -172,6 +174,7 @@ exit 0
     const fakeAws = path.join(bin, 'aws');
     // A first push has no previous manifest in S3; real aws exits non-zero.
     writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3api head-object" ]; then echo "An error occurred (404): Not Found" >&2; exit 1; fi
 printf '%s ' "$@" >> ${JSON.stringify(log)}
 printf '\\n' >> ${JSON.stringify(log)}
 if [ "$1 $2" = "s3 cp" ]; then
@@ -223,6 +226,7 @@ exit 0
     ].join('\n'));
     const fakeAws = path.join(bin, 'aws');
     writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3api head-object" ]; then echo "An error occurred (404): Not Found" >&2; exit 1; fi
 if [ "$1 $2" = "s3 cp" ]; then
   case "$3" in
     s3://*manifests*) echo "An error occurred (404)" >&2; exit 1 ;;
@@ -280,6 +284,7 @@ exit 0
     ].join('\n'));
     const fakeAws = path.join(bin, 'aws');
     writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3api head-object" ]; then echo "An error occurred (404): Not Found" >&2; exit 1; fi
 if [ "$1 $2" = "s3 cp" ]; then
   case "$3" in
     s3://*manifests*) echo "An error occurred (404)" >&2; exit 1 ;;

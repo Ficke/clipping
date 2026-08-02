@@ -65,6 +65,7 @@ export function formatPrice(cents: number): string {
 
 const SOURCE_HASH = /^[a-f0-9]{64}$/;
 const PHOTO_ID = /^photo_[a-f0-9]{24}$/;
+const ASSET_REF = /^[a-f0-9]{64}\.(?:jpg|jpeg|png|webp|avif)$/;
 
 /** Opaque, stable identity for the exact published image bytes (96 hash bits). */
 export function photoIdFor(sourceHash: string): string {
@@ -74,6 +75,25 @@ export function photoIdFor(sourceHash: string): string {
 
 export function isPhotoId(value: string): boolean {
   return PHOTO_ID.test(value);
+}
+
+/** Stable identity for the exact sanitized fulfillment bytes and their format. */
+export function assetRefFor(sourceHash: string, file: string): string {
+  if (!SOURCE_HASH.test(sourceHash)) throw new Error('Cannot build an asset reference from an invalid source hash');
+  const extension = file.match(/\.([^.]+)$/)?.[1]?.toLowerCase();
+  if (!extension || !['jpg', 'jpeg', 'png', 'webp', 'avif'].includes(extension)) {
+    throw new Error('Cannot build an asset reference from an unsupported file extension');
+  }
+  return `${sourceHash}.${extension}`;
+}
+
+export function isAssetRef(value: string): boolean {
+  return ASSET_REF.test(value);
+}
+
+export function fulfillmentKey(assetRef: string): string {
+  if (!isAssetRef(assetRef)) throw new Error('Cannot build a fulfillment key from an invalid asset reference');
+  return `fulfillment/${assetRef}`;
 }
 
 /** Mirrors the layout `photos:push` writes; change one and change the other. */
@@ -91,6 +111,8 @@ export function slugForStoryId(storyId: string): string {
 
 export interface CatalogItem {
   photoId: string;
+  /** Additive in catalog v2 during the durable-commerce deployment bridge. */
+  assetRef?: string;
   storyId: string;
   file: string;
   forSale: boolean;

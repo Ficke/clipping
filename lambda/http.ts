@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'node:crypto';
+
 /**
  * The Lambda Function URL payload (format 2.0) and the small amount of HTTP
  * plumbing the routes need. Kept separate from the routes so both can be
@@ -8,7 +10,7 @@ export interface FunctionUrlEvent {
   rawPath: string;
   rawQueryString: string;
   headers: Record<string, string | undefined>;
-  requestContext: { http: { method: string } };
+  requestContext: { requestId?: string; http: { method: string } };
   body?: string;
   isBase64Encoded?: boolean;
 }
@@ -37,6 +39,13 @@ export function rawBody(event: FunctionUrlEvent): string {
   return event.isBase64Encoded ? Buffer.from(event.body, 'base64').toString('utf8') : event.body;
 }
 
+export function rawBodyBytes(event: FunctionUrlEvent): Buffer {
+  if (!event.body) return Buffer.alloc(0);
+  return event.isBase64Encoded
+    ? Buffer.from(event.body, 'base64')
+    : Buffer.from(event.body, 'utf8');
+}
+
 export function header(event: FunctionUrlEvent, name: string): string | undefined {
   /* Function URLs lower-case header names, but do not depend on that. */
   const wanted = name.toLowerCase();
@@ -44,6 +53,23 @@ export function header(event: FunctionUrlEvent, name: string): string | undefine
     if (key.toLowerCase() === wanted) return value;
   }
   return undefined;
+}
+
+export function hasExpectedOrigin(
+  event: FunctionUrlEvent,
+  name: string,
+  expected: string,
+): boolean {
+  const actual = header(event, name);
+  if (!actual || actual.length !== expected.length) return false;
+  return timingSafeTextEqual(actual, expected);
+}
+
+function timingSafeTextEqual(left: string, right: string): boolean {
+  const leftBytes = Buffer.from(left);
+  const rightBytes = Buffer.from(right);
+  if (leftBytes.length !== rightBytes.length) return false;
+  return timingSafeEqual(leftBytes, rightBytes);
 }
 
 const NO_STORE = {
@@ -69,4 +95,10 @@ export function redirect(location: string, statusCode = 303): FunctionUrlResult 
  */
 export function problem(statusCode: number, message: string): FunctionUrlResult {
   return json(statusCode, { error: message });
+}
+
+export function methodNotAllowed(allow: string): FunctionUrlResult {
+  const response = problem(405, 'Method not allowed.');
+  response.headers = { ...response.headers, allow };
+  return response;
 }

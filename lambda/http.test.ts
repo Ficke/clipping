@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import {
   header,
+  hasExpectedOrigin,
   method,
+  methodNotAllowed,
   problem,
   query,
   rawBody,
+  rawBodyBytes,
   redirect,
   type FunctionUrlEvent,
 } from './http';
@@ -45,10 +48,17 @@ describe('request parsing', () => {
       isBase64Encoded: true,
     });
     expect(rawBody(event)).toBe(payload);
+    expect(rawBodyBytes(event)).toEqual(Buffer.from(payload));
   });
 
   test('treats a missing body as empty', () => {
     expect(rawBody(request())).toBe('');
+  });
+
+  test('checks the CloudFront origin header without depending on casing', () => {
+    const event = request({ headers: { 'X-Commerce-Origin': 'expected-value' } });
+    expect(hasExpectedOrigin(event, 'x-commerce-origin', 'expected-value')).toBe(true);
+    expect(hasExpectedOrigin(event, 'x-commerce-origin', 'different-value')).toBe(false);
   });
 });
 
@@ -66,5 +76,17 @@ describe('responses', () => {
 
   test('carries a message and nothing else', () => {
     expect(JSON.parse(problem(400, 'Missing photo_id.').body!)).toEqual({ error: 'Missing photo_id.' });
+  });
+
+  test('returns an Allow header for known paths with the wrong method', () => {
+    expect(methodNotAllowed('POST')).toEqual({
+      statusCode: 405,
+      headers: {
+        allow: 'POST',
+        'cache-control': 'no-store, private',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ error: 'Method not allowed.' }),
+    });
   });
 });

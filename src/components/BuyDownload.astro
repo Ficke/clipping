@@ -11,22 +11,22 @@ const { offers } = Astro.props;
 
 <div class="purchase">
   {
-    /* A link, not a form: the CSP sets form-action 'none', and the redirect to
-       Stripe happens server-side in /api/checkout. */
     offers.map((offer) => {
       const price = formatPrice(offer.priceCents);
       return (
         <div class="offer">
           <span class="license">{offer.tier.summary}</span>
           <span class="price">{price}</span>
-          <a
-            class="buy"
-            href={offer.href}
-            rel="nofollow"
-            aria-label={`Buy ${offer.tier.summary.toLowerCase()} download for ${price}`}
-          >
-            Buy download
-          </a>
+          <form action="/api/checkout" method="post">
+            <input type="hidden" name="photo_id" value={offer.photoId} />
+            <button
+              class="buy"
+              type="submit"
+              aria-label={`Buy ${offer.tier.summary.toLowerCase()} download for ${price}`}
+            >
+              Buy download
+            </button>
+          </form>
         </div>
       );
     })
@@ -79,6 +79,9 @@ const { offers } = Astro.props;
     letter-spacing: 0.02em;
     white-space: nowrap;
     border-radius: 2px;
+    border: 0;
+    font-family: inherit;
+    cursor: pointer;
     transition: background 0.2s ease;
   }
 
@@ -92,6 +95,7 @@ const { offers } = Astro.props;
       grid-template-columns: minmax(0, 1fr) auto;
     }
 
+    form,
     .buy {
       grid-column: 1 / -1;
       width: 100%;

@@ -50,10 +50,10 @@ export class NotForSale extends Error {}
 export function requireItem(
   catalog: DownloadCatalog,
   photoId: string,
-): CatalogItem & { forSale: true; priceCents: number } {
+): CatalogItem & { forSale: true; priceCents: number; assetRef: string } {
   const item = catalogItem(catalog, photoId);
-  if (!item?.forSale || !Number.isInteger(item.priceCents) || item.priceCents! <= 0) {
+  if (!item?.forSale || !item.assetRef || !Number.isInteger(item.priceCents) || item.priceCents! <= 0) {
     throw new NotForSale(`No sale offer for photo ID ${photoId}`);
   }
-  return item as CatalogItem & { forSale: true; priceCents: number };
+  return item as CatalogItem & { forSale: true; priceCents: number; assetRef: string };
 }

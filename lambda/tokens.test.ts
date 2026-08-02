@@ -6,8 +6,10 @@ const NOW = Date.UTC(2026, 6, 29);
 
 function entitlement(overrides: Partial<Parameters<typeof mintToken>[0]> = {}) {
   return {
+    version: 1 as const,
+    orderId: 'ord_1234567890abcdef1234567890abcdef',
     photoId: 'photo_1234567890abcdef12345678',
-    sessionId: 'cs_test_abc123',
+    assetRef: `${'ab'.repeat(32)}.jpg`,
     expiresAt: Math.floor(NOW / 1000) + DOWNLOAD_WINDOW_SECONDS,
     ...overrides,
   };
@@ -59,5 +61,21 @@ describe('download tokens', () => {
   test('rejects a signature of the wrong length without throwing on the compare', () => {
     const [payload] = mintToken(entitlement(), KEY).split('.');
     expect(() => readToken(`${payload}.AAAA`, KEY, NOW)).toThrow(InvalidToken);
+  });
+
+  test('rejects signed payloads with an unsupported version or malformed asset', () => {
+    const unsupported = mintToken(entitlement(), KEY);
+    const [payload] = unsupported.split('.');
+    const decoded = JSON.parse(Buffer.from(payload!, 'base64url').toString('utf8'));
+    const invalid = entitlement({ assetRef: '../albums/private.jpg' });
+    expect(() => mintToken(invalid, KEY)).not.toThrow();
+    expect(() => readToken(mintToken(invalid, KEY), KEY, NOW)).toThrow(/incomplete/);
+
+    const versionPayload = Buffer.from(JSON.stringify({ ...decoded, version: 2 })).toString('base64url');
+    // Re-sign through mintToken by treating the object as the compile-time v1
+    // shape; readToken remains the runtime authority.
+    const versionToken = mintToken({ ...decoded, version: 2 } as Parameters<typeof mintToken>[0], KEY);
+    expect(versionPayload).not.toBe(payload);
+    expect(() => readToken(versionToken, KEY, NOW)).toThrow(/incomplete/);
   });
 });
