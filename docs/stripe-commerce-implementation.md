@@ -14,13 +14,14 @@ separately.
 | M1 — immutable assets/catalog | code complete | green | no | Backfill command implemented; AWS backfill not run |
 | M2 — order state machine | complete | green | no | Domain and DynamoDB repository complete |
 | M3 — buyer/webhook APIs | complete | green | no | Durable Buyer, signed Webhook, stateless redemption complete |
-| M4 — recovery/local suite | in progress | partial | no | Reconcile/restore/reissue and temp-table harness started; needs review/runbooks |
+| M4 — recovery/local suite | code complete | automated green | no | Operator safety, recovery matrix, temp-table lifecycle, and runbooks complete; real sandbox drill not run |
 | M5 — AWS infrastructure | source complete | validate green | no | No authenticated plan or apply |
 | M6 — storefront cutover | in progress | build green | no | POST form/polling implemented; v3 activation and browser checks pending |
 | M7 — live drill/cleanup | pending | pending | no | Production-only work remains manual |
 
-Baseline on 2026-08-02: clean worktree, 87 tests passing, and `bun run
-typecheck` passing.
+Checkpoint on 2026-08-02: M4 source complete with 137 tests passing and the
+full local code gate green. The real Stripe/AWS sandbox drill remains an
+explicit external action.
 
 ## Frozen contracts
 
@@ -73,16 +74,17 @@ typecheck` passing.
 
 ## Session handoff
 
-- Current task: begin M4 by reviewing and completing the operator commands,
-  temporary DynamoDB lifecycle, sandbox acceptance coverage, and operations
-  runbooks.
-- Last verified commands: `bun test` (122 pass), `bun run typecheck`, Astro
+- Current task: M4 code is complete. The next external gate is the local
+  Stripe/AWS sandbox drill in `stripe-commerce-operations.md`; after that, M5
+  needs an authenticated Terraform plan before any apply.
+- Last verified commands: `bun test` (137 pass), `bun run typecheck`, Astro
   build, both Lambda bundles, all operator-script bundles, `terraform
   fmt -check`, `terraform validate`, and `git diff --check`.
 - Production state: no Terraform apply, site cutover, webhook registration, or
   Stripe live-mode action has occurred.
-- Next action: run the full checkpoint gate, inspect the M4 scripts for safety,
-  add their focused tests, and finish the local Stripe/DynamoDB acceptance path.
+- Next action: with explicit authorization for AWS and Stripe sandbox changes,
+  run the local acceptance drill without deploying; otherwise continue with a
+  read-only M5 Terraform plan review.
 - Known compatibility rails: keep enriched catalog v2 and legacy GET checkout
   until the M6 activation gate; remove both in M7.
 
@@ -99,3 +101,14 @@ customer data.
   Lambda bundles, Terraform formatting, and Terraform validation passed. No AWS
   backfill, Terraform plan/apply, site deployment, webhook registration, or
   Stripe live-mode action was performed.
+- 2026-08-02: M4 code checkpoint completed. Reconciliation now safely recovers
+  a missing Checkout Session write (including dry-run parity and
+  integrity-before-attach), and covers refund, dispute, async-failure, and
+  won-dispute review outcomes. Operator commands validate exact arguments,
+  explicit Stripe mode, and table mode. The local harness owns a tagged unique
+  temporary table and has tested cleanup for normal, readiness-failure, and
+  uncertain create paths. The operations runbook covers sandbox acceptance,
+  reconciliation, reissue, restoration, Link escalation, and webhook-secret
+  rotation. All 137 tests and the full local code gate passed. No AWS, Stripe,
+  catalog backfill, Terraform plan/apply, site deploy, or production action was
+  performed.

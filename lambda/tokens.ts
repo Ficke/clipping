@@ -5,10 +5,9 @@ import { isOrderId } from './orders';
 /**
  * Download entitlements, as self-contained signed tokens.
  *
- * The alternative — a row in a database keyed by Checkout Session — would make
- * this the only stateful part of the site. A token signed with a key only the
- * Lambda holds carries the same information and needs no store, which is why
- * there is still no database here.
+ * The durable order is consulted before this token is issued. Redemption does
+ * not consult that row again: a token signed with a key only the Lambda holds
+ * carries the immutable order and asset identity needed to presign the file.
  *
  * The token is not the S3 URL. It is exchanged for a freshly presigned URL on
  * every download, so the entitlement can outlive S3's presigning limits and the

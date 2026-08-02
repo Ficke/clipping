@@ -39,6 +39,14 @@ function session(overrides: Partial<Stripe.Checkout.Session> = {}): Stripe.Check
   } as unknown as Stripe.Checkout.Session;
 }
 
+function pages<T>(values: T[]): AsyncIterable<T> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield* values;
+    },
+  };
+}
+
 describe('commerce reconciliation', () => {
   test('repairs a paid pending order through the normal entitlement operation', async () => {
     let order = pending();
@@ -74,6 +82,125 @@ describe('commerce reconciliation', () => {
       outcome: 'REPAIRED', action: 'close:expired',
     });
     expect(closeReason).toBe('expired');
+  });
+
+  test('recovers a missing Session write after validating the metadata match', async () => {
+    const initial: Order = { ...pending(), stripeSessionId: undefined, checkoutExpiresAt: undefined };
+    let attached: { id: string; expiresAt: number } | undefined;
+    let order = initial;
+    const recovered = session({ expires_at: 1_000 });
+    const orders = {
+      attachCheckoutSession: async (_orderId: string, id: string, expiresAt: number) => {
+        attached = { id, expiresAt };
+        order = { ...order, stripeSessionId: id, checkoutExpiresAt: expiresAt };
+        return order;
+      },
+      get: async () => order,
+      entitle: async (_id: string, audit: EntitlementAudit) => {
+        order = { ...order, state: 'entitled', ...audit };
+        return order;
+      },
+    } as unknown as OrderRepository;
+    const stripe = {
+      checkout: { sessions: {
+        list: () => pages([recovered]),
+        retrieve: async () => recovered,
+      } },
+    } as unknown as Stripe;
+
+    await expect(reconcileOrder(initial, { stripe, orders })).resolves.toEqual({
+      orderId: ORDER_ID, outcome: 'REPAIRED', action: 'attach_session+entitle',
+    });
+    expect(attached).toEqual({ id: SESSION_ID, expiresAt: 1_000 });
+    expect(order.state).toBe('entitled');
+  });
+
+  test('dry-run previews a recovered Session without writing or failing validation', async () => {
+    const initial: Order = { ...pending(), stripeSessionId: undefined, checkoutExpiresAt: undefined };
+    let writes = 0;
+    const recovered = session({ payment_status: 'unpaid', status: 'open', expires_at: 1_000 });
+    const orders = {
+      attachCheckoutSession: async () => { writes += 1; return initial; },
+      close: async () => { writes += 1; return initial; },
+      revoke: async () => { writes += 1; return initial; },
+      entitle: async () => { writes += 1; return initial; },
+    } as unknown as OrderRepository;
+    const stripe = {
+      checkout: { sessions: {
+        list: () => pages([recovered]),
+        retrieve: async () => recovered,
+      } },
+      events: { list: () => pages([]) },
+    } as unknown as Stripe;
+
+    await expect(reconcileOrder(initial, { stripe, orders, dryRun: true })).resolves.toEqual({
+      orderId: ORDER_ID, outcome: 'REPAIRED', action: 'attach_session',
+    });
+    expect(writes).toBe(0);
+  });
+
+  test('does not attach a Session found by scan until all integrity fields validate', async () => {
+    const initial: Order = { ...pending(), stripeSessionId: undefined, checkoutExpiresAt: undefined };
+    let writes = 0;
+    const stripe = {
+      checkout: { sessions: {
+        list: () => pages([session({ amount_subtotal: 9_999, expires_at: 1_000 })]),
+      } },
+    } as unknown as Stripe;
+    const orders = {
+      attachCheckoutSession: async () => { writes += 1; return initial; },
+    } as unknown as OrderRepository;
+
+    await expect(reconcileOrder(initial, { stripe, orders })).rejects.toThrow('amount subtotal');
+    expect(writes).toBe(0);
+  });
+
+  test('repairs refunds, disputes, and async failures and flags won disputes for review', async () => {
+    const charge = (overrides: Record<string, unknown> = {}) => ({
+      id: 'ch_test_1', disputed: false, refunded: false, amount_refunded: 0, ...overrides,
+    });
+    const cases = [
+      {
+        stripeSession: session({ payment_intent: { id: 'pi_test_1', latest_charge: charge({ refunded: true }) } as Stripe.PaymentIntent }),
+        disputes: [], expected: 'revoke:refunded', write: 'revoke',
+      },
+      {
+        stripeSession: session({ payment_intent: { id: 'pi_test_1', latest_charge: charge({ disputed: true }) } as Stripe.PaymentIntent }),
+        disputes: [], expected: 'revoke:disputed', write: 'revoke',
+      },
+      {
+        stripeSession: session({ payment_status: 'unpaid', status: 'open' }),
+        events: [{ data: { object: { id: SESSION_ID } } }], expected: 'close:failed', write: 'close',
+      },
+    ];
+
+    for (const item of cases) {
+      const writes: string[] = [];
+      const orders = {
+        revoke: async () => { writes.push('revoke'); return pending(); },
+        close: async () => { writes.push('close'); return pending(); },
+      } as unknown as OrderRepository;
+      const stripe = {
+        checkout: { sessions: { retrieve: async () => item.stripeSession } },
+        disputes: { list: async () => ({ data: item.disputes ?? [] }) },
+        events: { list: () => pages(item.events ?? []) },
+      } as unknown as Stripe;
+      await expect(reconcileOrder(pending(), { stripe, orders })).resolves.toMatchObject({
+        outcome: 'REPAIRED', action: item.expected,
+      });
+      expect(writes).toEqual([item.write]);
+    }
+
+    const revoked = { ...pending(), state: 'revoked' as const };
+    const stripe = {
+      checkout: { sessions: { retrieve: async () => session({
+        payment_intent: { id: 'pi_test_1', latest_charge: charge() } as Stripe.PaymentIntent,
+      }) } },
+      disputes: { list: async () => ({ data: [{ status: 'won' }] }) },
+    } as unknown as Stripe;
+    await expect(reconcileOrder(revoked, { stripe, orders: {} as OrderRepository })).resolves.toMatchObject({
+      outcome: 'REVIEW', action: 'won_dispute_requires_manual_restore',
+    });
   });
 
   test('reports failures per order and continues the scan', async () => {

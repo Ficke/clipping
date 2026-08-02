@@ -7,29 +7,26 @@ import Stripe from 'stripe';
 import { parseSecrets, parseWebhookSecrets } from '../lambda/config.ts';
 import { STRIPE_API_VERSION } from '../lambda/integration.ts';
 import { DynamoOrderRepository } from '../lambda/order-repository.ts';
-import { reissueDownload } from '../lambda/reissue.ts';
+import { reissueDownload, ReissueRefused } from '../lambda/reissue.ts';
+import {
+  assertStripeKeyMode,
+  parameterNames,
+  parseLinkArgs,
+  tableForMode,
+} from './commerce-operator.mjs';
 
-const sessionId = process.argv[2];
-if (!sessionId || !/^cs_(?:test|live)_[A-Za-z0-9_]+$/.test(sessionId)) {
-  fail('Usage: bun run commerce:link -- cs_test_… | cs_live_…');
-}
-const mode = sessionId.startsWith('cs_test_') ? 'test' : 'live';
-const tableName = process.env.COMMERCE_TABLE
-  ?? (mode === 'live' ? 'adamficke-com-commerce-orders' : undefined);
-if (!tableName) fail('COMMERCE_TABLE is required for a test-mode reissue.');
+const { sessionId, mode } = input(() => parseLinkArgs(process.argv.slice(2)));
+const tableName = input(() => tableForMode(mode));
 
 process.env.AWS_EC2_METADATA_DISABLED ??= 'true';
 const ssm = new SSMClient({ maxAttempts: 2 });
-const buyerParam = process.env.COMMERCE_SECRET_PARAM
-  ?? (mode === 'test' ? '/adamficke-com/commerce-test' : '/adamficke-com/commerce');
+const names = parameterNames(mode);
+const buyerParam = names.buyer;
 const buyer = parseSecrets(await parameter(ssm, buyerParam));
 const stripeKey = mode === 'test'
   ? buyer.stripeApiKey
-  : parseWebhookSecrets(await parameter(
-      ssm,
-      process.env.COMMERCE_WEBHOOK_SECRET_PARAM ?? '/adamficke-com/commerce-webhook',
-    )).stripeReadApiKey;
-if (!new RegExp(`^[sr]k_${mode}_`).test(stripeKey)) fail(`Configured read key is not ${mode} mode.`);
+  : parseWebhookSecrets(await parameter(ssm, names.webhook)).stripeReadApiKey;
+input(() => assertStripeKeyMode(stripeKey, mode));
 
 try {
   const fulfillment = await reissueDownload(sessionId, {
@@ -45,7 +42,9 @@ try {
   console.log(`Expires:  ${new Date(fulfillment.expiresAt * 1000).toLocaleString()}`);
   console.log(`Link:     ${fulfillment.downloadUrl}`);
 } catch (error) {
-  fail(`Refused to issue a link: ${error instanceof Error ? error.message : 'unknown error'}`);
+  fail(error instanceof ReissueRefused
+    ? `Refused to issue a link: ${error.message}`
+    : `Could not verify the purchase (${error instanceof Error ? error.name : 'UnknownError'}).`);
 }
 
 async function parameter(client, name) {
@@ -61,4 +60,12 @@ async function parameter(client, name) {
 function fail(message) {
   console.error(`commerce:link: ${message}`);
   process.exit(1);
+}
+
+function input(operation) {
+  try {
+    return operation();
+  } catch (error) {
+    fail(error instanceof Error ? error.message : 'Invalid input.');
+  }
 }

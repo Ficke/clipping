@@ -41,11 +41,24 @@ export async function reconcileOrder(
 ): Promise<ReconcileResult> {
   let order = initial;
   let sessionId = order.stripeSessionId;
+  let attachedSession = false;
   if (!sessionId) {
     const recovered = await findSessionForOrder(stripe, order);
     if (!recovered) return result(order, 'UNCHANGED', 'session_not_found');
     sessionId = recovered.id;
-    if (!dryRun) order = await orders.attachCheckoutSession(order.orderId, recovered.id, recovered.expires_at);
+    const recoveredOrder = {
+      ...order,
+      stripeSessionId: recovered.id,
+      checkoutExpiresAt: recovered.expires_at,
+    };
+    // Validate every immutable field before persisting a Session found by a
+    // metadata scan. This also gives dry-run the same validation input as the
+    // write path instead of comparing the recovered ID with `undefined`.
+    validateSession(recovered, recoveredOrder);
+    order = dryRun
+      ? recoveredOrder
+      : await orders.attachCheckoutSession(order.orderId, recovered.id, recovered.expires_at);
+    attachedSession = true;
   }
 
   const session = await stripe.checkout.sessions.retrieve(sessionId, {
@@ -55,7 +68,7 @@ export async function reconcileOrder(
 
   const reversal = await reversalState(stripe, session);
   if (reversal.refunded || reversal.disputed) {
-    if (order.state === 'revoked') return result(order, 'UNCHANGED', reversal.reason);
+    if (order.state === 'revoked') return result(order, 'UNCHANGED', reversal.reason, attachedSession);
     if (!dryRun) {
       await orders.revoke(order.orderId, {
         reason: reversal.reason,
@@ -63,26 +76,26 @@ export async function reconcileOrder(
         stripeChargeId: reversal.chargeId,
       });
     }
-    return result(order, 'REPAIRED', `revoke:${reversal.reason}`);
+    return result(order, 'REPAIRED', `revoke:${reversal.reason}`, attachedSession);
   }
   if (order.state === 'revoked' && reversal.wonDispute) {
-    return result(order, 'REVIEW', 'won_dispute_requires_manual_restore');
+    return result(order, 'REVIEW', 'won_dispute_requires_manual_restore', attachedSession);
   }
 
   if (session.payment_status === 'paid') {
-    if (order.state === 'entitled') return result(order, 'UNCHANGED', 'already_entitled');
+    if (order.state === 'entitled') return result(order, 'UNCHANGED', 'already_entitled', attachedSession);
     if (!dryRun) await ensureEntitlement(session.id, { stripe, orders });
-    return result(order, 'REPAIRED', 'entitle');
+    return result(order, 'REPAIRED', 'entitle', attachedSession);
   }
   if (session.status === 'expired') {
     if (!dryRun) await orders.close(order.orderId, 'expired');
-    return result(order, 'REPAIRED', 'close:expired');
+    return result(order, 'REPAIRED', 'close:expired', attachedSession);
   }
   if (await hasAsyncFailure(stripe, session.id, order.createdAt)) {
     if (!dryRun) await orders.close(order.orderId, 'failed');
-    return result(order, 'REPAIRED', 'close:failed');
+    return result(order, 'REPAIRED', 'close:failed', attachedSession);
   }
-  return result(order, 'UNCHANGED', 'payment_pending');
+  return result(order, 'UNCHANGED', 'payment_pending', attachedSession);
 }
 
 async function findSessionForOrder(stripe: Stripe, order: Order): Promise<Stripe.Checkout.Session | undefined> {
@@ -137,6 +150,16 @@ async function reversalState(stripe: Stripe, session: Stripe.Checkout.Session): 
   };
 }
 
-function result(order: Order, outcome: ReconcileOutcome, action: string): ReconcileResult {
-  return { orderId: order.orderId, outcome, action };
+function result(
+  order: Order,
+  outcome: ReconcileOutcome,
+  action: string,
+  attachedSession = false,
+): ReconcileResult {
+  if (!attachedSession) return { orderId: order.orderId, outcome, action };
+  return {
+    orderId: order.orderId,
+    outcome: outcome === 'UNCHANGED' ? 'REPAIRED' : outcome,
+    action: action === 'payment_pending' ? 'attach_session' : `attach_session+${action}`,
+  };
 }

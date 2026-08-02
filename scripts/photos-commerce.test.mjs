@@ -95,7 +95,7 @@ describe('photo commerce commands', () => {
     expect(readFileSync(index, 'utf8')).not.toContain('catalog: false');
   });
 
-  test('requires explicit confirmation before breaking private catalog fulfillment', () => {
+  test('requires explicit confirmation before removing the private catalog mapping', () => {
     const { name, index } = fixture();
     const before = readFileSync(index, 'utf8');
     const result = run('photos-store.mjs', [name, 'photo.jpg', '--purge-catalog']);

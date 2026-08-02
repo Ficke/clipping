@@ -89,5 +89,5 @@ worth remembering. One to three short paragraphs; plain markdown.
   retaining its original and private fulfillment mapping. Prefer
   `photos:site --hide` and `--show` over editing it directly.
 - **`catalog: false`** also removes the private fulfillment mapping. Use
-  `photos:store --purge-catalog`; it warns because prior purchases can no
-  longer be reissued.
+  `photos:store --purge-catalog`; prior durable orders retain their snapshotted
+  immutable asset and can still be reissued.

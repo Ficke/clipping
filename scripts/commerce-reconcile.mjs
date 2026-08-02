@@ -8,40 +8,38 @@ import { parseSecrets, parseWebhookSecrets } from '../lambda/config.ts';
 import { STRIPE_API_VERSION } from '../lambda/integration.ts';
 import { DynamoOrderRepository } from '../lambda/order-repository.ts';
 import { reconcileAll, reconcileOrder } from '../lambda/reconcile.ts';
+import {
+  assertStripeKeyMode,
+  parameterNames,
+  parseReconcileArgs,
+  tableForMode,
+} from './commerce-operator.mjs';
 
-const args = process.argv.slice(2).filter((arg) => arg !== '--');
-const modeAt = args.indexOf('--mode');
-const mode = args[modeAt + 1];
-if (!['test', 'live'].includes(mode)) fail('Usage: bun run commerce:reconcile -- --mode test|live [--dry-run] [--order ord_…]');
-const orderAt = args.indexOf('--order');
-const orderId = orderAt >= 0 ? args[orderAt + 1] : undefined;
-const dryRun = args.includes('--dry-run');
-const known = new Set(['--mode', mode, '--dry-run', '--order', orderId].filter(Boolean));
-if (args.some((arg) => !known.has(arg))) fail(`Unknown argument: ${args.find((arg) => !known.has(arg))}`);
-
-const tableName = process.env.COMMERCE_TABLE
-  ?? (mode === 'live' ? 'adamficke-com-commerce-orders' : undefined);
-if (!tableName) fail('COMMERCE_TABLE is required in test mode.');
+const { mode, orderId, dryRun } = input(() => parseReconcileArgs(process.argv.slice(2)));
+const tableName = input(() => tableForMode(mode));
 process.env.AWS_EC2_METADATA_DISABLED ??= 'true';
 const ssm = new SSMClient({ maxAttempts: 2 });
+const names = parameterNames(mode);
 const key = mode === 'test'
-  ? parseSecrets(await parameter(ssm, process.env.COMMERCE_SECRET_PARAM ?? '/adamficke-com/commerce-test')).stripeApiKey
-  : parseWebhookSecrets(await parameter(
-      ssm,
-      process.env.COMMERCE_WEBHOOK_SECRET_PARAM ?? '/adamficke-com/commerce-webhook',
-    )).stripeReadApiKey;
-if (!new RegExp(`^[sr]k_${mode}_`).test(key)) fail(`Configured read key is not ${mode} mode.`);
+  ? parseSecrets(await parameter(ssm, names.buyer)).stripeApiKey
+  : parseWebhookSecrets(await parameter(ssm, names.webhook)).stripeReadApiKey;
+input(() => assertStripeKeyMode(key, mode));
 
 const orders = new DynamoOrderRepository(
   tableName,
   DynamoDBDocumentClient.from(new DynamoDBClient({ maxAttempts: 2 })),
 );
 const deps = { stripe: new Stripe(key, { apiVersion: STRIPE_API_VERSION }), orders, dryRun };
-const results = orderId
-  ? [await orders.get(orderId).then((order) => order
-      ? reconcileOrder(order, deps)
-      : Promise.resolve({ orderId, outcome: 'FAILED', action: 'order_not_found' }))]
-  : await reconcileAll(deps);
+let results;
+try {
+  results = orderId
+    ? [await orders.get(orderId).then((order) => order
+        ? reconcileOrder(order, deps)
+        : Promise.resolve({ orderId, outcome: 'FAILED', action: 'order_not_found' }))]
+    : await reconcileAll(deps);
+} catch (error) {
+  fail(`Reconciliation could not start (${error instanceof Error ? error.name : 'UnknownError'}).`);
+}
 for (const result of results) {
   console.log(`${result.outcome.padEnd(9)} ${result.orderId} ${result.action}${result.errorCategory ? ` (${result.errorCategory})` : ''}`);
 }
@@ -62,4 +60,12 @@ async function parameter(client, name) {
 function fail(message) {
   console.error(`commerce:reconcile: ${message}`);
   process.exit(1);
+}
+
+function input(operation) {
+  try {
+    return operation();
+  } catch (error) {
+    fail(error instanceof Error ? error.message : 'Invalid input.');
+  }
 }
