@@ -219,6 +219,10 @@ obsolete by committed manifests and unused by every current album.
 
 ## Selling downloads
 
+The current implementation is described below. Its planned pre-launch
+replacement is documented in the [Stripe commerce architecture migration
+plan](docs/stripe-commerce-architecture.md).
+
 Photographs can be sold as full-resolution downloads. Payment is Stripe-hosted
 Checkout with Managed Payments: Stripe/Link is merchant of record and handles
 covered sales tax, VAT, GST, fraud, disputes, transaction support, and payment
