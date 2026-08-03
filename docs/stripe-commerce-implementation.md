@@ -15,7 +15,7 @@ separately.
 | M2 — order state machine | complete | green | no | Domain and DynamoDB repository complete |
 | M3 — buyer/webhook APIs | complete | green | no | Durable Buyer, signed Webhook, stateless redemption complete |
 | M4 — recovery/local suite | complete | sandbox green | no | Full local sandbox drill passed; event-ordering and won-dispute findings fixed |
-| M5 — AWS infrastructure | source complete | plan reviewed | no | Additive/cutover plan reviewed with legacy rollback rail retained; no apply |
+| M5 — AWS infrastructure | source complete | verification finding | yes | 38-add/4-change/0-destroy apply is drift-free; ingress burst exposed Lambda throttling before the documented hard pre-invocation ceiling |
 | M6 — storefront cutover | in progress | build green | no | POST form/polling implemented; v3 activation and browser checks pending |
 | M7 — live drill/cleanup | pending | pending | no | Production-only work remains manual |
 
@@ -74,20 +74,26 @@ immutable fulfillment object was uploaded or backfilled.
 
 ## Session handoff
 
-- Current task: M4 is complete and the revised, authenticated M5 Terraform plan
-  is reviewed. Applying it remains a separate approval gate.
+- Current task: the reviewed M5 Terraform plan was applied after explicit
+  approval, and the deployed resources passed configuration checks. A safe
+  direct-ingress burst disproved the assumption that API Gateway route
+  throttling is a hard pre-invocation concurrency control, so M5 acceptance is
+  not complete.
 - Last verified commands: `bun test` (145 pass), `bun run typecheck`, Astro
   build, both Lambda bundles, all operator-script bundles, `terraform
   fmt -check`, `terraform validate`, `git diff --check`, and an authenticated
-  `terraform plan` with a fresh origin-verification value held only in memory.
-- Production state: no Terraform apply, site cutover, webhook registration, or
-  Stripe live-mode action has occurred.
-- Next action: request approval to enter a short interactive M5 apply window.
-  Generate a fresh origin-verification value in a history-disabled shell, let
-  `terraform apply` produce and hold the exact plan at its confirmation prompt,
-  and confirm only if it matches the reviewed 38-add/7-change/0-destroy delta.
-  Deployment, webhook registration, storefront-v3 activation, fulfillment
-  upload/backfill, and Stripe live mode remain separately gated.
+  `terraform plan` with a fresh origin-verification value held only in memory,
+  the explicitly approved M5 apply, post-apply zero-drift plan, and sanitized
+  deployed-resource checks.
+- Production state: M5 infrastructure is applied. No site deployment or
+  storefront-v3 activation, webhook registration/population, fulfillment
+  upload/backfill, live purchase, or other Stripe live-mode action has
+  occurred. The alarm email subscription awaits recipient confirmation.
+- Next action: choose and review an ingress/concurrency mitigation that gives
+  Buyer and Webhook processing the documented isolation under burst. Any
+  Terraform change requires a fresh exact plan and separate apply approval.
+  Do not advance to webhook registration or storefront activation while this
+  M5 acceptance finding remains open.
 - Known compatibility rails: keep enriched catalog v2 and legacy GET checkout
   until the M6 activation gate; remove both in M7.
 
@@ -181,3 +187,41 @@ customer data.
   random value and sanitized plan text were cleared after review; no saved plan
   or secret-bearing file was created. No apply, deployment, webhook change,
   storefront activation, S3 upload/backfill, or Stripe action occurred.
+- 2026-08-02: The user explicitly approved the exact prompt-time M5 plan after
+  it reproduced the reviewed 38-add/7-change/0-destroy delta with a fresh
+  32-byte origin-verification value held only in a history-disabled shell. The
+  apply completed with 38 additions, four material in-place changes, and zero
+  deletions; three dependency-rendered policy updates collapsed to no-ops. A
+  post-apply plan using the same in-memory value reported no changes, after
+  which the environment value was unset and the shell exited. The value was
+  never printed, logged, committed, or saved in a plan file and remains only in
+  encrypted Terraform state and deployed configuration.
+- 2026-08-02: Sanitized post-apply checks verified the active encrypted,
+  point-in-time-recoverable, TTL-enabled on-demand order table; the HTTP API's
+  five exact routes, auto-deployed default stage, sanitized access-log fields,
+  and route throttle settings; active arm64 Buyer and Webhook Lambdas; the
+  retained active legacy Lambda and IAM-protected Function URL rollback rail;
+  route-scoped Lambda permissions; exact per-function SSM, KMS, DynamoDB, S3,
+  catalog, and log IAM scopes; 30-day log retention; expected alarms; deployed
+  CloudFront origin, custom origin-verification header name, behaviors, cache
+  and origin-request policies, response-header policies, and referrer-free
+  access logs; and the three expected SecureString parameters by metadata only.
+  The Buyer and test parameter versions remained unchanged, and the webhook
+  parameter is an unpopulated shell. The new SNS subscription is pending email
+  confirmation. Direct API access without the origin header returned 403;
+  CloudFront-delivered malformed checkout and fulfillment probes returned the
+  expected non-cacheable 400 responses; and the purchase response policy was
+  present. No secret value, valid checkout, webhook event, Stripe request,
+  customer data, site deployment, storefront activation, fulfillment object,
+  or backfill was involved.
+- 2026-08-02: A safe 30-request direct-API burst without the origin header
+  exposed an M5 acceptance failure: 17 requests returned 403 and 13 returned
+  503, while the Buyer recorded 12 invocations and 11 throttles in the same
+  minute. This demonstrates that the configured HTTP API route throttle did
+  not reliably reject requests before Lambda concurrency was consumed. AWS
+  documents HTTP API throttles as best-effort targets that clients can exceed,
+  not guaranteed ceilings. M5 is therefore deployed and drift-free but not
+  accepted as meeting the documented hard pre-invocation isolation property.
+  No corrective Terraform apply is authorized; webhook registration,
+  storefront activation, and all later production gates remain stopped pending
+  a separately reviewed mitigation.
