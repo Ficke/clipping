@@ -16,7 +16,11 @@ export interface EnsureEntitlementDeps {
 }
 
 export class EntitlementIntegrityError extends Error {}
-export class EntitlementUnavailable extends Error {}
+export class EntitlementUnavailable extends Error {
+  constructor(message: string, readonly orderState?: Order['state']) {
+    super(message);
+  }
+}
 
 export async function ensureEntitlement(
   sessionId: string,
@@ -37,7 +41,7 @@ export async function ensureEntitlement(
   validateSession(session, order, integrationIdentifier);
 
   if (order.state === 'closed' || order.state === 'revoked') {
-    throw new EntitlementUnavailable(`Order ${order.orderId} is unavailable`);
+    throw new EntitlementUnavailable(`Order ${order.orderId} is unavailable`, order.state);
   }
   if (session.payment_status !== 'paid') return { status: 'pending', order };
   if (order.state === 'entitled') return { status: 'entitled', order };

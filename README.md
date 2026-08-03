@@ -375,6 +375,12 @@ variables. Three parameters keep Buyer and Webhook permissions separate:
 | `/adamficke-com/commerce-webhook` | live read key, current/previous signing secret | Webhook Lambda and live operator reads |
 | `/adamficke-com/commerce-test` | test key, sandbox Product ID, token key | local suite and test operators |
 
+Use least-privilege restricted keys. The live Buyer key needs Checkout Sessions
+write. The live Webhook/operator key needs read access to Checkout Sessions,
+Payment Intents, Charges and Refunds, Payment Disputes, and Events. The combined
+sandbox key needs those read permissions plus Checkout Sessions write, and must
+remain a test-mode key.
+
 `commerce:dev` refuses to start if the parameter it reads holds a live key, and
 test-mode operator commands refuse the production table. Rotating
 `downloadTokenKey` voids all outstanding download links; signing-secret rotation

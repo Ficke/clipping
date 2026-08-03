@@ -14,14 +14,14 @@ separately.
 | M1 — immutable assets/catalog | code complete | green | no | Backfill command implemented; AWS backfill not run |
 | M2 — order state machine | complete | green | no | Domain and DynamoDB repository complete |
 | M3 — buyer/webhook APIs | complete | green | no | Durable Buyer, signed Webhook, stateless redemption complete |
-| M4 — recovery/local suite | code complete | automated green | no | Operator safety, recovery matrix, temp-table lifecycle, and runbooks complete; real sandbox drill not run |
+| M4 — recovery/local suite | complete | sandbox green | no | Full local sandbox drill passed; event-ordering and won-dispute findings fixed |
 | M5 — AWS infrastructure | source complete | validate green | no | No authenticated plan or apply |
 | M6 — storefront cutover | in progress | build green | no | POST form/polling implemented; v3 activation and browser checks pending |
 | M7 — live drill/cleanup | pending | pending | no | Production-only work remains manual |
 
-Checkpoint on 2026-08-02: M4 source complete with 137 tests passing and the
-full local code gate green. The real Stripe/AWS sandbox drill remains an
-explicit external action.
+Checkpoint on 2026-08-02: M4 is complete with 143 tests passing, the full local
+code gate green, and the Stripe/AWS sandbox acceptance drill passed. No
+immutable fulfillment object was uploaded or backfilled.
 
 ## Frozen contracts
 
@@ -74,17 +74,16 @@ explicit external action.
 
 ## Session handoff
 
-- Current task: M4 code is complete. The next external gate is the local
-  Stripe/AWS sandbox drill in `stripe-commerce-operations.md`; after that, M5
-  needs an authenticated Terraform plan before any apply.
-- Last verified commands: `bun test` (137 pass), `bun run typecheck`, Astro
+- Current task: review an authenticated, read-only M5 Terraform plan. Applying
+  it remains a separate approval gate.
+- Last verified commands: `bun test` (143 pass), `bun run typecheck`, Astro
   build, both Lambda bundles, all operator-script bundles, `terraform
   fmt -check`, `terraform validate`, and `git diff --check`.
 - Production state: no Terraform apply, site cutover, webhook registration, or
   Stripe live-mode action has occurred.
-- Next action: with explicit authorization for AWS and Stripe sandbox changes,
-  run the local acceptance drill without deploying; otherwise continue with a
-  read-only M5 Terraform plan review.
+- Next action: run and review the approved read-only M5 Terraform plan. Do not
+  apply, deploy, register a webhook, activate storefront v3, or use Stripe live
+  mode without the later explicit gates.
 - Known compatibility rails: keep enriched catalog v2 and legacy GET checkout
   until the M6 activation gate; remove both in M7.
 
@@ -112,3 +111,22 @@ customer data.
   rotation. All 137 tests and the full local code gate passed. No AWS, Stripe,
   catalog backfill, Terraform plan/apply, site deploy, or production action was
   performed.
+- 2026-08-02: The full local acceptance drill passed against Stripe sandbox and
+  temporary AWS DynamoDB tables. Invalid checkout requests stayed local. A paid
+  Checkout completed through hosted sandbox Checkout, its signed webhook was
+  accepted, fulfillment issued a stateless token, token redemption returned the
+  expected S3 redirect without following it, and manual reissue produced a
+  fresh link. A separate refund webhook revoked fulfillment and reissue while a
+  token issued before revocation remained valid by design. A dispute test
+  exposed real delivery ordering in which revocation preceded Checkout
+  completion; the handler now acknowledges that terminal ordering, and a fresh
+  listener-backed repeat accepted both events while preserving revocation. A
+  won dispute then required review, explicit audited restoration, and allowed
+  reissue. Full-table reconciliation succeeded in dry-run and write modes with
+  zero failures. Both harness-created tables were deleted and their absence was
+  confirmed. The sandbox restricted key was verified with Checkout Sessions
+  write, Payment Intents read, Charges and Refunds read, Payment Disputes read,
+  and Events read. No capability identifiers, secrets, customer data, or
+  presigned URLs were recorded. No fulfillment upload/backfill, Terraform
+  plan/apply, deployment, webhook registration, storefront activation, or live
+  Stripe action occurred.

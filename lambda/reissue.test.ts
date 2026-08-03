@@ -23,7 +23,11 @@ function entitled(): Order {
   };
 }
 
-function harness(charge: Partial<Stripe.Charge> = {}, order = entitled()) {
+function harness(
+  charge: Partial<Stripe.Charge> = {},
+  order = entitled(),
+  disputeStatuses: Stripe.Dispute.Status[] = [],
+) {
   const stripe = {
     checkout: { sessions: { retrieve: async () => ({
       id: SESSION_ID,
@@ -39,6 +43,7 @@ function harness(charge: Partial<Stripe.Charge> = {}, order = entitled()) {
         latest_charge: { id: 'ch_test_1', disputed: false, refunded: false, amount_refunded: 0, ...charge },
       },
     }) } },
+    disputes: { list: async () => ({ data: disputeStatuses.map((status) => ({ status })) }) },
   } as unknown as Stripe;
   const orders = { get: async () => order } as unknown as OrderRepository;
   return { stripe, orders };
@@ -55,12 +60,19 @@ describe('manual download reissue', () => {
   test('refuses refunded, disputed, and revoked orders', async () => {
     for (const h of [
       harness({ refunded: true, amount_refunded: 100 }),
-      harness({ disputed: true }),
+      harness({ disputed: true }, entitled(), ['needs_response']),
       harness({}, { ...entitled(), state: 'revoked' }),
     ]) {
       await expect(reissueDownload(SESSION_ID, {
         ...h, siteUrl: 'https://example.test', downloadTokenKey: 'k'.repeat(64),
       })).rejects.toBeInstanceOf(ReissueRefused);
     }
+  });
+
+  test('allows a restored won dispute despite the historical Charge flag', async () => {
+    const h = harness({ disputed: true }, entitled(), ['won']);
+    await expect(reissueDownload(SESSION_ID, {
+      ...h, siteUrl: 'https://example.test', downloadTokenKey: 'k'.repeat(64),
+    })).resolves.toMatchObject({ status: 'paid' });
   });
 });

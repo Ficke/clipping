@@ -1,4 +1,5 @@
 import type Stripe from 'stripe';
+import { disputeFacts } from './disputes';
 import { ensureEntitlement, validateSession } from './entitlement';
 import type { OrderRepository } from './order-repository';
 import type { Order } from './orders';
@@ -137,8 +138,7 @@ async function reversalState(stripe: Stripe, session: Stripe.Checkout.Session): 
     return { refunded: false, disputed: false, wonDispute: false, reason: 'none', paymentIntentId: intent.id };
   }
   const disputes = await stripe.disputes.list({ charge: charge.id, limit: 100 });
-  const wonDispute = disputes.data.some((dispute) => dispute.status === 'won' || dispute.status === 'warning_closed');
-  const disputed = charge.disputed || disputes.data.some((dispute) => !['won', 'warning_closed'].includes(dispute.status));
+  const { wonDispute, blockingDispute: disputed } = disputeFacts(charge.disputed, disputes.data);
   const refunded = charge.refunded || charge.amount_refunded > 0;
   return {
     refunded,

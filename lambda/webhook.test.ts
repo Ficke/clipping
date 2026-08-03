@@ -148,4 +148,28 @@ describe('Stripe webhook', () => {
       stripePaymentIntentId: 'pi_test_1', stripeChargeId: 'ch_test_1',
     }]);
   });
+
+  test('acknowledges Checkout completion after an earlier dispute revoked the order', async () => {
+    const order = { ...pending(), state: 'revoked' as const, revocationReason: 'dispute_created' };
+    let entitlementWrites = 0;
+    const orders = {
+      get: async () => order,
+      entitle: async () => { entitlementWrites += 1; return order; },
+    } as unknown as OrderRepository;
+    const stripe = {
+      checkout: { sessions: { retrieve: async () => ({
+        id: SESSION_ID,
+        client_reference_id: ORDER_ID,
+        mode: 'payment',
+        metadata: { integration: 'photo-download-qkzvhrmw', order_id: ORDER_ID, photo_id: order.photoId },
+        livemode: false,
+        payment_status: 'paid',
+        currency: 'usd',
+        amount_subtotal: 4_000,
+      }) } },
+    } as unknown as Stripe;
+
+    await expect(applyStripeEvent(stripeEvent(), stripe, orders)).resolves.toBeUndefined();
+    expect(entitlementWrites).toBe(0);
+  });
 });

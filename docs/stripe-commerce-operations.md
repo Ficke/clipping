@@ -36,7 +36,9 @@ Prerequisites:
   `/adamficke-com/commerce-test`, create/delete the temporary table, and presign
   the originals bucket.
 - A valid test secret containing `stripeApiKey`, `stripeProductId`, and
-  `downloadTokenKey`.
+  `downloadTokenKey`. Its restricted Stripe test key needs Checkout Sessions
+  write plus Payment Intents, Charges and Refunds, Payment Disputes, and Events
+  read permissions. Keep this key in test mode.
 - Stripe CLI authenticated to the same sandbox.
 - A catalog v3 build with at least one sellable photo. Following the final S3
   redirect also requires that photo's `fulfillment/<assetRef>` object; do not
@@ -232,3 +234,8 @@ Lambda caches successful SSM reads for up to five minutes.
 
 Never record either signing secret, an event body, or a full event identifier in
 the implementation ledger.
+
+The live Buyer key needs only Checkout Sessions write. The separate live
+Webhook/operator read key needs Checkout Sessions, Payment Intents, Charges and
+Refunds, Payment Disputes, and Events read permissions. Do not add write access
+to the read key.

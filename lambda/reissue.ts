@@ -1,4 +1,5 @@
 import type Stripe from 'stripe';
+import { disputeFacts } from './disputes';
 import { validateSession } from './entitlement';
 import { fulfillmentForOrder, type Fulfillment } from './fulfill';
 import type { OrderRepository } from './order-repository';
@@ -34,8 +35,11 @@ export async function reissueDownload(
   if (!intent || typeof intent === 'string') throw new ReissueRefused('PaymentIntent is not expanded');
   const charge = intent.latest_charge;
   if (!charge || typeof charge === 'string') throw new ReissueRefused('Charge is not expanded');
-  if (charge.disputed) throw new ReissueRefused('Charge is disputed');
   if (charge.refunded || charge.amount_refunded > 0) throw new ReissueRefused('Charge is refunded');
+  const disputes = await stripe.disputes.list({ charge: charge.id, limit: 100 });
+  if (disputeFacts(charge.disputed, disputes.data).blockingDispute) {
+    throw new ReissueRefused('Charge has a blocking dispute');
+  }
 
   return fulfillmentForOrder(order, { siteUrl, downloadTokenKey, now });
 }

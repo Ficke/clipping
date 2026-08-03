@@ -1,6 +1,6 @@
 import type Stripe from 'stripe';
 import type { WebhookSecrets } from './config';
-import { ensureEntitlement, validateSession } from './entitlement';
+import { EntitlementUnavailable, ensureEntitlement, validateSession } from './entitlement';
 import {
   hasExpectedOrigin,
   header,
@@ -119,11 +119,18 @@ export async function applyStripeEvent(
 ): Promise<void> {
   if (event.type === 'checkout.session.completed'
     || event.type === 'checkout.session.async_payment_succeeded') {
-    await ensureEntitlement((event.data.object as Stripe.Checkout.Session).id, {
-      stripe,
-      orders,
-      sourceEventId: event.id,
-    });
+    try {
+      await ensureEntitlement((event.data.object as Stripe.Checkout.Session).id, {
+        stripe,
+        orders,
+        sourceEventId: event.id,
+      });
+    } catch (error) {
+      // A dispute can arrive before Checkout completion. Revocation is
+      // terminal for automation, so acknowledge the later paid event instead
+      // of asking Stripe to retry an impossible entitlement forever.
+      if (!(error instanceof EntitlementUnavailable && error.orderState === 'revoked')) throw error;
+    }
     return;
   }
 

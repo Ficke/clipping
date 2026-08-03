@@ -5,6 +5,7 @@ import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import Stripe from 'stripe';
 import { parseSecrets, parseWebhookSecrets } from '../lambda/config.ts';
+import { disputeFacts } from '../lambda/disputes.ts';
 import { restoreEntitlement } from '../lambda/entitlement.ts';
 import { STRIPE_API_VERSION } from '../lambda/integration.ts';
 import { DynamoOrderRepository } from '../lambda/order-repository.ts';
@@ -38,8 +39,7 @@ try {
   const charge = intent.latest_charge;
   if (!charge || typeof charge === 'string') fail('Charge is not expanded.');
   const disputes = await stripe.disputes.list({ charge: charge.id, limit: 100 });
-  const won = disputes.data.some((dispute) => dispute.status === 'won' || dispute.status === 'warning_closed');
-  const current = charge.disputed || disputes.data.some((dispute) => !['won', 'warning_closed'].includes(dispute.status));
+  const { wonDispute: won, blockingDispute: current } = disputeFacts(charge.disputed, disputes.data);
   const restored = await restoreEntitlement(orders, orderId, {
     actor,
     reason,

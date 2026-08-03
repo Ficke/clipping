@@ -194,7 +194,7 @@ describe('commerce reconciliation', () => {
     const revoked = { ...pending(), state: 'revoked' as const };
     const stripe = {
       checkout: { sessions: { retrieve: async () => session({
-        payment_intent: { id: 'pi_test_1', latest_charge: charge() } as Stripe.PaymentIntent,
+        payment_intent: { id: 'pi_test_1', latest_charge: charge({ disputed: true }) } as Stripe.PaymentIntent,
       }) } },
       disputes: { list: async () => ({ data: [{ status: 'won' }] }) },
     } as unknown as Stripe;
