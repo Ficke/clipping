@@ -4,20 +4,32 @@ import type Stripe from 'stripe';
 import { forgetCatalog } from './catalog';
 import type { Env, Secrets } from './config';
 import { handleBuyer, type BuyerRuntime } from './index';
-import type { FunctionUrlEvent } from './http';
+import type { FunctionUrlEvent, HttpApiEvent, RestApiEvent } from './http';
 import type { OrderRepository } from './order-repository';
 import type { Order } from './orders';
 
 const PHOTO_ID = 'photo_1234567890abcdef12345678';
 const ORIGIN = 'local-origin-secret';
 
-function event(overrides: Partial<FunctionUrlEvent> = {}): FunctionUrlEvent {
+function event(overrides: Partial<HttpApiEvent> = {}): HttpApiEvent {
   return {
     rawPath: '/api/checkout',
     rawQueryString: '',
     headers: { 'x-commerce-origin': ORIGIN, 'content-type': 'application/x-www-form-urlencoded' },
     requestContext: { requestId: 'request-1', http: { method: 'POST' } },
     body: `photo_id=${PHOTO_ID}`,
+    ...overrides,
+  };
+}
+
+function restEvent(overrides: Partial<RestApiEvent> = {}): RestApiEvent {
+  return {
+    path: '/api/checkout',
+    httpMethod: 'POST',
+    headers: { 'X-Commerce-Origin': ORIGIN, 'Content-Type': 'application/x-www-form-urlencoded' },
+    requestContext: { requestId: 'rest-request-1' },
+    body: Buffer.from(`photo_id=${PHOTO_ID}`, 'utf8').toString('base64'),
+    isBase64Encoded: true,
     ...overrides,
   };
 }
@@ -111,6 +123,17 @@ describe('Buyer API', () => {
     expect(h.sequence).toEqual(['order', 'stripe']);
   });
 
+  test('accepts the REST API proxy event without changing checkout semantics', async () => {
+    forgetCatalog();
+    const h = runtime();
+    const response = await handleBuyer(restEvent(), h.deps);
+    expect(response).toMatchObject({
+      statusCode: 303,
+      headers: { location: 'https://checkout.stripe.com/c/pay/test' },
+    });
+    expect(h.sequence).toEqual(['order', 'stripe']);
+  });
+
   test('keeps the legacy GET storefront working only while the cutover flag is enabled', async () => {
     forgetCatalog();
     const legacy = runtime();
@@ -130,5 +153,18 @@ describe('Buyer API', () => {
     });
     expect(disabled.secretLoads()).toBe(0);
     expect(disabled.sequence).toEqual([]);
+
+    const duplicateRest = runtime();
+    const duplicateRequest = restEvent({
+      httpMethod: 'GET',
+      headers: { 'X-Commerce-Origin': ORIGIN },
+      body: undefined,
+      isBase64Encoded: false,
+      queryStringParameters: { photo_id: PHOTO_ID },
+      multiValueQueryStringParameters: { photo_id: [PHOTO_ID, PHOTO_ID] },
+    });
+    expect(await handleBuyer(duplicateRequest, duplicateRest.deps)).toMatchObject({ statusCode: 400 });
+    expect(duplicateRest.secretLoads()).toBe(0);
+    expect(duplicateRest.sequence).toEqual([]);
   });
 });

@@ -15,7 +15,7 @@ separately.
 | M2 — order state machine | complete | green | no | Domain and DynamoDB repository complete |
 | M3 — buyer/webhook APIs | complete | green | no | Durable Buyer, signed Webhook, stateless redemption complete |
 | M4 — recovery/local suite | complete | sandbox green | no | Full local sandbox drill passed; event-ordering and won-dispute findings fixed |
-| M5 — AWS infrastructure | source complete | verification finding | yes | 38-add/4-change/0-destroy apply is drift-free; ingress burst exposed Lambda throttling before the documented hard pre-invocation ceiling |
+| M5 — AWS infrastructure | correction source complete | 151 green; correction acceptance pending | original revision only | REST token gate and 6/3/1 isolation are staged behind additive and CloudFront-cutover apply gates |
 | M6 — storefront cutover | in progress | build green | no | POST form/polling implemented; v3 activation and browser checks pending |
 | M7 — live drill/cleanup | pending | pending | no | Production-only work remains manual |
 
@@ -35,8 +35,9 @@ immutable fulfillment object was uploaded or backfilled.
 - `GET /api/fulfill?session_id=…`: `200`, retryable `202`, unknown `404`, or
   indistinguishable expired/closed/revoked `410`.
 - `GET /api/download?t=…`: validates a stateless token and returns `302` to S3.
-- All routes require the CloudFront origin-verification header, use no CORS, and
-  return `Cache-Control: no-store, private`.
+- All REST methods require the derived CloudFront gateway token before
+  integration; Buyer and Webhook also require the original origin-verification
+  header. Routes use no CORS and return `Cache-Control: no-store, private`.
 
 ### Catalog and fulfillment
 
@@ -70,32 +71,33 @@ immutable fulfillment object was uploaded or backfilled.
   `SITE_URL`, `ORIGIN_VERIFY_HEADER_NAME`, and `ORIGIN_VERIFY_HEADER_VALUE`.
 - Webhook environment: `COMMERCE_WEBHOOK_SECRET_PARAM`, `COMMERCE_TABLE`, and
   both origin-verification variables.
+- Authorizer environment: `COMMERCE_GATEWAY_TOKEN` only; its IAM role can write
+  only to its exact log group.
 - SSM caches expire after five minutes and never retain failed loads.
 
 ## Session handoff
 
-- Current task: the reviewed M5 Terraform plan was applied after explicit
-  approval, and the deployed resources passed configuration checks. A safe
-  direct-ingress burst disproved the assumption that API Gateway route
-  throttling is a hard pre-invocation concurrency control, so M5 acceptance is
-  not complete.
-- Last verified commands: `bun test` (145 pass), `bun run typecheck`, Astro
-  build, both Lambda bundles, all operator-script bundles, `terraform
-  fmt -check`, `terraform validate`, `git diff --check`, and an authenticated
-  `terraform plan` with a fresh origin-verification value held only in memory,
-  the explicitly approved M5 apply, post-apply zero-drift plan, and sanitized
-  deployed-resource checks.
+- Current task: the M5 ingress correction source is complete. It adds an exact
+  pre-integration REST token gate, Authorizer, REST payload-v1 compatibility,
+  and Buyer/Webhook/Authorizer reservations of 6/3/1 while retaining the HTTP
+  API and legacy Function URL rollback rails. The rollout defaults to additive;
+  CloudFront remains on the HTTP API until a second apply gate.
+- Last verified commands: `bun test` (151 pass), `bun run typecheck`, Astro
+  build, Buyer/Webhook/Authorizer bundles, all commerce and fulfillment operator
+  bundles, `terraform fmt -check`, `terraform validate`, and `git diff --check`.
 - Production state: M5 infrastructure is applied. No site deployment or
   storefront-v3 activation, webhook registration/population, fulfillment
   upload/backfill, live purchase, or other Stripe live-mode action has
   occurred. The alarm email subscription awaits recipient confirmation.
-- Next action: choose and review an ingress/concurrency mitigation that gives
-  Buyer and Webhook processing the documented isolation under burst. Any
-  Terraform change requires a fresh exact plan and separate apply approval.
-  Do not advance to webhook registration or storefront activation while this
-  M5 acceptance finding remains open.
-- Known compatibility rails: keep enriched catalog v2 and legacy GET checkout
-  until the M6 activation gate; remove both in M7.
+- Next action: reauthenticate AWS, inspect the regional API Gateway
+  `cloudWatchRoleArn`, and request explicit approval for the adjustable Lambda
+  concurrency quota increase from 10 to 110. After the quota is granted,
+  recover the existing origin value only into memory, review the additive exact
+  plan with `commerce_rest_cutover_enabled = false`, and stop for apply
+  approval. The CloudFront flip is a later exact-plan/apply gate.
+- Known compatibility rails: keep enriched catalog v2, legacy GET checkout, the
+  deployed HTTP API, and the legacy Function URL runtime until their documented
+  M6/M7 gates.
 
 ## Verification evidence
 
@@ -225,3 +227,25 @@ customer data.
   No corrective Terraform apply is authorized; webhook registration,
   storefront activation, and all later production gates remain stopped pending
   a separately reviewed mitigation.
+- 2026-08-02: The M5 correction source was completed without an AWS mutation or
+  Terraform plan. A new Regional REST API is defined additively with five exact
+  methods and a cached `TOKEN` authorizer. CloudFront will overwrite a dedicated
+  gateway-token header derived in Terraform from the existing random origin
+  value; API Gateway's exact validation expression rejects other values before
+  authorizer or integration invocation, and the Authorizer repeats a
+  timing-safe comparison with only CloudWatch Logs IAM. Buyer, Webhook, and
+  Authorizer reserved concurrency is 6/3/1, contingent on a separately approved
+  us-east-1 quota increase from 10 to 110. Buyer and Webhook accept both the REST
+  proxy v1 and deployed HTTP/Function URL v2 payloads, including duplicate query
+  fields and exact base64-decoded webhook bytes. The rollout flag defaults
+  false, so the first apply cannot change the CloudFront commerce origin; the
+  HTTP API and legacy runtime remain rollback rails. A later committed flag
+  change and exact plan gate the CloudFront-only cutover. All 151 tests,
+  typecheck, Astro, three Lambda bundles, commerce/fulfillment operator bundles,
+  Terraform formatting/validation, and diff checks passed. The last
+  authenticated read confirmed the regional Lambda quota is 10, adjustable,
+  with no pending request; the subsequent API Gateway account read was blocked
+  by session expiry and must be repeated before planning. No quota request,
+  Terraform plan/apply, CloudFront change, webhook action, storefront/site
+  deployment, S3 fulfillment upload/backfill, Stripe request, or secret access
+  occurred.

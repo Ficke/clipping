@@ -23,6 +23,87 @@ using a live-mode command.
   killed ungracefully, use the printed cleanup command after verifying the exact
   table name.
 
+## M5 ingress correction gates
+
+The deployed HTTP API route throttle is best-effort and did not prevent a direct
+burst from invoking and throttling Buyer. Do not register the production
+webhook or activate storefront v3 until both correction apply gates below pass.
+Terraform apply, webhook registration, storefront activation, live Stripe
+actions, fulfillment upload/backfill, and site deployment remain separate
+approval gates.
+
+### Prerequisites
+
+1. Authenticate with `aws login` and confirm the branch/worktree are clean.
+2. Read the implementation ledger and architecture gates again.
+3. Confirm the us-east-1 Lambda concurrency quota is at least 110. Requesting
+   the increase from 10 is a separate account-change approval. Do not apply the
+   reservation source while the quota is lower: AWS retains 100 units for
+   unreserved functions, and the correction allocates the remaining ten as
+   Buyer 6, Webhook 3, and Authorizer 1.
+4. Inspect the API Gateway account's regional `cloudWatchRoleArn`. REST access
+   logs require this singleton setting. Reuse an appropriate existing role; if
+   it is absent, add a dedicated logging role and review its account-level delta
+   explicitly. Never overwrite an unrelated role merely to satisfy the stage.
+5. Rebuild Buyer, Webhook, and Authorizer bundles and run the complete code and
+   Terraform validation gate.
+
+For every plan, recover the existing origin-verification value from encrypted
+Terraform state into a history-disabled process and pass it through
+`TF_VAR_commerce_origin_verify_header_value`. Never print it, save a plan that
+contains it, write plaintext state to disk, or rotate it to make planning
+easier. Terraform derives the separate fixed-width gateway token in memory.
+
+### Gate A — additive protected ingress
+
+Keep `commerce_rest_cutover_enabled = false`. Generate and review a fresh
+authenticated plan. It may add the Regional REST API, five explicit methods,
+the cached exact-token authorizer, Authorizer Lambda/role/logs/alarms, REST
+access logs and alarm, route-scoped invocation permissions, and reserved
+concurrency. It may update the Buyer/Webhook bundles for REST payload v1
+compatibility. It must not change CloudFront routing or destroy the deployed
+HTTP API, legacy Lambda runtime, parameters, table, or any other rollback rail.
+Stop for exact-plan approval.
+
+After an approved apply, verify configuration and zero drift, then exercise the
+new REST endpoint directly without involving Stripe:
+
+- A burst with the gateway header absent returns an authorization failure and
+  produces zero Authorizer, Buyer, and Webhook invocations.
+- A burst with a same-length incorrect gateway value does the same.
+- A single request carrying both correct in-memory CloudFront headers and an
+  intentionally malformed checkout body reaches Buyer and returns the expected
+  non-cacheable `400` without loading Stripe secrets, writing DynamoDB, or
+  contacting Stripe.
+- REST proxy webhook fixtures preserve exact base64-decoded bytes; do not send a
+  production webhook or populate its SSM shell at this gate.
+- Buyer, Webhook, and Authorizer reservations are exactly 6, 3, and 1, and all
+  new IAM, logs, alarms, methods, gateway responses, and permissions match the
+  reviewed source.
+
+### Gate B — CloudFront origin cutover
+
+Only after Gate A passes, change the committed default of
+`commerce_rest_cutover_enabled` to `true`, rebuild, and review another exact
+plan. Its intended operational change is the CloudFront commerce origin domain
+and stage path plus the derived gateway-token header. It must retain the
+original handler-verification header and must not delete the HTTP API or legacy
+runtime. Stop for separate apply approval.
+
+After an approved cutover, wait until CloudFront reports `Deployed`, then repeat
+the safe malformed checkout/fulfillment probes through the public site. Repeat
+the direct missing/wrong-token bursts and verify zero Lambda invocation delta.
+Confirm the deployed function reservations and account unreserved pool are
+exactly 6/3/1/100, and send a malformed non-secret webhook probe concurrently
+with a safe invalid Buyer burst to confirm the isolated path remains available.
+Finish with a zero-drift Terraform plan using the same in-memory origin value,
+then clear the environment and exit the history-disabled shell.
+
+Rollback is a separately reviewed change setting
+`commerce_rest_cutover_enabled` back to `false`, which points CloudFront at the
+still-deployed HTTP API. Do not delete the failed REST path during the rollback;
+preserve evidence and diagnose it first.
+
 ## Local sandbox acceptance
 
 This exercise uses a real Stripe sandbox, the real Buyer and Webhook handlers,

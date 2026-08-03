@@ -14,11 +14,13 @@ import {
   json,
   method,
   methodNotAllowed,
+  path as requestPath,
   problem,
   query,
   rawBody,
   rawBodyBytes,
   redirect,
+  requestId as eventRequestId,
   type FunctionUrlEvent,
   type FunctionUrlResult,
 } from './http';
@@ -71,10 +73,10 @@ export async function handleBuyer(
   event: FunctionUrlEvent,
   deps: BuyerRuntime,
 ): Promise<FunctionUrlResult> {
-  const path = event.rawPath.replace(/\/$/, '');
+  const path = requestPath(event).replace(/\/$/, '');
   const verb = method(event);
   const route = `${verb} ${path}`;
-  const requestId = event.requestContext.requestId;
+  const requestId = eventRequestId(event);
 
   if (!hasExpectedOrigin(event, deps.env.originHeaderName, deps.env.originHeaderValue)) {
     logOutcome('warn', { outcome: 'origin_rejected', route, requestId, status: 403 });

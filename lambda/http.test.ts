@@ -4,15 +4,17 @@ import {
   hasExpectedOrigin,
   method,
   methodNotAllowed,
+  path,
   problem,
   query,
   rawBody,
   rawBodyBytes,
   redirect,
-  type FunctionUrlEvent,
+  type HttpApiEvent,
+  type RestApiEvent,
 } from './http';
 
-function request(overrides: Partial<FunctionUrlEvent> = {}): FunctionUrlEvent {
+function request(overrides: Partial<HttpApiEvent> = {}): HttpApiEvent {
   return {
     rawPath: '/api/checkout',
     rawQueryString: '',
@@ -22,14 +24,38 @@ function request(overrides: Partial<FunctionUrlEvent> = {}): FunctionUrlEvent {
   };
 }
 
+function restRequest(overrides: Partial<RestApiEvent> = {}): RestApiEvent {
+  return {
+    path: '/api/checkout',
+    httpMethod: 'GET',
+    headers: {},
+    requestContext: { requestId: 'rest-request-1' },
+    ...overrides,
+  };
+}
+
 describe('request parsing', () => {
   test('normalises the method', () => {
     expect(method(request({ requestContext: { http: { method: 'post' } } }))).toBe('POST');
+    expect(method(restRequest({ httpMethod: 'post' }))).toBe('POST');
+  });
+
+  test('normalises the path across proxy payload versions', () => {
+    expect(path(request())).toBe('/api/checkout');
+    expect(path(restRequest())).toBe('/api/checkout');
   });
 
   test('reads the query string', () => {
     const event = request({ rawQueryString: 'photo_id=photo_1234567890abcdef12345678' });
     expect(query(event).get('photo_id')).toBe('photo_1234567890abcdef12345678');
+  });
+
+  test('preserves duplicate REST API query fields', () => {
+    const event = restRequest({
+      queryStringParameters: { photo_id: 'last' },
+      multiValueQueryStringParameters: { photo_id: ['first', 'last'] },
+    });
+    expect(query(event).getAll('photo_id')).toEqual(['first', 'last']);
   });
 
   test('finds a header regardless of case', () => {
@@ -49,6 +75,13 @@ describe('request parsing', () => {
     });
     expect(rawBody(event)).toBe(payload);
     expect(rawBodyBytes(event)).toEqual(Buffer.from(payload));
+
+    const restEvent = restRequest({
+      body: Buffer.from(payload, 'utf8').toString('base64'),
+      isBase64Encoded: true,
+    });
+    expect(rawBody(restEvent)).toBe(payload);
+    expect(rawBodyBytes(restEvent)).toEqual(Buffer.from(payload));
   });
 
   test('treats a missing body as empty', () => {

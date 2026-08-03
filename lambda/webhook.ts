@@ -7,9 +7,11 @@ import {
   json,
   method,
   methodNotAllowed,
+  path,
   problem,
   rawBody,
   rawBodyBytes,
+  requestId as eventRequestId,
   type FunctionUrlEvent,
   type FunctionUrlResult,
 } from './http';
@@ -41,13 +43,14 @@ export async function handleWebhook(
   request: FunctionUrlEvent,
   deps: WebhookRuntime,
 ): Promise<FunctionUrlResult> {
-  const route = `${method(request)} ${request.rawPath.replace(/\/$/, '')}`;
-  const requestId = request.requestContext.requestId;
+  const requestPath = path(request).replace(/\/$/, '');
+  const route = `${method(request)} ${requestPath}`;
+  const requestId = eventRequestId(request);
   if (!hasExpectedOrigin(request, deps.originHeaderName, deps.originHeaderValue)) {
     logOutcome('warn', { outcome: 'origin_rejected', route, requestId, status: 403 });
     return problem(403, 'Forbidden.');
   }
-  if (request.rawPath.replace(/\/$/, '') !== '/api/stripe-webhook') return problem(404, 'Not found.');
+  if (requestPath !== '/api/stripe-webhook') return problem(404, 'Not found.');
   if (method(request) !== 'POST') return methodNotAllowed('POST');
 
   const contentType = header(request, 'content-type')?.toLowerCase().split(';', 1)[0]?.trim();

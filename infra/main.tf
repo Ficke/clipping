@@ -253,12 +253,13 @@ resource "aws_cloudfront_distribution" "site" {
     origin_access_control_id = aws_cloudfront_origin_access_control.site.id
   }
 
-  # The ordinary execute-api hostname remains publicly resolvable. Route-level
-  # gateway throttles are the primary ingress control; this injected header lets
-  # the handlers reject and observe requests that bypass CloudFront.
+  # First apply the REST API additively with this origin still targeting the
+  # deployed HTTP API. After direct ingress verification, a separate exact-plan
+  # gate flips this origin to REST. Both APIs remain managed as rollback rails.
   origin {
     origin_id   = "commerce"
-    domain_name = replace(aws_apigatewayv2_api.commerce.api_endpoint, "https://", "")
+    domain_name = var.commerce_rest_cutover_enabled ? "${aws_api_gateway_rest_api.commerce_rest.id}.execute-api.us-east-1.amazonaws.com" : replace(aws_apigatewayv2_api.commerce.api_endpoint, "https://", "")
+    origin_path = var.commerce_rest_cutover_enabled ? "/${aws_api_gateway_stage.commerce_rest.stage_name}" : null
 
     custom_origin_config {
       origin_protocol_policy = "https-only"
@@ -270,6 +271,15 @@ resource "aws_cloudfront_distribution" "site" {
     custom_header {
       name  = var.commerce_origin_verify_header_name
       value = var.commerce_origin_verify_header_value
+    }
+
+    dynamic "custom_header" {
+      for_each = var.commerce_rest_cutover_enabled ? [1] : []
+
+      content {
+        name  = var.commerce_gateway_token_header_name
+        value = local.commerce_gateway_token
+      }
     }
   }
 

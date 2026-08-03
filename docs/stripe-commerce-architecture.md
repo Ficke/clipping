@@ -3,6 +3,38 @@
 Status: planned, pre-launch architecture. This document describes the target
 design, not the commerce implementation currently deployed.
 
+## Revision 4 — 2026-08-02
+
+Production verification disproved revision 3's ingress safety assumption. A
+30-request burst sent directly to the public HTTP API without the CloudFront
+origin header produced both handler `403` responses and integration `503`
+responses; Buyer Lambda metrics recorded invocations and throttles. The route
+throttle was configured as designed. AWS documents API Gateway throttles as
+best-effort targets, not guaranteed ceilings, so they cannot be the hard
+pre-invocation boundary revision 3 assigned to them.
+
+The corrected design uses an additive Regional REST API with a cached `TOKEN`
+Lambda authorizer. CloudFront overwrites a dedicated gateway-token header with
+a 64-character value derived from the existing random origin value. API Gateway
+first matches that token against an exact validation expression; a missing or
+different value is rejected without invoking the authorizer or either commerce
+Lambda. The authorizer repeats the comparison before returning its cached allow
+policy. Buyer and Webhook continue checking the original header as defense in
+depth.
+
+The account's Lambda concurrency quota must increase from 10 to 110 before this
+can be applied. AWS retains 100 units for unreserved functions, leaving ten for
+reserved concurrency: Buyer 6, Webhook 3, and Authorizer 1. This bounds Buyer
+traffic and preserves Webhook capacity even when a valid public storefront
+request burst exceeds the gateway's best-effort throttle.
+
+Rollout has two Terraform apply gates. The first adds and verifies the REST API,
+authorizer, reserved concurrency, logs, and alarms while CloudFront continues
+using the deployed HTTP API. The second changes only the CloudFront commerce
+origin after direct missing-, wrong-, and valid-token probes pass. The HTTP API
+and legacy Function URL remain managed rollback rails through M7. No storefront
+JavaScript or browser challenge is required for this origin control.
+
 ## Revision 3 — 2026-08-02
 
 Revision 2 removed too much in one place and reversed a settled decision in
@@ -79,14 +111,17 @@ worker Lambda, the temporary sandbox stack, the token key ring, and both
 secondary indexes. All of that stands. Its ingress design and its
 revocation-at-redemption change do not, per the corrections above.
 
+Revision 3's HTTP API ingress and no-reserved-concurrency conclusions are
+superseded by revision 4. Its remaining corrections and domain design stand.
+
 ## Summary
 
 There are no real customer orders to migrate. The store can make a clean cutover
 without an entitlement backfill, legacy-token support, or a dual-run period.
 
 ```text
-Browser -> CloudFront -> HTTP API -> Buyer Lambda
-Stripe  -> CloudFront -> HTTP API -> Webhook Lambda -> DynamoDB
+Browser -> CloudFront -> REST API token gate -> Buyer Lambda
+Stripe  -> CloudFront -> REST API token gate -> Webhook Lambda -> DynamoDB
 Download token -> Buyer Lambda -> immutable private S3 asset
 ```
 
@@ -146,52 +181,67 @@ in referrers, query-string logs, application logs, or alarm payloads.
 
 ## Ingress
 
-One Regional API Gateway **HTTP API** behind the existing CloudFront
-distribution, with explicit routes to the two Lambdas.
+One Regional API Gateway **REST API** behind the existing CloudFront
+distribution, with five explicit methods and no proxy, `ANY`, or default route.
+The ordinary `{api-id}.execute-api.{region}.amazonaws.com/{stage}` URL remains
+the origin; there is no custom domain, certificate, or DNS record for the API.
 
-The API uses its ordinary `{api-id}.execute-api.{region}.amazonaws.com` hostname
-as the CloudFront origin, with a `$default` auto-deploy stage so no origin path
-is needed. There is no custom domain, ACM certificate, or Route 53 record — the
-first draft added those, and they bought nothing.
+Every method requires a cached `TOKEN` Lambda authorizer whose identity source
+is `X-Commerce-Gateway-Token`. Terraform derives its value as SHA-256 of the
+existing random origin-verification value, so it is fixed-width and no second
+secret must be generated or rotated. CloudFront overwrites the viewer's header
+with that value. API Gateway's exact validation expression rejects a missing or
+different token before invoking the authorizer. On a match, the authorizer
+timing-safely compares the token again and returns an allow policy covering only
+the stage's `/api/*` methods, cached for one hour.
 
-**Lambda Function URLs are not used.** A Function URL with
-`authorization_type = NONE` is publicly invocable by anyone holding the URL, and
-a secret header checked inside the handler runs only after invocation and
-concurrency are already consumed. Origin access control would close that, but
-AWS requires POST clients behind a signed Lambda origin to send
-`x-amz-content-sha256`, which a native HTML form cannot do:
+The original independently named origin-verification header is still injected
+and checked inside Buyer and Webhook. It is defense in depth and a configuration
+drift detector; it is not relied upon to preserve concurrency. Neither token is
+put in HTML, JavaScript, request logs, or application logs.
+
+**Lambda Function URLs are not the active ingress.** A Function URL with
+`authorization_type = NONE` spends invocation capacity before an application
+header check. Lambda origin access control avoids that, but signed POSTs impose
+`x-amz-content-sha256` requirements a native HTML form cannot meet:
 [AWS Lambda URL origin guidance](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-lambda.html).
-The HTTP API resolves both: no CloudFront request signing, so POST passes
-unchanged, and throttling that rejects before Lambda is invoked.
+The REST token gate preserves the native form body while rejecting direct
+bypass before integration.
 
-Route throttles:
+Route throttles remain useful best-effort traffic shaping, not security or
+capacity ceilings:
 
 | Route | Rate | Burst |
 | --- | --- | --- |
 | `POST /api/checkout` | 2 | 5 |
+| `GET /api/checkout` | 2 | 5, temporary through the M6 cutover |
 | `POST /api/stripe-webhook` | 10 | 20 |
 | `GET /api/fulfill` | 5 | 10 |
 | `GET /api/download` | 10 | 20 |
 
-There is no `$default` or `ANY` route. Unsupported methods are rejected by the
-gateway; handlers reject them too, since neither should be the only guard.
+Unsupported methods are rejected by the gateway; handlers reject them too.
+REST proxy payload v1 and the deployed HTTP API/Function URL payload v2 are both
+accepted while rollback rails remain. JSON and form bodies are base64-preserved
+by the REST API so Stripe signatures and native form bytes are not re-encoded.
 
-**No reserved concurrency.** AWS always reserves 100 units for functions without
-an explicit reservation regardless of the account limit, so at this account's
-quota of 10 there is no reservable pool. `infra/commerce.tf` already recorded
-this constraint. Route throttling is the control instead, and it is the better
-one — it acts before invocation rather than after. Note also that the
-account-level requests-per-second ceiling is ten times the concurrency quota.
+**Reserved concurrency requires a prior quota increase.** AWS retains 100 units
+for functions without reservations. At the current regional quota of 10 there
+is no reservable pool; at the approved target of 110, allocate Buyer 6, Webhook
+3, and Authorizer 1. Reserved concurrency is both an exclusive minimum and a
+maximum. A valid Buyer burst can therefore throttle Buyer but cannot consume
+Webhook or Authorizer capacity, and none of the three can consume the 100-unit
+unreserved pool used by rollback or unrelated functions.
 
-CloudFront injects a random origin-verification header on every origin request,
-and both handlers reject requests without it. The `execute-api` hostname remains
-publicly resolvable, so this is bypass **detection**, not the primary control;
-route throttles apply to direct traffic just as they do to CloudFront traffic.
+The deployed HTTP API remains intact and unrouted after the REST cutover. It is
+a fast CloudFront rollback target, not a second accepted production ingress.
+The legacy IAM-protected Function URL and runtime also remain through M7.
 
 CloudFront configuration:
 
 - Caching disabled for `api/*`, all seven viewer HTTP methods allowed so POST
   can pass, query strings and viewer headers forwarded, bodies unchanged.
+- The REST stage name is set as the commerce origin path. CloudFront injects
+  both the gateway token and original handler-verification header.
 - A separate behavior for `/purchase/*` carrying a response-headers policy with
   `Referrer-Policy: no-referrer`. The existing policy is attached
   distribution-wide and cannot be varied per page without this.
@@ -470,12 +520,14 @@ order costs slightly more than the sale price.
 
 ## AWS infrastructure and security
 
-Two Lambdas with separate roles, behind the shared HTTP API:
+Three Lambdas with separate roles, behind the origin-authorized REST API:
 
 - **Buyer API**: catalog read, Checkout Session create, order read/write, token
   key read, `s3:GetObject` signing limited to `fulfillment/*`.
 - **Webhook**: webhook secret read, Stripe read credential, order read/write. It
   cannot mint tokens, read originals, or create Sessions.
+- **Authorizer**: CloudWatch Logs write only. It cannot read SSM, DynamoDB, S3,
+  Stripe credentials, or invoke either commerce function.
 
 Restricted Stripe API keys, scoped explicitly:
 
@@ -489,13 +541,17 @@ Three SSM SecureString parameters so each function reads only what it needs:
 development. All are created holding `{}` with `ignore_changes`; real values are
 written out of band and never pass through Terraform state.
 
-Secret caching must be bounded by TTL or tied to a deployment revision. The
-current implementation caches for the life of the execution environment, so a
-rotated secret can persist indefinitely in a warm container.
+Buyer and Webhook cache successful SSM reads for five minutes and never retain
+failed loads. The Authorizer policy cache lasts one hour; the gateway token is
+infrastructure configuration and is not rotated with Stripe credentials.
 
-The origin-verification header value lives in Terraform state. That is
-acceptable — it is bypass detection, not authentication — but it should be
-generated out of band alongside the other secrets.
+The origin-verification header value lives in encrypted Terraform state and is
+generated out of band. Terraform derives the REST gateway token from it; both
+values are sensitive bearer configuration and must be redacted from plans,
+logs, commits, and evidence. The original value is recovered only into process
+memory from encrypted state for later plans. Do not rotate it routinely. If a
+rotation is necessary, first make the authorizer accept old and new values,
+then update CloudFront, wait for propagation, and remove the old value last.
 
 ## Monitoring and recovery
 
@@ -504,12 +560,18 @@ Never log request bodies, signatures, full Session IDs, tokens, query strings,
 customer data, or presigned URLs. API Gateway access logs carry only request ID,
 route, status, integration status, latency, and response size.
 
+REST API access logging requires the regional API Gateway account
+`cloudWatchRoleArn`. Before planning, inspect the existing singleton account
+setting. Reuse it if correctly scoped; if absent, add and review a dedicated
+logging role. Never overwrite an unrelated account role without importing and
+reviewing it first.
+
 Alarm through the existing SNS topic on:
 
 - API Gateway stage `5xx`. This covers the blind spot noted above at no cost: a
   handler that catches an exception and returns 500 does not increment the
   Lambda `Errors` metric, but the gateway records the status either way.
-- Lambda errors and throttles, for both functions.
+- Lambda errors and throttles, for Buyer, Webhook, and Authorizer.
 - DynamoDB throttles and system errors.
 
 Deliberately not alarmed: rejected-event counts, invalid-transition counts, and
@@ -555,16 +617,25 @@ dispute review, order restoration, reconciliation, and manual reissue.
    here. Confirm the live Stripe checkout host for the CSP allowlist, and assert
    that `session.payment_intent` is populated for a Managed Payments
    `mode: payment` Session.
-3. Deploy the production table, HTTP API with route throttles, both Lambdas,
-   IAM, CloudFront behaviors, logs, and alarms **without exposing the checkout
-   form**. Keep the strictly validated legacy GET checkout compatibility switch
-   enabled while the deployed storefront still uses GET links. Verify ingress
-   by hand: throttles reject, the origin header is required, and a registered
-   live webhook delivers a signed event that reaches DynamoDB. Retain the
-   deployed legacy Lambda, Function URL, role, log group, alarm, origin access
-   control, and invocation permissions as an unattached rollback rail through
-   the live drill; guard them from accidental Terraform destruction.
-4. Switch the store to the POST form and deploy the CSP, referrer, and
+3. Apply the M5 correction in two infrastructure gates **without exposing the
+   POST storefront or registering the webhook**:
+   1. Obtain the separately approved regional Lambda concurrency quota of 110.
+      Add the REST API, exact token-validation authorizer, 6/3/1 reservations,
+      logs, alarms, and v1-compatible Lambda bundles while CloudFront remains on
+      the HTTP API. Verify missing and wrong direct tokens produce no Lambda
+      invocation; use the in-memory correct headers only with malformed safe
+      probes to verify the authorized path without Stripe or DynamoDB.
+   2. Review and approve a separate plan that changes the CloudFront commerce
+      origin to the verified REST stage and adds its derived token header. After
+      propagation, repeat safe probes and prove Buyer saturation leaves Webhook
+      capacity available. Keep the strictly validated legacy GET compatibility
+      switch enabled while the deployed storefront still uses GET links.
+   Retain the HTTP API and the deployed legacy Lambda, Function URL, role, log
+   group, alarm, origin access control, and invocation permissions as guarded
+   rollback rails through the live drill.
+4. In a separate gate, register and populate the production webhook, then
+   verify a signed event reaches DynamoDB before storefront activation.
+5. Switch the store to the POST form and deploy the CSP, referrer, and
    purchase-page changes. After the deploy has propagated, disable legacy GET
    checkout and verify it returns `405` with no Stripe call. Complete the live
    drill: one controlled purchase, download, and manual reissue — then refund
@@ -572,8 +643,9 @@ dispute review, order restoration, reconciliation, and manual reissue.
    and confirm reissue is refused afterwards. A Dashboard refund produces the
    same `charge.refunded` event Link would, and it is the only way to exercise
    this end to end in live mode.
-5. Remove the old stateless fulfillment path, the `albums/*` presign grant, the
-   Lambda Function URL, and its origin access control.
+6. Remove the HTTP API, old stateless fulfillment path, the `albums/*` presign
+   grant, the Lambda Function URL, and its origin access control only after the
+   M7 cleanup gates pass.
 
 Because there are no customer orders, there is no backfill, dual-write period,
 legacy-token decoder, or extended rollback window.
@@ -584,8 +656,10 @@ legacy-token decoder, or extended rollback window.
   purchase `href`.
 - **The full redirect to Stripe completes under the production CSP in Chrome,
   Safari, and Firefox.** This is a browser check, not a header inspection.
-- Route throttles reject excess requests at the gateway, without invoking
-  Lambda.
+- Missing or incorrect direct-origin tokens are rejected by API Gateway without
+  invoking Authorizer, Buyer, or Webhook.
+- A valid Buyer burst cannot consume Webhook's reserved concurrency. Route
+  throttles shape traffic but are not treated as guaranteed ceilings.
 - Invalid method, body, field, origin header, or attempted price never calls
   Stripe.
 - The pending order is durable before Checkout Session creation, and uncertain

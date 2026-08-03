@@ -67,3 +67,20 @@ variable "commerce_origin_verify_header_value" {
     error_message = "The origin-verification value must contain at least 32 characters."
   }
 }
+
+variable "commerce_gateway_token_header_name" {
+  description = "Header CloudFront injects for API Gateway pre-integration authorization"
+  type        = string
+  default     = "X-Commerce-Gateway-Token"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9-]+$", var.commerce_gateway_token_header_name))
+    error_message = "The commerce gateway token header name may contain only letters, digits, and hyphens."
+  }
+}
+
+variable "commerce_rest_cutover_enabled" {
+  description = "Route CloudFront commerce traffic to the origin-authorized REST API after its additive verification gate"
+  type        = bool
+  default     = false
+}

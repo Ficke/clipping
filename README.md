@@ -325,11 +325,11 @@ Stripe Product and offer without changing the photograph's `photo_id`.
 ### The money path
 
 ```
-/store/ POST form -> CloudFront -> HTTP API -> Buyer Lambda -> Stripe Checkout
-                                              |
-                                              +-> pending DynamoDB order first
+/store/ POST form -> CloudFront -> REST token gate -> Buyer Lambda -> Stripe Checkout
+                                                    |
+                                                    +-> pending DynamoDB order first
 
-Stripe signed webhook -> CloudFront -> HTTP API -> Webhook Lambda -> DynamoDB
+Stripe signed webhook -> CloudFront -> REST token gate -> Webhook Lambda -> DynamoDB
 Browser return -> GET /api/fulfill -> current Stripe state + durable order
 Download token -> GET /api/download -> stateless 302 to immutable S3 asset
 ```
@@ -353,17 +353,19 @@ public admin route, customer account, or custom delivery-email service.
 
 ### Deploying it
 
-Both Lambdas are bundled locally and shipped by Terraform, so they deploy on
-`terraform apply`, not on a push to `main`:
+Buyer, Webhook, and the origin Authorizer are bundled locally and shipped by
+Terraform, so they deploy through a separately reviewed infrastructure gate,
+not on a push to `main`:
 
 ```sh
 bun run lambda:build
-cd infra && terraform apply
 ```
 
-The source currently validates but has not been applied. Follow the migration
-gates in the implementation ledger; infrastructure deployment, webhook
-registration, catalog activation, and storefront cutover are separate actions.
+The first M5 infrastructure revision is deployed. Its correction is a two-apply
+rollout: add and verify the protected REST ingress first, then approve the
+CloudFront cutover separately. Follow the implementation ledger and operations
+runbook; quota changes, each Terraform apply, webhook registration, catalog
+activation, and storefront cutover are separate actions.
 
 **Where keys live.** In SSM Parameter Store as KMS-encrypted `SecureString`
 values, and nowhere else—never in Terraform state, a file, or Lambda environment
@@ -494,10 +496,13 @@ mutating published assets.
   frame-deny), and a viewer-request function for pretty URLs, legacy-URL
   redirects, and the canonical-host redirect. Deploys invalidate mutable site
   paths without evicting immutable `/_astro/*` or `/media/*` assets. `/api/*`
-  routes uncached to the commerce HTTP API
-- **Commerce** (`lambda/`): separate Node 22 Buyer and Webhook Lambdas behind a
-  throttled HTTP API. DynamoDB holds durable immutable order snapshots; Stripe
-  holds payment state; signed tokens redeem statelessly; and
+  routes uncached through an origin-authorized commerce REST API after its
+  staged cutover
+- **Commerce** (`lambda/`): separate Node 22 Buyer, Webhook, and origin
+  Authorizer Lambdas behind an explicit REST API. An exact CloudFront token is
+  checked before integration; reserved concurrency isolates Buyer and Webhook;
+  route throttles remain best-effort shaping. DynamoDB holds durable immutable
+  order snapshots; Stripe holds payment state; signed tokens redeem statelessly; and
   `/downloads-catalog.json` holds current sale state and prices.
   See [Selling downloads](#selling-downloads)
 - **Analytics**: GA4 (`G-P2XYT72XL6`) for visitor and page-level reporting;

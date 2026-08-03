@@ -1,6 +1,13 @@
-# Stripe commerce infrastructure: durable orders, separate buyer and webhook
-# functions, and a throttled HTTP API behind the existing CloudFront
-# distribution.
+# Stripe commerce infrastructure: durable orders, isolated request-path
+# functions, and an origin-authorized REST API behind the existing CloudFront
+# distribution. The previously deployed HTTP API remains as a rollback rail.
+
+locals {
+  # Derive a separate fixed-width bearer from the existing random origin value.
+  # This neither exposes nor rotates the handler's defense-in-depth header, and
+  # avoids persisting another independently managed secret.
+  commerce_gateway_token = sha256(var.commerce_origin_verify_header_value)
+}
 
 # ---------- Secrets ----------
 
@@ -92,6 +99,12 @@ data "archive_file" "commerce_webhook" {
   output_path = "${path.module}/../dist-lambda/commerce-webhook.zip"
 }
 
+data "archive_file" "commerce_authorizer" {
+  type        = "zip"
+  source_file = "${path.module}/../dist-lambda/authorizer/index.mjs"
+  output_path = "${path.module}/../dist-lambda/commerce-authorizer.zip"
+}
+
 data "aws_iam_policy_document" "commerce_lambda_trust" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -181,6 +194,9 @@ resource "aws_lambda_function" "commerce_buyer" {
   architectures = ["arm64"]
   memory_size   = 512
   timeout       = 15
+  # Requires the separately approved us-east-1 account concurrency quota of
+  # 110: AWS keeps 100 units unreserved, leaving ten for these three functions.
+  reserved_concurrent_executions = 6
 
   filename         = data.archive_file.commerce_buyer.output_path
   source_code_hash = data.archive_file.commerce_buyer.output_base64sha256
@@ -258,13 +274,14 @@ resource "aws_cloudwatch_log_group" "commerce_webhook" {
 }
 
 resource "aws_lambda_function" "commerce_webhook" {
-  function_name = "${var.name}-commerce-webhook"
-  role          = aws_iam_role.commerce_webhook.arn
-  handler       = "index.handler"
-  runtime       = "nodejs22.x"
-  architectures = ["arm64"]
-  memory_size   = 512
-  timeout       = 15
+  function_name                  = "${var.name}-commerce-webhook"
+  role                           = aws_iam_role.commerce_webhook.arn
+  handler                        = "index.handler"
+  runtime                        = "nodejs22.x"
+  architectures                  = ["arm64"]
+  memory_size                    = 512
+  timeout                        = 15
+  reserved_concurrent_executions = 3
 
   filename         = data.archive_file.commerce_webhook.output_path
   source_code_hash = data.archive_file.commerce_webhook.output_base64sha256
@@ -282,7 +299,58 @@ resource "aws_lambda_function" "commerce_webhook" {
   depends_on = [aws_cloudwatch_log_group.commerce_webhook]
 }
 
-# ---------- HTTP API ----------
+# ---------- Origin authorizer Lambda ----------
+
+resource "aws_iam_role" "commerce_authorizer" {
+  name               = "${var.name}-commerce-authorizer"
+  assume_role_policy = data.aws_iam_policy_document.commerce_lambda_trust.json
+  tags               = local.tags
+}
+
+data "aws_iam_policy_document" "commerce_authorizer" {
+  statement {
+    sid       = "Logs"
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["${aws_cloudwatch_log_group.commerce_authorizer.arn}:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "commerce_authorizer" {
+  name   = "${var.name}-commerce-authorizer"
+  role   = aws_iam_role.commerce_authorizer.id
+  policy = data.aws_iam_policy_document.commerce_authorizer.json
+}
+
+resource "aws_cloudwatch_log_group" "commerce_authorizer" {
+  name              = "/aws/lambda/${var.name}-commerce-authorizer"
+  retention_in_days = 30
+  tags              = local.tags
+}
+
+resource "aws_lambda_function" "commerce_authorizer" {
+  function_name                  = "${var.name}-commerce-authorizer"
+  role                           = aws_iam_role.commerce_authorizer.arn
+  handler                        = "index.handler"
+  runtime                        = "nodejs22.x"
+  architectures                  = ["arm64"]
+  memory_size                    = 128
+  timeout                        = 3
+  reserved_concurrent_executions = 1
+
+  filename         = data.archive_file.commerce_authorizer.output_path
+  source_code_hash = data.archive_file.commerce_authorizer.output_base64sha256
+  tags             = local.tags
+
+  environment {
+    variables = {
+      COMMERCE_GATEWAY_TOKEN = local.commerce_gateway_token
+    }
+  }
+
+  depends_on = [aws_cloudwatch_log_group.commerce_authorizer]
+}
+
+# ---------- Deployed HTTP API rollback rail ----------
 
 resource "aws_apigatewayv2_api" "commerce" {
   name          = "${var.name}-commerce"
@@ -411,6 +479,224 @@ resource "aws_lambda_permission" "commerce_webhook_api" {
   source_arn    = "${aws_apigatewayv2_api.commerce.execution_arn}/*/POST/api/stripe-webhook"
 }
 
+# ---------- Origin-authorized REST API ----------
+
+resource "aws_api_gateway_rest_api" "commerce_rest" {
+  name = "${var.name}-commerce-rest"
+
+  # Preserve the exact form and Stripe webhook bytes in the v1 proxy event.
+  # The shared HTTP helpers decode either base64 or plain request bodies.
+  binary_media_types = [
+    "application/json",
+    "application/x-www-form-urlencoded",
+  ]
+
+  endpoint_configuration {
+    types = ["REGIONAL"]
+  }
+
+  tags = local.tags
+}
+
+resource "aws_api_gateway_resource" "commerce_rest_api" {
+  rest_api_id = aws_api_gateway_rest_api.commerce_rest.id
+  parent_id   = aws_api_gateway_rest_api.commerce_rest.root_resource_id
+  path_part   = "api"
+}
+
+locals {
+  commerce_rest_resource_names = toset([
+    "checkout",
+    "download",
+    "fulfill",
+    "stripe-webhook",
+  ])
+
+  commerce_rest_methods = {
+    checkout_post = {
+      resource = "checkout"
+      method   = "POST"
+      target   = "buyer"
+      rate     = 2
+      burst    = 5
+    }
+    # Temporary compatibility route. Remove after the POST storefront has
+    # propagated and passed the controlled purchase check.
+    checkout_get = {
+      resource = "checkout"
+      method   = "GET"
+      target   = "buyer"
+      rate     = 2
+      burst    = 5
+    }
+    fulfill_get = {
+      resource = "fulfill"
+      method   = "GET"
+      target   = "buyer"
+      rate     = 5
+      burst    = 10
+    }
+    download_get = {
+      resource = "download"
+      method   = "GET"
+      target   = "buyer"
+      rate     = 10
+      burst    = 20
+    }
+    webhook_post = {
+      resource = "stripe-webhook"
+      method   = "POST"
+      target   = "webhook"
+      rate     = 10
+      burst    = 20
+    }
+  }
+}
+
+resource "aws_api_gateway_resource" "commerce_rest" {
+  for_each = local.commerce_rest_resource_names
+
+  rest_api_id = aws_api_gateway_rest_api.commerce_rest.id
+  parent_id   = aws_api_gateway_resource.commerce_rest_api.id
+  path_part   = each.value
+}
+
+resource "aws_api_gateway_authorizer" "commerce_origin" {
+  name                             = "${var.name}-commerce-origin"
+  rest_api_id                      = aws_api_gateway_rest_api.commerce_rest.id
+  authorizer_uri                   = aws_lambda_function.commerce_authorizer.invoke_arn
+  type                             = "TOKEN"
+  identity_source                  = "method.request.header.${var.commerce_gateway_token_header_name}"
+  identity_validation_expression   = "^${local.commerce_gateway_token}$"
+  authorizer_result_ttl_in_seconds = 3600
+}
+
+resource "aws_lambda_permission" "commerce_authorizer_api" {
+  statement_id  = "AllowCommerceRestApiAuthorizer"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.commerce_authorizer.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.commerce_rest.execution_arn}/authorizers/${aws_api_gateway_authorizer.commerce_origin.id}"
+}
+
+resource "aws_api_gateway_method" "commerce_rest" {
+  for_each = local.commerce_rest_methods
+
+  rest_api_id   = aws_api_gateway_rest_api.commerce_rest.id
+  resource_id   = aws_api_gateway_resource.commerce_rest[each.value.resource].id
+  http_method   = each.value.method
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.commerce_origin.id
+}
+
+resource "aws_api_gateway_integration" "commerce_rest" {
+  for_each = local.commerce_rest_methods
+
+  rest_api_id             = aws_api_gateway_rest_api.commerce_rest.id
+  resource_id             = aws_api_gateway_resource.commerce_rest[each.value.resource].id
+  http_method             = aws_api_gateway_method.commerce_rest[each.key].http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri = (
+    each.value.target == "buyer"
+    ? aws_lambda_function.commerce_buyer.invoke_arn
+    : aws_lambda_function.commerce_webhook.invoke_arn
+  )
+}
+
+resource "aws_api_gateway_gateway_response" "commerce_rest" {
+  for_each = toset(["DEFAULT_4XX", "DEFAULT_5XX"])
+
+  rest_api_id   = aws_api_gateway_rest_api.commerce_rest.id
+  response_type = each.value
+  response_parameters = {
+    "gatewayresponse.header.Cache-Control" = "'no-store, private'"
+  }
+}
+
+resource "aws_api_gateway_deployment" "commerce_rest" {
+  rest_api_id = aws_api_gateway_rest_api.commerce_rest.id
+
+  triggers = {
+    redeployment = sha1(jsonencode({
+      routes = local.commerce_rest_methods
+      authorizer = {
+        type = aws_api_gateway_authorizer.commerce_origin.type
+        ttl  = aws_api_gateway_authorizer.commerce_origin.authorizer_result_ttl_in_seconds
+      }
+      binary_media_types = aws_api_gateway_rest_api.commerce_rest.binary_media_types
+    }))
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  depends_on = [
+    aws_api_gateway_integration.commerce_rest,
+    aws_api_gateway_gateway_response.commerce_rest,
+  ]
+}
+
+resource "aws_cloudwatch_log_group" "commerce_rest_api" {
+  name              = "/aws/apigateway/${var.name}-commerce-rest"
+  retention_in_days = 30
+  tags              = local.tags
+}
+
+resource "aws_api_gateway_stage" "commerce_rest" {
+  rest_api_id   = aws_api_gateway_rest_api.commerce_rest.id
+  deployment_id = aws_api_gateway_deployment.commerce_rest.id
+  stage_name    = "commerce"
+  tags          = local.tags
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.commerce_rest_api.arn
+    format = jsonencode({
+      requestId         = "$context.requestId"
+      route             = "$context.httpMethod $context.resourcePath"
+      status            = "$context.status"
+      integrationStatus = "$context.integration.status"
+      latency           = "$context.responseLatency"
+      responseSize      = "$context.responseLength"
+    })
+  }
+}
+
+resource "aws_api_gateway_method_settings" "commerce_rest" {
+  for_each = local.commerce_rest_methods
+
+  rest_api_id = aws_api_gateway_rest_api.commerce_rest.id
+  stage_name  = aws_api_gateway_stage.commerce_rest.stage_name
+  method_path = "${trimprefix(aws_api_gateway_resource.commerce_rest[each.value.resource].path, "/")}/${each.value.method}"
+
+  settings {
+    throttling_rate_limit  = each.value.rate
+    throttling_burst_limit = each.value.burst
+  }
+}
+
+resource "aws_lambda_permission" "commerce_buyer_rest_api" {
+  for_each = {
+    for key, route in local.commerce_rest_methods : key => route
+    if route.target == "buyer"
+  }
+
+  statement_id  = "AllowCommerceRestApi-${each.key}"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.commerce_buyer.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.commerce_rest.execution_arn}/*/${each.value.method}/api/${each.value.resource}"
+}
+
+resource "aws_lambda_permission" "commerce_webhook_rest_api" {
+  statement_id  = "AllowCommerceRestApi"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.commerce_webhook.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.commerce_rest.execution_arn}/*/POST/api/stripe-webhook"
+}
+
 # ---------- Alarms ----------
 
 resource "aws_sns_topic" "commerce_alarms" {
@@ -440,6 +726,14 @@ locals {
     }
     webhook-throttles = {
       function_name = aws_lambda_function.commerce_webhook.function_name
+      metric_name   = "Throttles"
+    }
+    authorizer-errors = {
+      function_name = aws_lambda_function.commerce_authorizer.function_name
+      metric_name   = "Errors"
+    }
+    authorizer-throttles = {
+      function_name = aws_lambda_function.commerce_authorizer.function_name
       metric_name   = "Throttles"
     }
   }
@@ -482,6 +776,27 @@ resource "aws_cloudwatch_metric_alarm" "commerce_api_5xx" {
   dimensions = {
     ApiId = aws_apigatewayv2_api.commerce.id
     Stage = aws_apigatewayv2_stage.commerce.name
+  }
+
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.commerce_alarms.arn]
+  ok_actions          = [aws_sns_topic.commerce_alarms.arn]
+  tags                = local.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "commerce_rest_api_5xx" {
+  alarm_name        = "${var.name}-commerce-rest-api-5xx"
+  alarm_description = "The origin-authorized commerce REST API returned a server error."
+  namespace         = "AWS/ApiGateway"
+  metric_name       = "5XXError"
+  dimensions = {
+    ApiName = aws_api_gateway_rest_api.commerce_rest.name
+    Stage   = aws_api_gateway_stage.commerce_rest.stage_name
   }
 
   statistic           = "Sum"
@@ -559,4 +874,8 @@ output "commerce_orders_table" {
 
 output "commerce_api_endpoint" {
   value = aws_apigatewayv2_api.commerce.api_endpoint
+}
+
+output "commerce_rest_api_endpoint" {
+  value = "https://${aws_api_gateway_rest_api.commerce_rest.id}.execute-api.us-east-1.amazonaws.com/${aws_api_gateway_stage.commerce_rest.stage_name}"
 }

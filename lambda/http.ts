@@ -1,19 +1,32 @@
 import { timingSafeEqual } from 'node:crypto';
 
-/**
- * The Lambda Function URL payload (format 2.0) and the small amount of HTTP
- * plumbing the routes need. Kept separate from the routes so both can be
- * tested without an AWS client in scope.
- */
-
-export interface FunctionUrlEvent {
+/** HTTP API and Lambda Function URL payload format 2.0. */
+export interface HttpApiEvent {
   rawPath: string;
   rawQueryString: string;
   headers: Record<string, string | undefined>;
   requestContext: { requestId?: string; http: { method: string } };
-  body?: string;
+  body?: string | null;
   isBase64Encoded?: boolean;
 }
+
+/** REST API Lambda proxy payload format 1.0. */
+export interface RestApiEvent {
+  path: string;
+  httpMethod: string;
+  headers?: Record<string, string | undefined> | null;
+  queryStringParameters?: Record<string, string | undefined> | null;
+  multiValueQueryStringParameters?: Record<string, string[] | undefined> | null;
+  requestContext: { requestId?: string; [key: string]: unknown };
+  body?: string | null;
+  isBase64Encoded?: boolean;
+}
+
+/**
+ * The legacy Function URL, HTTP API, and REST API all use Lambda proxy events.
+ * Accept both payload generations while the two deployed rollback rails remain.
+ */
+export type FunctionUrlEvent = HttpApiEvent | RestApiEvent;
 
 export interface FunctionUrlResult {
   statusCode: number;
@@ -22,11 +35,33 @@ export interface FunctionUrlResult {
 }
 
 export function method(event: FunctionUrlEvent): string {
-  return event.requestContext.http.method.toUpperCase();
+  return isHttpApiEvent(event)
+    ? event.requestContext.http.method.toUpperCase()
+    : event.httpMethod.toUpperCase();
+}
+
+export function path(event: FunctionUrlEvent): string {
+  return isHttpApiEvent(event) ? event.rawPath : event.path;
+}
+
+export function requestId(event: FunctionUrlEvent): string | undefined {
+  return event.requestContext.requestId;
 }
 
 export function query(event: FunctionUrlEvent): URLSearchParams {
-  return new URLSearchParams(event.rawQueryString ?? '');
+  if (isHttpApiEvent(event)) return new URLSearchParams(event.rawQueryString ?? '');
+
+  const params = new URLSearchParams();
+  if (event.multiValueQueryStringParameters) {
+    for (const [name, values] of Object.entries(event.multiValueQueryStringParameters)) {
+      for (const value of values ?? []) params.append(name, value);
+    }
+    return params;
+  }
+  for (const [name, value] of Object.entries(event.queryStringParameters ?? {})) {
+    if (value !== undefined) params.append(name, value);
+  }
+  return params;
 }
 
 /**
@@ -47,12 +82,16 @@ export function rawBodyBytes(event: FunctionUrlEvent): Buffer {
 }
 
 export function header(event: FunctionUrlEvent, name: string): string | undefined {
-  /* Function URLs lower-case header names, but do not depend on that. */
+  /* Proxy event sources differ in header casing; do not depend on any of them. */
   const wanted = name.toLowerCase();
   for (const [key, value] of Object.entries(event.headers ?? {})) {
     if (key.toLowerCase() === wanted) return value;
   }
   return undefined;
+}
+
+function isHttpApiEvent(event: FunctionUrlEvent): event is HttpApiEvent {
+  return 'rawPath' in event;
 }
 
 export function hasExpectedOrigin(

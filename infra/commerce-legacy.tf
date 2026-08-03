@@ -1,9 +1,10 @@
 # Temporary M5-M7 rollback rail.
 #
-# The durable commerce cutover moves CloudFront's /api/* behavior to the new
-# HTTP API, but the previously deployed stateless Lambda runtime stays intact
-# until the controlled live drill succeeds. Keeping these resources managed
-# makes rollback a CloudFront origin change instead of a runtime reconstruction.
+# The durable commerce cutover ultimately moves CloudFront's /api/* behavior to
+# the origin-authorized REST API. The interim HTTP API and this previously
+# deployed stateless Lambda runtime both stay intact until the controlled live
+# drill succeeds. Keeping them managed makes rollback a CloudFront origin change
+# instead of a runtime reconstruction.
 # Remove this file only at the documented M7 cleanup gate.
 
 resource "aws_cloudfront_origin_access_control" "commerce" {

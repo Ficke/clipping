@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { createHmac } from 'node:crypto';
 import Stripe from 'stripe';
 import type { WebhookSecrets } from './config';
-import type { FunctionUrlEvent } from './http';
+import type { HttpApiEvent, RestApiEvent } from './http';
 import type { OrderRepository } from './order-repository';
 import { createPendingOrder, type EntitlementAudit, type Order, type RevocationAudit } from './orders';
 import { applyStripeEvent, handleWebhook, verifyEvent } from './webhook';
@@ -35,7 +35,7 @@ function stripeEvent(type = 'checkout.session.completed'): Stripe.Event {
   } as Stripe.Event;
 }
 
-function signedRequest(event: Stripe.Event, secret = CURRENT): FunctionUrlEvent {
+function signedRequest(event: Stripe.Event, secret = CURRENT): HttpApiEvent {
   const payload = JSON.stringify(event);
   const timestamp = Math.floor(Date.now() / 1000);
   const digest = createHmac('sha256', secret).update(`${timestamp}.${payload}`).digest('hex');
@@ -50,6 +50,19 @@ function signedRequest(event: Stripe.Event, secret = CURRENT): FunctionUrlEvent 
     },
     requestContext: { requestId: 'request-1', http: { method: 'POST' } },
     body: payload,
+  };
+}
+
+function restSignedRequest(event: Stripe.Event, secret = CURRENT): RestApiEvent {
+  const request = signedRequest(event, secret);
+  const body = request.body ?? '';
+  return {
+    path: '/api/stripe-webhook',
+    httpMethod: 'POST',
+    headers: request.headers,
+    requestContext: { requestId: 'rest-request-1' },
+    body: Buffer.from(body, 'utf8').toString('base64'),
+    isBase64Encoded: true,
   };
 }
 
@@ -118,6 +131,31 @@ describe('Stripe webhook', () => {
     expect(response.statusCode).toBe(200);
     expect(current.state).toBe('entitled');
     expect(audits[0]?.sourceEventId).toBe('evt_test_1');
+  });
+
+  test('verifies exact webhook bytes from the REST API proxy event', async () => {
+    let current = pending();
+    const orders = {
+      get: async () => current,
+      entitle: async (_id: string, audit: EntitlementAudit) => {
+        current = { ...current, state: 'entitled', ...audit };
+        return current;
+      },
+    } as unknown as OrderRepository;
+    const stripe = new Stripe('rk_test_read');
+    (stripe.checkout.sessions as any).retrieve = async () => ({
+      id: SESSION_ID, client_reference_id: ORDER_ID, mode: 'payment',
+      metadata: { integration: 'photo-download-qkzvhrmw', order_id: ORDER_ID, photo_id: current.photoId },
+      livemode: false, payment_status: 'paid', currency: 'usd', amount_subtotal: 4_000,
+      amount_total: 4_000, payment_intent: 'pi_test_1',
+    }) as unknown as Stripe.Checkout.Session;
+
+    const response = await handleWebhook(restSignedRequest(stripeEvent()), {
+      originHeaderName: 'x-commerce-origin', originHeaderValue: ORIGIN, orders,
+      loadSecrets: async () => secrets(), stripeFor: () => stripe,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(current.state).toBe('entitled');
   });
 
   test('revokes charge-derived events through PaymentIntent order metadata', async () => {
