@@ -8,7 +8,7 @@
 # pass through Terraform state. Populate them out of band after the first apply.
 resource "aws_ssm_parameter" "commerce" {
   name        = "/${var.name}/commerce"
-  description = "Stripe Checkout write key, Product ID, and download token key"
+  description = "Stripe restricted API key, Managed Payments Product ID, and download token key"
   type        = "SecureString"
   tier        = "Standard"
   value       = "{}"
@@ -36,7 +36,7 @@ resource "aws_ssm_parameter" "commerce_webhook" {
 # parameter.
 resource "aws_ssm_parameter" "commerce_test" {
   name        = "/${var.name}/commerce-test"
-  description = "Stripe test key, sandbox Product ID, and token key for local development"
+  description = "Stripe TEST key, sandbox Product ID, and token key for local development. Never read by the deployed Lambda."
   type        = "SecureString"
   tier        = "Standard"
   value       = "{}"
@@ -188,13 +188,14 @@ resource "aws_lambda_function" "commerce_buyer" {
 
   environment {
     variables = {
-      COMMERCE_SECRET_PARAM      = aws_ssm_parameter.commerce.name
-      COMMERCE_TABLE             = aws_dynamodb_table.commerce_orders.name
-      ORIGINALS_BUCKET           = aws_s3_bucket.originals.bucket
-      SITE_BUCKET                = aws_s3_bucket.site.bucket
-      SITE_URL                   = "https://${var.domain_name}"
-      ORIGIN_VERIFY_HEADER_NAME  = var.commerce_origin_verify_header_name
-      ORIGIN_VERIFY_HEADER_VALUE = var.commerce_origin_verify_header_value
+      COMMERCE_SECRET_PARAM              = aws_ssm_parameter.commerce.name
+      COMMERCE_TABLE                     = aws_dynamodb_table.commerce_orders.name
+      COMMERCE_ALLOW_LEGACY_GET_CHECKOUT = "true"
+      ORIGINALS_BUCKET                   = aws_s3_bucket.originals.bucket
+      SITE_BUCKET                        = aws_s3_bucket.site.bucket
+      SITE_URL                           = "https://${var.domain_name}"
+      ORIGIN_VERIFY_HEADER_NAME          = var.commerce_origin_verify_header_name
+      ORIGIN_VERIFY_HEADER_VALUE         = var.commerce_origin_verify_header_value
     }
   }
 

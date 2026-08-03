@@ -15,7 +15,7 @@ separately.
 | M2 — order state machine | complete | green | no | Domain and DynamoDB repository complete |
 | M3 — buyer/webhook APIs | complete | green | no | Durable Buyer, signed Webhook, stateless redemption complete |
 | M4 — recovery/local suite | complete | sandbox green | no | Full local sandbox drill passed; event-ordering and won-dispute findings fixed |
-| M5 — AWS infrastructure | source complete | plan reviewed | no | Authenticated read-only plan reviewed; no apply |
+| M5 — AWS infrastructure | source complete | plan reviewed | no | Additive/cutover plan reviewed with legacy rollback rail retained; no apply |
 | M6 — storefront cutover | in progress | build green | no | POST form/polling implemented; v3 activation and browser checks pending |
 | M7 — live drill/cleanup | pending | pending | no | Production-only work remains manual |
 
@@ -29,8 +29,8 @@ immutable fulfillment object was uploaded or backfilled.
 
 - `POST /api/checkout`: form-urlencoded body no larger than 1 KB, containing
   exactly one `photo_id`; returns a non-cacheable `303`.
-- `GET /api/checkout`: temporary compatibility route during deployment, then
-  `405` with `Allow: POST` and no Stripe call.
+- `GET /api/checkout`: strictly validated temporary compatibility during the
+  M5/M6 deployment boundary, then `405` with `Allow: POST` and no Stripe call.
 - `POST /api/stripe-webhook`: signed Stripe JSON no larger than 256 KB.
 - `GET /api/fulfill?session_id=…`: `200`, retryable `202`, unknown `404`, or
   indistinguishable expired/closed/revoked `410`.
@@ -66,26 +66,28 @@ immutable fulfillment object was uploaded or backfilled.
 - Webhook secret: `stripeReadApiKey`, `stripeWebhookSecret`, and optional
   `stripeWebhookSecretPrevious`.
 - Buyer environment: `COMMERCE_SECRET_PARAM`, `COMMERCE_TABLE`,
-  `ORIGINALS_BUCKET`, `SITE_BUCKET`, `SITE_URL`,
-  `ORIGIN_VERIFY_HEADER_NAME`, and `ORIGIN_VERIFY_HEADER_VALUE`.
+  `COMMERCE_ALLOW_LEGACY_GET_CHECKOUT`, `ORIGINALS_BUCKET`, `SITE_BUCKET`,
+  `SITE_URL`, `ORIGIN_VERIFY_HEADER_NAME`, and `ORIGIN_VERIFY_HEADER_VALUE`.
 - Webhook environment: `COMMERCE_WEBHOOK_SECRET_PARAM`, `COMMERCE_TABLE`, and
   both origin-verification variables.
 - SSM caches expire after five minutes and never retain failed loads.
 
 ## Session handoff
 
-- Current task: M4 is complete and the authenticated, read-only M5 Terraform
-  plan is reviewed. Applying it remains a separate approval gate.
-- Last verified commands: `bun test` (143 pass), `bun run typecheck`, Astro
+- Current task: M4 is complete and the revised, authenticated M5 Terraform plan
+  is reviewed. Applying it remains a separate approval gate.
+- Last verified commands: `bun test` (145 pass), `bun run typecheck`, Astro
   build, both Lambda bundles, all operator-script bundles, `terraform
   fmt -check`, `terraform validate`, `git diff --check`, and an authenticated
-  `terraform plan -lock=false`.
+  `terraform plan` with a fresh origin-verification value held only in memory.
 - Production state: no Terraform apply, site cutover, webhook registration, or
   Stripe live-mode action has occurred.
-- Next action: request separate approval for the M5 apply gate. Generate a real
-  origin-verification value for that apply; never apply the reviewed plan-only
-  placeholder. Deployment, webhook registration, storefront-v3 activation, and
-  Stripe live mode remain separately gated.
+- Next action: request approval to enter a short interactive M5 apply window.
+  Generate a fresh origin-verification value in a history-disabled shell, let
+  `terraform apply` produce and hold the exact plan at its confirmation prompt,
+  and confirm only if it matches the reviewed 38-add/7-change/0-destroy delta.
+  Deployment, webhook registration, storefront-v3 activation, fulfillment
+  upload/backfill, and Stripe live mode remain separately gated.
 - Known compatibility rails: keep enriched catalog v2 and legacy GET checkout
   until the M6 activation gate; remove both in M7.
 
@@ -151,3 +153,31 @@ customer data.
   or unrelated deletions. The temporary saved plan was not applied and was
   removed after review. No AWS resource, Terraform state, deployment, webhook,
   storefront, S3 object, or Stripe object was changed by this planning step.
+- 2026-08-02: The M5 gate was revised after a substantive rollback review. A
+  temporary Terraform rollback rail now retains and guards the deployed legacy
+  commerce Lambda, Function URL, role and policy, log group, alarm, Lambda
+  origin access control, and two CloudFront permissions through M7. Read-only
+  AWS checks confirmed that the legacy function is active, its last update
+  succeeded, and its IAM-protected buffered Function URL remains available.
+  The missing SNS subscription was also confirmed as remote state rather than
+  a replacement; applying its addition will require a new email confirmation.
+  Existing Buyer and test parameter descriptions were restored so neither
+  existing SecureString is touched by M5. A required M5/M6 compatibility check
+  then found that routing the deployed GET storefront to a POST-only Buyer would
+  break purchases. The Buyer now has an explicit, strictly validated legacy GET
+  checkout switch: M5 enables it, M6 disables it after the POST storefront has
+  propagated, and M7 removes the route. The complete local gate passed with
+  145 tests, typecheck, Astro, split Lambda and operator bundles, Terraform
+  formatting/validation, and diff checks green. A fresh authenticated plan used
+  a 32-byte random origin-verification value held only in a history-disabled
+  shell and proposed 38 additions, 7 in-place changes, and zero deletions. The
+  additions are the durable table, HTTP API and explicit throttled routes,
+  split Lambdas and scoped roles, logs, alarms, purchase response policy,
+  webhook parameter shell, and missing alarm subscription. The changes are the
+  HTTP API CloudFront cutover, CSP and referrer-log privacy controls, the
+  `fulfillment/*` media-build grant, and dependency-driven re-rendering of the
+  otherwise unchanged site-build and site/media bucket policies. The legacy
+  rollback resources and existing SSM parameters have no planned action. The
+  random value and sanitized plan text were cleared after review; no saved plan
+  or secret-bearing file was created. No apply, deployment, webhook change,
+  storefront activation, S3 upload/backfill, or Stripe action occurred.

@@ -22,7 +22,7 @@ function event(overrides: Partial<FunctionUrlEvent> = {}): FunctionUrlEvent {
   };
 }
 
-function runtime() {
+function runtime(envOverrides: Partial<Env> = {}) {
   let secretLoads = 0;
   const sequence: string[] = [];
   let current: Order | undefined;
@@ -58,7 +58,8 @@ function runtime() {
   } as unknown as Stripe;
   const env: Env = {
     secretParam: '/test', tableName: 'orders', originalsBucket: 'originals', siteBucket: 'site',
-    siteUrl: 'https://example.test', originHeaderName: 'x-commerce-origin', originHeaderValue: ORIGIN,
+    siteUrl: 'https://example.test', allowLegacyGetCheckout: true,
+    originHeaderName: 'x-commerce-origin', originHeaderValue: ORIGIN, ...envOverrides,
   };
   const secrets: Secrets = {
     stripeApiKey: 'rk_test_key', stripeProductId: 'prod_download', downloadTokenKey: 'k'.repeat(64),
@@ -80,11 +81,15 @@ describe('Buyer API', () => {
   test('rejects origin, method, malformed bodies, and attempted extra fields before secrets or Stripe', async () => {
     const cases = [
       event({ headers: { 'content-type': 'application/x-www-form-urlencoded' } }),
-      event({ requestContext: { http: { method: 'GET' } } }),
+      event({ requestContext: { http: { method: 'PUT' } } }),
       event({ body: `photo_id=${PHOTO_ID}&price=1` }),
       event({ body: `photo_id=${PHOTO_ID}&photo_id=${PHOTO_ID}` }),
       event({ headers: { 'x-commerce-origin': ORIGIN, 'content-type': 'application/json' } }),
       event({ body: `photo_id=${'x'.repeat(1_100)}` }),
+      event({
+        rawQueryString: `photo_id=${PHOTO_ID}&price=1`,
+        requestContext: { http: { method: 'GET' } },
+      }),
     ];
     for (const request of cases) {
       const h = runtime();
@@ -104,5 +109,26 @@ describe('Buyer API', () => {
       headers: { location: 'https://checkout.stripe.com/c/pay/test', 'cache-control': 'no-store, private' },
     });
     expect(h.sequence).toEqual(['order', 'stripe']);
+  });
+
+  test('keeps the legacy GET storefront working only while the cutover flag is enabled', async () => {
+    forgetCatalog();
+    const legacy = runtime();
+    const request = event({
+      rawQueryString: `photo_id=${PHOTO_ID}`,
+      requestContext: { http: { method: 'GET' } },
+      headers: { 'x-commerce-origin': ORIGIN },
+      body: undefined,
+    });
+    expect(await handleBuyer(request, legacy.deps)).toMatchObject({ statusCode: 303 });
+    expect(legacy.sequence).toEqual(['order', 'stripe']);
+
+    const disabled = runtime({ allowLegacyGetCheckout: false });
+    expect(await handleBuyer(request, disabled.deps)).toMatchObject({
+      statusCode: 405,
+      headers: { allow: 'POST' },
+    });
+    expect(disabled.secretLoads()).toBe(0);
+    expect(disabled.sequence).toEqual([]);
   });
 });

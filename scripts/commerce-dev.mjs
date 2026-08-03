@@ -53,6 +53,7 @@ process.env.COMMERCE_TABLE = tableName;
 process.env.ORIGINALS_BUCKET ??= 'adamficke-com-originals';
 process.env.SITE_BUCKET ??= 'adamficke-com-site';
 process.env.SITE_URL ??= `http://localhost:${PORT}`;
+process.env.COMMERCE_ALLOW_LEGACY_GET_CHECKOUT ??= 'false';
 process.env.ORIGIN_VERIFY_HEADER_NAME ??= 'x-commerce-origin';
 process.env.ORIGIN_VERIFY_HEADER_VALUE ??= 'local-commerce-origin';
 

@@ -557,15 +557,21 @@ dispute review, order restoration, reconciliation, and manual reissue.
    `mode: payment` Session.
 3. Deploy the production table, HTTP API with route throttles, both Lambdas,
    IAM, CloudFront behaviors, logs, and alarms **without exposing the checkout
-   form**. Verify ingress by hand: throttles reject, the origin header is
-   required, `GET /api/checkout` is `405`, and a registered live webhook
-   delivers a signed event that reaches DynamoDB.
+   form**. Keep the strictly validated legacy GET checkout compatibility switch
+   enabled while the deployed storefront still uses GET links. Verify ingress
+   by hand: throttles reject, the origin header is required, and a registered
+   live webhook delivers a signed event that reaches DynamoDB. Retain the
+   deployed legacy Lambda, Function URL, role, log group, alarm, origin access
+   control, and invocation permissions as an unattached rollback rail through
+   the live drill; guard them from accidental Terraform destruction.
 4. Switch the store to the POST form and deploy the CSP, referrer, and
-   purchase-page changes. Complete the live drill: one controlled purchase,
-   download, and manual reissue — then refund that purchase from the Dashboard
-   to verify the live external-reversal path, and confirm reissue is refused
-   afterwards. A Dashboard refund produces the same `charge.refunded` event Link
-   would, and it is the only way to exercise this end to end in live mode.
+   purchase-page changes. After the deploy has propagated, disable legacy GET
+   checkout and verify it returns `405` with no Stripe call. Complete the live
+   drill: one controlled purchase, download, and manual reissue — then refund
+   that purchase from the Dashboard to verify the live external-reversal path,
+   and confirm reissue is refused afterwards. A Dashboard refund produces the
+   same `charge.refunded` event Link would, and it is the only way to exercise
+   this end to end in live mode.
 5. Remove the old stateless fulfillment path, the `albums/*` presign grant, the
    Lambda Function URL, and its origin access control.
 
