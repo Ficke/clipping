@@ -15,7 +15,7 @@ separately.
 | M2 — order state machine | complete | green | no | Domain and DynamoDB repository complete |
 | M3 — buyer/webhook APIs | complete | green | no | Durable Buyer, signed Webhook, stateless redemption complete |
 | M4 — recovery/local suite | complete | sandbox green | no | Full local sandbox drill passed; event-ordering and won-dispute findings fixed |
-| M5 — AWS infrastructure | source complete | validate green | no | No authenticated plan or apply |
+| M5 — AWS infrastructure | source complete | plan reviewed | no | Authenticated read-only plan reviewed; no apply |
 | M6 — storefront cutover | in progress | build green | no | POST form/polling implemented; v3 activation and browser checks pending |
 | M7 — live drill/cleanup | pending | pending | no | Production-only work remains manual |
 
@@ -74,16 +74,18 @@ immutable fulfillment object was uploaded or backfilled.
 
 ## Session handoff
 
-- Current task: review an authenticated, read-only M5 Terraform plan. Applying
-  it remains a separate approval gate.
+- Current task: M4 is complete and the authenticated, read-only M5 Terraform
+  plan is reviewed. Applying it remains a separate approval gate.
 - Last verified commands: `bun test` (143 pass), `bun run typecheck`, Astro
   build, both Lambda bundles, all operator-script bundles, `terraform
-  fmt -check`, `terraform validate`, and `git diff --check`.
+  fmt -check`, `terraform validate`, `git diff --check`, and an authenticated
+  `terraform plan -lock=false`.
 - Production state: no Terraform apply, site cutover, webhook registration, or
   Stripe live-mode action has occurred.
-- Next action: run and review the approved read-only M5 Terraform plan. Do not
-  apply, deploy, register a webhook, activate storefront v3, or use Stripe live
-  mode without the later explicit gates.
+- Next action: request separate approval for the M5 apply gate. Generate a real
+  origin-verification value for that apply; never apply the reviewed plan-only
+  placeholder. Deployment, webhook registration, storefront-v3 activation, and
+  Stripe live mode remain separately gated.
 - Known compatibility rails: keep enriched catalog v2 and legacy GET checkout
   until the M6 activation gate; remove both in M7.
 
@@ -130,3 +132,22 @@ customer data.
   presigned URLs were recorded. No fulfillment upload/backfill, Terraform
   plan/apply, deployment, webhook registration, storefront activation, or live
   Stripe action occurred.
+- 2026-08-02: An authenticated M5 Terraform plan completed with state locking
+  disabled and a named, non-secret origin-verification placeholder that must
+  never be used for apply. The plan proposed 38 additions, 9 in-place changes,
+  and 9 deletions. Additions cover the durable order table, HTTP API and scoped
+  routes, split Buyer/Webhook Lambdas and roles, log groups, alarms, the
+  purchase response-header policy, and the separate webhook parameter. The
+  changes update CloudFront routing/security, related bucket-policy documents,
+  the media-build fulfillment grant, and parameter descriptions without
+  changing existing SecureString values. IAM review confirmed the Buyer role is
+  limited to its parameter, order reads/writes, catalog read, and
+  `fulfillment/*` reads; the Webhook role is limited to its parameter and order
+  reads/updates; API invocation permissions are route-scoped; and the only new
+  build permission is `s3:GetObject`/`s3:PutObject` on `fulfillment/*`. All nine
+  deletions are the superseded single commerce Lambda runtime: its function,
+  Function URL, role/policy, log group, alarm, origin access control, and two
+  CloudFront invocation permissions. There were no same-address replacements
+  or unrelated deletions. The temporary saved plan was not applied and was
+  removed after review. No AWS resource, Terraform state, deployment, webhook,
+  storefront, S3 object, or Stripe object was changed by this planning step.
