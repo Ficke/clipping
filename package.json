@@ -8,7 +8,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "test": "bun test",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "astro sync && tsc --noEmit",
     "preview": "astro preview",
     "lambda:build": "bun run lambda:build:buyer && bun run lambda:build:webhook && bun run lambda:build:authorizer",
     "lambda:build:buyer": "bun build lambda/index.ts --target=node --outfile=dist-lambda/buyer/index.mjs --minify",
