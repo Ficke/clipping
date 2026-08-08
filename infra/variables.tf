@@ -79,6 +79,12 @@ variable "commerce_gateway_token_header_name" {
   }
 }
 
+variable "commerce_allow_legacy_get_checkout" {
+  description = "Accept the superseded GET /api/checkout while cached storefront HTML still carries buy links; a state-changing GET is prefetchable, so turn this off once the POST form has propagated"
+  type        = bool
+  default     = true
+}
+
 variable "commerce_rest_cutover_enabled" {
   description = "Route CloudFront commerce traffic to the origin-authorized REST API after its additive verification gate"
   type        = bool

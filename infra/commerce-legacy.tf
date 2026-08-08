@@ -3,8 +3,13 @@
 # The durable commerce cutover ultimately moves CloudFront's /api/* behavior to
 # the origin-authorized REST API. The interim HTTP API and this previously
 # deployed stateless Lambda runtime both stay intact until the controlled live
-# drill succeeds. Keeping them managed makes rollback a CloudFront origin change
-# instead of a runtime reconstruction.
+# drill succeeds. Keeping them managed means rollback restores an existing
+# runtime rather than rebuilding one.
+#
+# Rollback is not a single origin change. Returning to the HTTP API needs both
+# commerce_rest_cutover_enabled = false and commerce_http_api_dormant = false,
+# then CloudFront propagation; returning to the Function URL below also needs
+# the commerce origin in main.tf pointed back at it.
 # Remove this file only at the documented M7 cleanup gate.
 
 resource "aws_cloudfront_origin_access_control" "commerce" {

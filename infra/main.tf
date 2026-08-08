@@ -3,6 +3,23 @@ locals {
     Project   = var.name
     ManagedBy = "terraform"
   }
+
+  # Shared by both response-headers policies below, which differ only in
+  # referrer policy. One string, so the two cannot drift apart.
+  content_security_policy = join("; ", [
+    "default-src 'none'",
+    "script-src 'self' https://*.googletagmanager.com",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com",
+    "font-src 'self'",
+    "connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    # The storefront posts to Stripe Checkout; 'none' would block the buy form.
+    "form-action 'self' https://checkout.stripe.com",
+  ])
+
+  permissions_policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
 }
 
 # ---------- S3 (private; CloudFront-only access) ----------
@@ -176,7 +193,7 @@ resource "aws_cloudfront_response_headers_policy" "security" {
     }
 
     content_security_policy {
-      content_security_policy = "default-src 'none'; script-src 'self' https://*.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; font-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://checkout.stripe.com"
+      content_security_policy = local.content_security_policy
       override                = true
     }
   }
@@ -184,7 +201,7 @@ resource "aws_cloudfront_response_headers_policy" "security" {
   custom_headers_config {
     items {
       header   = "Permissions-Policy"
-      value    = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+      value    = local.permissions_policy
       override = true
     }
   }
@@ -217,7 +234,7 @@ resource "aws_cloudfront_response_headers_policy" "purchase_security" {
     }
 
     content_security_policy {
-      content_security_policy = "default-src 'none'; script-src 'self' https://*.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; font-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://checkout.stripe.com"
+      content_security_policy = local.content_security_policy
       override                = true
     }
   }
@@ -225,7 +242,7 @@ resource "aws_cloudfront_response_headers_policy" "purchase_security" {
   custom_headers_config {
     items {
       header   = "Permissions-Policy"
-      value    = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+      value    = local.permissions_policy
       override = true
     }
   }

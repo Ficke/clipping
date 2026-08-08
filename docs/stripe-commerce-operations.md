@@ -22,6 +22,11 @@ using a live-mode command.
   on `SIGINT`, `SIGTERM`, startup failure, or normal shutdown. If the process is
   killed ungracefully, use the printed cleanup command after verifying the exact
   table name.
+- Rotating `commerce_origin_verify_header_value` also rotates the API Gateway
+  token, which is derived from it. Apply both in one run: CloudFront sends the
+  old header while the authorizer expects the new one, and every commerce
+  request 403s until the distribution finishes deploying. Rotate during a quiet
+  window and confirm a purchase afterward.
 
 ## M5 ingress correction gates
 

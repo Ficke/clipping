@@ -6,6 +6,9 @@ locals {
   # Derive a separate fixed-width bearer from the existing random origin value.
   # This neither exposes nor rotates the handler's defense-in-depth header, and
   # avoids persisting another independently managed secret.
+  #
+  # Rotating the origin value therefore rotates this token too. CloudFront and
+  # the authorizer must move in one apply, or requests 403 until both settle.
   commerce_gateway_token = sha256(var.commerce_origin_verify_header_value)
 }
 
@@ -207,12 +210,15 @@ resource "aws_lambda_function" "commerce_buyer" {
     variables = {
       COMMERCE_SECRET_PARAM              = aws_ssm_parameter.commerce.name
       COMMERCE_TABLE                     = aws_dynamodb_table.commerce_orders.name
-      COMMERCE_ALLOW_LEGACY_GET_CHECKOUT = "true"
+      COMMERCE_ALLOW_LEGACY_GET_CHECKOUT = tostring(var.commerce_allow_legacy_get_checkout)
       ORIGINALS_BUCKET                   = aws_s3_bucket.originals.bucket
       SITE_BUCKET                        = aws_s3_bucket.site.bucket
       SITE_URL                           = "https://${var.domain_name}"
       ORIGIN_VERIFY_HEADER_NAME          = var.commerce_origin_verify_header_name
-      ORIGIN_VERIFY_HEADER_VALUE         = var.commerce_origin_verify_header_value
+      # Not a secret store: this only distinguishes CloudFront from direct
+      # execute-api callers, and the REST authorizer is the actual gate. Stripe
+      # keys stay in SSM for the reason config.ts gives.
+      ORIGIN_VERIFY_HEADER_VALUE = var.commerce_origin_verify_header_value
     }
   }
 
