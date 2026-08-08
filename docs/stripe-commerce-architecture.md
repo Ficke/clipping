@@ -606,15 +606,22 @@ it rather than overwriting or importing that role implicitly.
 
 Alarm through the existing SNS topic on:
 
-- API Gateway stage `5xx`. This covers the blind spot noted above at no cost: a
-  handler that catches an exception and returns 500 does not increment the
+- Each active API Gateway stage's `5xx`. This covers the blind spot noted above:
+  a handler that catches an exception and returns 500 does not increment the
   Lambda `Errors` metric, but the gateway records the status either way.
-- Lambda errors and throttles, for Buyer, Webhook, and Authorizer.
-- DynamoDB throttles and system errors.
+- Lambda errors for Buyer, Webhook, and Authorizer, plus Webhook throttles. A
+  Webhook capacity failure needs distinct operator attention because it delays
+  entitlement and revocation.
 
-Deliberately not alarmed: rejected-event counts, invalid-transition counts, and
-Checkout creation bursts. At this volume they would cost more than the rest of
-the stack and tell you less than reconciliation does.
+Deliberately not alarmed: Buyer or Authorizer throttles, per-operation DynamoDB
+failures, rejected-event counts, invalid-transition counts, and Checkout
+creation bursts. Reserved-concurrency throttles are intentional backpressure,
+and any resulting availability failure plus every DynamoDB failure that
+exhausts SDK retries already reaches the API `5xx` alarm. At this volume the
+duplicate alarms would cost more than the rest of the request path and tell you
+less than the API alarm and reconciliation do. The deployed legacy Lambda keeps
+its separate error alarm while it remains a rollback rail. This leaves seven
+standard-resolution commerce alarms after Gate A.
 
 ### Recovery
 

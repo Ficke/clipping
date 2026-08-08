@@ -95,11 +95,15 @@ plan survives the execution session.
 
 Keep `commerce_rest_cutover_enabled = false`. Generate and review a fresh
 authenticated plan. It may add the Regional REST API, five explicit methods,
-the cached exact-token authorizer, Authorizer Lambda/role/logs/alarms, REST
+the cached exact-token authorizer, Authorizer Lambda/role/logs/error alarm, REST
 access logs and alarm, the dedicated API Gateway logging role/account setting,
 route-scoped invocation permissions, and reserved concurrency. It may update
 the Buyer/Webhook bundles for REST payload v1 compatibility and recreate the
-absent alarm email subscription. It must keep
+absent alarm email subscription. It may delete exactly the six redundant
+per-operation DynamoDB alarms and the Buyer throttle alarm, leaving seven
+commerce alarms total; API `5xx` covers exhausted database failures and Buyer
+throttle impact. These are the only intended Gate A deletions, and they do not
+alter a request path or rollback rail. It must keep
 `commerce_http_api_dormant = false`, must not change CloudFront routing, and
 must not destroy the deployed HTTP API, legacy Lambda runtime, parameters,
 table, or any other rollback rail. Stop for exact-plan approval.
@@ -116,9 +120,10 @@ new REST endpoint directly without involving Stripe:
   contacting Stripe.
 - REST proxy webhook fixtures preserve exact base64-decoded bytes; do not send a
   production webhook or populate its SSM shell at this gate.
-- Buyer, Webhook, and Authorizer reservations are exactly 5, 3, and 2, and all
-  new IAM, logs, alarms, methods, gateway responses, and permissions match the
-  reviewed source.
+- Buyer, Webhook, and Authorizer reservations are exactly 5, 3, and 2; the seven
+  retained/new alarms are exactly the two API `5xx` alarms, legacy/Buyer/
+  Webhook/Authorizer error alarms, and Webhook throttles; and all new IAM, logs,
+  methods, gateway responses, and permissions match the reviewed source.
 - The API Gateway account logging role has only account-wide log-group
   discovery and commerce REST log-group stream/event access.
 - Confirm the alarm subscription email before proceeding to Gate B.

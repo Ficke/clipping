@@ -82,13 +82,16 @@ immutable fulfillment object was uploaded or backfilled.
   Buyer/Webhook/Authorizer reservations to 5/3/2, adds the previously absent
   regional API Gateway logging role/account setting, makes REST deployments
   respond to every material method/integration/authorizer/gateway-response
-  change, and adds a separately gated dormant state for the old HTTP API.
+  change, and adds a separately gated dormant state for the old HTTP API. A
+  cost review consolidated the eventual alarm set from 15 to seven: both API
+  `5xx` alarms, legacy/Buyer/Webhook/Authorizer errors, and Webhook throttles.
 - Rollout defaults are deliberately safe:
   `commerce_rest_cutover_enabled = false` and
-  `commerce_http_api_dormant = false`. Gate A is additive; Gate B changes
-  CloudFront only; Gate C disables the old HTTP API endpoint only after
-  CloudFront reports `Deployed`. Rollback re-enables HTTP before repointing
-  CloudFront. Never combine those operations.
+  `commerce_http_api_dormant = false`. Gate A is additive for request-path
+  infrastructure but deliberately removes the six redundant DynamoDB alarms
+  and Buyer throttle alarm; Gate B changes CloudFront only; Gate C disables the
+  old HTTP API endpoint only after CloudFront reports `Deployed`. Rollback
+  re-enables HTTP before repointing CloudFront. Never combine those operations.
 - Last verified commands: `bun test` (151 pass), `bun run typecheck`, Astro
   build, Buyer/Webhook/Authorizer bundles, all commerce and fulfillment operator
   bundles, `terraform fmt -check`, `terraform validate`, and `git diff --check`.
@@ -279,3 +282,14 @@ customer data.
   Stripe action, site deployment, fulfillment upload/backfill, or secret read
   occurred. The exact-plan procedure now uses a volatile RAM-backed plan file
   so approval and apply refer to the same artifact without persisting it.
+- 2026-08-08: A read-only cost review confirmed that the correction introduces
+  no provisioned concurrency, API cache, NAT gateway, WAF, paid parameter tier,
+  customer-managed KMS key, or other fixed hourly service. The alarm design was
+  consolidated from an eventual 15 standard alarms to seven: HTTP and REST API
+  `5xx`, legacy/Buyer/Webhook/Authorizer errors, and Webhook throttles. Exhausted
+  DynamoDB failures and Buyer/Authorizer throttle impact already reach an API
+  `5xx` alarm, so the six per-operation DynamoDB alarms and Buyer throttle alarm
+  are intentionally removed by Gate A. All 151 tests, typecheck, Astro, three
+  Lambda bundles, Terraform formatting/validation, and diff checks passed. AWS
+  still has the 12 previously deployed alarms; no quota request, Terraform plan
+  or apply, alarm deletion, or other cloud mutation occurred.

@@ -800,14 +800,15 @@ resource "aws_sns_topic_subscription" "commerce_alarms" {
 }
 
 locals {
+  # Keep alarms on failures that require distinct operator action. Buyer and
+  # Authorizer throttles are intentional reserved-concurrency backpressure; an
+  # availability impact is already covered by the API stage 5xx alarms.
+  # DynamoDB failures that exhaust SDK retries likewise surface as API 5xx, so
+  # per-operation database alarms would duplicate the same incident six times.
   commerce_lambda_alarms = {
     buyer-errors = {
       function_name = aws_lambda_function.commerce_buyer.function_name
       metric_name   = "Errors"
-    }
-    buyer-throttles = {
-      function_name = aws_lambda_function.commerce_buyer.function_name
-      metric_name   = "Throttles"
     }
     webhook-errors = {
       function_name = aws_lambda_function.commerce_webhook.function_name
@@ -820,39 +821,6 @@ locals {
     authorizer-errors = {
       function_name = aws_lambda_function.commerce_authorizer.function_name
       metric_name   = "Errors"
-    }
-    authorizer-throttles = {
-      function_name = aws_lambda_function.commerce_authorizer.function_name
-      metric_name   = "Throttles"
-    }
-  }
-
-  # DynamoDB publishes both metrics only for a TableName/Operation pair, not
-  # for a table alone. Cover every operation the request-path Lambdas use.
-  commerce_dynamodb_alarms = {
-    get-errors = {
-      metric_name = "SystemErrors"
-      operation   = "GetItem"
-    }
-    put-errors = {
-      metric_name = "SystemErrors"
-      operation   = "PutItem"
-    }
-    update-errors = {
-      metric_name = "SystemErrors"
-      operation   = "UpdateItem"
-    }
-    get-throttles = {
-      metric_name = "ThrottledRequests"
-      operation   = "GetItem"
-    }
-    put-throttles = {
-      metric_name = "ThrottledRequests"
-      operation   = "PutItem"
-    }
-    update-throttles = {
-      metric_name = "ThrottledRequests"
-      operation   = "UpdateItem"
     }
   }
 }
@@ -907,29 +875,6 @@ resource "aws_cloudwatch_metric_alarm" "commerce_lambda" {
   namespace         = "AWS/Lambda"
   metric_name       = each.value.metric_name
   dimensions        = { FunctionName = each.value.function_name }
-
-  statistic           = "Sum"
-  period              = 300
-  evaluation_periods  = 1
-  threshold           = 0
-  comparison_operator = "GreaterThanThreshold"
-  treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_sns_topic.commerce_alarms.arn]
-  ok_actions          = [aws_sns_topic.commerce_alarms.arn]
-  tags                = local.tags
-}
-
-resource "aws_cloudwatch_metric_alarm" "commerce_dynamodb" {
-  for_each = local.commerce_dynamodb_alarms
-
-  alarm_name        = "${var.name}-commerce-dynamodb-${each.key}"
-  alarm_description = "The commerce orders table reported ${lower(each.value.metric_name)} for ${each.value.operation}."
-  namespace         = "AWS/DynamoDB"
-  metric_name       = each.value.metric_name
-  dimensions = {
-    TableName = aws_dynamodb_table.commerce_orders.name
-    Operation = each.value.operation
-  }
 
   statistic           = "Sum"
   period              = 300
