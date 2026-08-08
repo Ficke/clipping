@@ -77,7 +77,9 @@ immutable fulfillment object was uploaded or backfilled.
 
 ## Session handoff
 
-- Current task: the revision-5 M5 prework is complete. It retains the exact
+- Current task: the revision-6 M5 prework splits the additive ingress and
+  reserved-concurrency changes so protected REST infrastructure can proceed
+  while AWS reviews the quota request. It retains the exact
   pre-integration REST token gate and REST payload-v1 compatibility, rebalances
   Buyer/Webhook/Authorizer reservations to 5/3/2, adds the previously absent
   regional API Gateway logging role/account setting, makes REST deployments
@@ -86,12 +88,15 @@ immutable fulfillment object was uploaded or backfilled.
   cost review consolidated the eventual alarm set from 15 to seven: both API
   `5xx` alarms, legacy/Buyer/Webhook/Authorizer errors, and Webhook throttles.
 - Rollout defaults are deliberately safe:
-  `commerce_rest_cutover_enabled = false` and
+  `commerce_reserved_concurrency_enabled = false`,
+  `commerce_rest_cutover_enabled = false`, and
   `commerce_http_api_dormant = false`. Gate A is additive for request-path
   infrastructure but deliberately removes the six redundant DynamoDB alarms
   and Buyer throttle alarm; Gate B changes CloudFront only; Gate C disables the
-  old HTTP API endpoint only after CloudFront reports `Deployed`. Rollback
-  re-enables HTTP before repointing CloudFront. Never combine those operations.
+  old HTTP API endpoint only after CloudFront reports `Deployed`; and Gate D
+  adds only 5/3/2 reservations after the quota grant. M6 deploys the POST
+  storefront after the REST infrastructure is active. Rollback re-enables HTTP
+  before repointing CloudFront. Never combine those operations.
 - Last verified commands: `bun test` (151 pass), `bun run typecheck`, Astro
   build, Buyer/Webhook/Authorizer bundles, all commerce and fulfillment operator
   bundles, `terraform fmt -check`, `terraform validate`, and `git diff --check`.
@@ -105,11 +110,14 @@ immutable fulfillment object was uploaded or backfilled.
   `cloudWatchRoleArn` is null; the order table is active with point-in-time
   recovery; all 12 existing alarms are `OK`; and the alarm topic has no
   subscription. Recheck every fact immediately before planning.
-- Next action requires separate approval: request the adjustable Lambda
-  concurrency quota increase from 10 to 110 and wait for it to be granted. Then
-  recover the existing origin value only into memory, create the Gate A plan on
-  a RAM-backed volume, review its complete redacted infrastructure/IAM delta,
-  and stop for exact-plan apply approval. Do not generate a replacement origin
+- The separately approved Lambda concurrency request targets 1001 because AWS
+  rejects self-service requests below its published default of 1000. Request
+  `c2417d3b4a624900a758f086935b5722QepcbJ1M` is pending. Gate A may proceed
+  without reservations while CloudFront remains on HTTP API. Recover the
+  existing origin value only into memory, create the Gate A plan on a
+  RAM-backed volume, review its complete redacted infrastructure/IAM delta, and
+  stop for exact-plan apply approval. After AWS grants 1001, Gate D must be a
+  separate reservation-only exact plan. Do not generate a replacement origin
   value, save a plan to persistent storage, or recompute a plan during apply.
 - Known compatibility rails: keep enriched catalog v2, legacy GET checkout, the
   dormant HTTP API configuration, and the legacy Function URL runtime until
@@ -293,3 +301,23 @@ customer data.
   Lambda bundles, Terraform formatting/validation, and diff checks passed. AWS
   still has the 12 previously deployed alarms; no quota request, Terraform plan
   or apply, alarm deletion, or other cloud mutation occurred.
+- 2026-08-08: AWS rejected the initially approved concurrency target of 110
+  before creating a request because both its CLI and console require a value at
+  least as large as the published 1000 default even though this account's
+  applied new-account quota is 10. The user superseded that target with 1001.
+  Request `c2417d3b4a624900a758f086935b5722QepcbJ1M` was created in us-east-1
+  with status `CASE_OPENED`; the applied quota remains 10 pending AWS action.
+  The correction still reserves Buyer/Webhook/Authorizer at 5/3/2, which will
+  leave 991 units unreserved at the approved target. No Terraform plan or
+  apply, browser action, webhook or Stripe action, site deployment, or
+  fulfillment upload/backfill occurred.
+- 2026-08-08: The user approved splitting the correction rather than blocking
+  all additive work on the quota review. Revision 6 adds a default-false
+  `commerce_reserved_concurrency_enabled` gate. Gate A adds the protected REST
+  path, logging, alarms, subscription, and compatible bundles without reserved
+  concurrency while CloudFront remains on HTTP API. Gates B and C may then cut
+  CloudFront to REST and make HTTP dormant while the account-wide concurrency
+  limit remains 10. M6 may deploy the POST storefront after those infrastructure
+  gates. After quota 1001 is granted, Gate D enables only the 5/3/2
+  reservations. No Terraform plan/apply or AWS infrastructure mutation
+  occurred.

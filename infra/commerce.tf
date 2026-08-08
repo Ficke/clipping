@@ -194,9 +194,9 @@ resource "aws_lambda_function" "commerce_buyer" {
   architectures = ["arm64"]
   memory_size   = 512
   timeout       = 15
-  # Requires the separately approved us-east-1 account concurrency quota of
-  # 110: AWS keeps 100 units unreserved, leaving ten for these three functions.
-  reserved_concurrent_executions = 5
+  # Infrastructure cutover may proceed against the account's shared ten-unit
+  # pool. Enable the separate 5/3/2 isolation gate after quota 1001 is applied.
+  reserved_concurrent_executions = var.commerce_reserved_concurrency_enabled ? 5 : null
 
   filename         = data.archive_file.commerce_buyer.output_path
   source_code_hash = data.archive_file.commerce_buyer.output_base64sha256
@@ -281,7 +281,7 @@ resource "aws_lambda_function" "commerce_webhook" {
   architectures                  = ["arm64"]
   memory_size                    = 512
   timeout                        = 15
-  reserved_concurrent_executions = 3
+  reserved_concurrent_executions = var.commerce_reserved_concurrency_enabled ? 3 : null
 
   filename         = data.archive_file.commerce_webhook.output_path
   source_code_hash = data.archive_file.commerce_webhook.output_base64sha256
@@ -337,7 +337,7 @@ resource "aws_lambda_function" "commerce_authorizer" {
   timeout       = 3
   # Two slots prevent a simultaneous cold-cache request pair from turning the
   # authorizer into a single-invocation availability bottleneck.
-  reserved_concurrent_executions = 2
+  reserved_concurrent_executions = var.commerce_reserved_concurrency_enabled ? 2 : null
 
   filename         = data.archive_file.commerce_authorizer.output_path
   source_code_hash = data.archive_file.commerce_authorizer.output_base64sha256

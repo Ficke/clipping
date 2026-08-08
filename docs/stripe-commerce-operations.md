@@ -27,8 +27,8 @@ using a live-mode command.
 
 The deployed HTTP API route throttle is best-effort and did not prevent a direct
 burst from invoking and throttling Buyer. Do not register the production
-webhook or activate storefront v3 until all three correction apply gates below
-pass. The old HTTP API remains a public invocation path until Gate C disables
+webhook or activate storefront v3 until infrastructure Gates A-C below pass.
+The old HTTP API remains a public invocation path until Gate C disables
 its default endpoint; CloudFront not routing to it is not an access control.
 Terraform apply, webhook registration, storefront activation, live Stripe
 actions, fulfillment upload/backfill, and site deployment remain separate
@@ -38,11 +38,12 @@ approval gates.
 
 1. Authenticate with `aws login` and confirm the branch/worktree are clean.
 2. Read the implementation ledger and architecture gates again.
-3. Confirm the us-east-1 Lambda concurrency quota is at least 110. Requesting
-   the increase from 10 is a separate account-change approval. Do not apply the
-   reservation source while the quota is lower: AWS retains 100 units for
-   unreserved functions, and the correction allocates the remaining ten as
-   Buyer 5, Webhook 3, and Authorizer 2.
+3. Inspect the us-east-1 Lambda concurrency quota and request status. Gates A-C
+   may proceed while the applied quota remains 10; all functions share that
+   hard account ceiling. Do not enable
+   `commerce_reserved_concurrency_enabled` until the quota is at least 1001.
+   Gate D then reserves Buyer 5, Webhook 3, and Authorizer 2, leaving 991 units
+   unreserved at the approved target.
 4. Inspect the API Gateway account's regional `cloudWatchRoleArn`. REST access
    logs require this singleton setting. The 2026-08-08 prework read found it
    unset, and the source now adds a dedicated role plus the account setting.
@@ -93,13 +94,16 @@ plan survives the execution session.
 
 ### Gate A — additive protected ingress
 
-Keep `commerce_rest_cutover_enabled = false`. Generate and review a fresh
-authenticated plan. It may add the Regional REST API, five explicit methods,
+Keep `commerce_reserved_concurrency_enabled = false`,
+`commerce_rest_cutover_enabled = false`, and
+`commerce_http_api_dormant = false`. Generate and review a fresh authenticated
+plan. It may add the Regional REST API, five explicit methods,
 the cached exact-token authorizer, Authorizer Lambda/role/logs/error alarm, REST
 access logs and alarm, the dedicated API Gateway logging role/account setting,
-route-scoped invocation permissions, and reserved concurrency. It may update
-the Buyer/Webhook bundles for REST payload v1 compatibility and recreate the
-absent alarm email subscription. It may delete exactly the six redundant
+route-scoped invocation permissions, and required logs. It must not add reserved
+concurrency. It may update the Buyer/Webhook bundles for REST payload v1
+compatibility and recreate the absent alarm email subscription. It may delete
+exactly the six redundant
 per-operation DynamoDB alarms and the Buyer throttle alarm, leaving seven
 commerce alarms total; API `5xx` covers exhausted database failures and Buyer
 throttle impact. These are the only intended Gate A deletions, and they do not
@@ -120,10 +124,11 @@ new REST endpoint directly without involving Stripe:
   contacting Stripe.
 - REST proxy webhook fixtures preserve exact base64-decoded bytes; do not send a
   production webhook or populate its SSM shell at this gate.
-- Buyer, Webhook, and Authorizer reservations are exactly 5, 3, and 2; the seven
-  retained/new alarms are exactly the two API `5xx` alarms, legacy/Buyer/
-  Webhook/Authorizer error alarms, and Webhook throttles; and all new IAM, logs,
-  methods, gateway responses, and permissions match the reviewed source.
+- Buyer, Webhook, and Authorizer remain unreserved and the account concurrency
+  remains 10. The seven retained/new alarms are exactly the two API `5xx`
+  alarms, legacy/Buyer/Webhook/Authorizer error alarms, and Webhook throttles;
+  and all new IAM, logs, methods, gateway responses, and permissions match the
+  reviewed source.
 - The API Gateway account logging role has only account-wide log-group
   discovery and commerce REST log-group stream/event access.
 - Confirm the alarm subscription email before proceeding to Gate B.
@@ -132,18 +137,17 @@ new REST endpoint directly without involving Stripe:
 
 Only after Gate A passes, change the committed default of
 `commerce_rest_cutover_enabled` to `true`, rebuild, and review another exact
-plan while keeping `commerce_http_api_dormant = false`. Its intended operational
-change is the CloudFront commerce origin domain and stage path plus the derived
-gateway-token header. It must retain the original handler-verification header
-and must not disable or delete the HTTP API or legacy runtime. Stop for separate
-apply approval.
+plan while keeping `commerce_reserved_concurrency_enabled = false` and
+`commerce_http_api_dormant = false`. Its intended operational change is the
+CloudFront commerce origin domain and stage path plus the derived gateway-token
+header. It must retain the original handler-verification header and must not
+disable or delete the HTTP API or legacy runtime. Stop for separate apply
+approval.
 
 After an approved cutover, wait until CloudFront reports `Deployed`, then repeat
 the safe malformed checkout/fulfillment probes through the public site. Repeat
 the direct missing/wrong-token bursts and verify zero Lambda invocation delta.
-Confirm the deployed function reservations and account unreserved pool are
-exactly 5/3/2/100, and send a malformed non-secret webhook probe concurrently
-with a safe invalid Buyer burst to confirm the isolated path remains available.
+Confirm the account concurrency remains 10 and the functions remain unreserved.
 Finish with a zero-drift Terraform plan using the same in-memory origin value,
 then clear the environment and exit the history-disabled shell.
 
@@ -151,9 +155,10 @@ then clear the environment and exit the history-disabled shell.
 
 Only after Gate B is verified and CloudFront reports `Deployed`, change the
 committed default of `commerce_http_api_dormant` to `true`. Review a third exact
-plan. Its intended operational change is one in-place HTTP API update setting
+plan while keeping `commerce_reserved_concurrency_enabled = false`. Its intended
+operational change is one in-place HTTP API update setting
 `disable_execute_api_endpoint = true`; it must not change CloudFront, the REST
-API, Lambda code, reservations, or IAM, and it must destroy nothing. Stop for
+API, Lambda code, concurrency, or IAM, and it must destroy nothing. Stop for
 separate apply approval.
 
 After an approved apply, verify the old HTTP API reports its default endpoint
@@ -161,6 +166,28 @@ disabled. Direct missing-header bursts against its known URL must return an API
 Gateway rejection and produce zero Buyer and Webhook invocation delta. The REST
 path through CloudFront must remain healthy under the safe malformed probes.
 Finish with a zero-drift exact-value plan and record sanitized evidence.
+
+After Gate C passes, the production site may proceed through its separately
+reviewed M6 POST deployment while the account-wide Lambda ceiling remains 10.
+The temporary REST `GET /api/checkout` compatibility method stays enabled until
+the POST site has propagated and passed browser checks.
+
+### Gate D — reserved concurrency isolation
+
+When the us-east-1 Lambda concurrency quota reports at least 1001, change the
+committed default of `commerce_reserved_concurrency_enabled` to `true` while
+leaving the REST cutover and HTTP dormancy enabled. Review a fourth exact plan.
+It must update only Buyer, Webhook, and Authorizer reserved concurrency to 5, 3,
+and 2. It must not change CloudFront, either API, Lambda code, IAM, alarms, or
+any rollback rail, and it must destroy nothing. Stop for separate apply
+approval. If AWS grants the quota before Gates A-C finish, run Gate D at the
+next exact-plan boundary rather than leaving the enlarged account pool
+unallocated.
+
+After an approved apply, verify reservations and the account pool are exactly
+5/3/2/991. Send a malformed non-secret webhook probe concurrently with a safe
+invalid Buyer burst to confirm the isolated path remains available, then finish
+with a zero-drift exact-value plan.
 
 ### Ordered rollback
 

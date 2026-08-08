@@ -85,6 +85,12 @@ variable "commerce_rest_cutover_enabled" {
   default     = false
 }
 
+variable "commerce_reserved_concurrency_enabled" {
+  description = "Reserve Buyer/Webhook/Authorizer concurrency after the regional Lambda quota increase is granted"
+  type        = bool
+  default     = false
+}
+
 variable "commerce_http_api_dormant" {
   description = "Disable the superseded HTTP API default endpoint after the REST cutover has fully propagated"
   type        = bool
