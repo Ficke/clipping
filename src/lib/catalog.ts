@@ -17,11 +17,7 @@ export interface SellablePhoto {
   fallbackLabel: string;
 }
 
-export function offersFor(
-  album: Album,
-  photo: AlbumPhoto,
-  fallbackLabel: string,
-): SellablePhoto[] {
+export function offersFor(photo: AlbumPhoto, fallbackLabel: string): SellablePhoto[] {
   if (!photo.forSale || photo.priceCents === undefined) return [];
   const priceCents = photo.priceCents;
   return DOWNLOAD_PRODUCTS.map((tier) => ({
@@ -101,7 +97,7 @@ export async function albumsWithDownloads(): Promise<AlbumDownloads[]> {
     const photos = all
       .map((photo, index) => ({
         photo,
-        offers: photo.hidden ? [] : offersFor(album, photo, positionLabel(album, index, all.length)),
+        offers: photo.hidden ? [] : offersFor(photo, positionLabel(album, index, all.length)),
       }))
       .filter(({ offers }) => offers.length > 0);
     if (photos.length) results.push({ album, slug: slugOf(album), photos });
