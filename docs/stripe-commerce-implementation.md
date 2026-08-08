@@ -321,3 +321,16 @@ customer data.
   gates. After quota 1001 is granted, Gate D enables only the 5/3/2
   reservations. No Terraform plan/apply or AWS infrastructure mutation
   occurred.
+- 2026-08-08: The approved RAM-backed Gate A plan passed its hash, source,
+  worktree, and AWS-account checks and was applied directly without
+  regeneration. It partially succeeded, then API Gateway rejected the regional
+  `cloudWatchRoleArn` because the dedicated inline policy did not match the
+  service's required wildcard CloudWatch Logs permission set. The REST API,
+  Authorizer, roles, logs, compatible Buyer/Webhook bundles, six of the final
+  seven alarms, and a pending email subscription now exist, but the REST stage
+  did not complete; CloudFront and the enabled HTTP API remain unchanged. The
+  consumed RAM plan was ejected and the in-memory origin value cleared. Source
+  now adds `logs:CreateLogGroup` and uses the complete documented Logs action
+  set on `Resource: "*"`, isolated on the dedicated API Gateway role. No retry,
+  replacement plan, CloudFront/site change, Stripe/webhook action, or
+  fulfillment upload/backfill occurred.

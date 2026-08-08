@@ -3,6 +3,23 @@
 Status: planned, pre-launch architecture. This document describes the target
 design, not the commerce implementation currently deployed.
 
+## Revision 7 — 2026-08-08
+
+The first approved Gate A apply created the additive REST and Authorizer
+resources but stopped when API Gateway rejected the account
+`cloudWatchRoleArn`. The dedicated role trusted `apigateway.amazonaws.com`, but
+its policy omitted `logs:CreateLogGroup` and restricted stream/event access to
+the precreated commerce group. API Gateway validates this regional account role
+against the complete `AmazonAPIGatewayPushToCloudWatchLogs` action set with
+`Resource: "*"`, even when Terraform precreates the destination log group.
+
+The corrected inline policy matches that required action/resource set. The
+broader Logs permissions remain isolated on a dedicated role assumable only by
+API Gateway. The partial resources are not routed by CloudFront and the REST
+stage was not completed, so the deployed HTTP API remains the only active
+commerce origin. Revision 7 supersedes revision 6's narrower logging-role
+policy; the Gate A-C/D ordering is unchanged.
+
 ## Revision 6 — 2026-08-08
 
 AWS's reduced new-account Lambda quota allows the deployed functions to share
@@ -55,9 +72,8 @@ gateway responses, and binary media types so later source changes cannot remain
 undeployed.
 
 Authenticated prework confirmed that the regional API Gateway account has no
-`cloudWatchRoleArn`. Gate A therefore adds a dedicated account logging role:
-account-wide log-group discovery only, with stream and event access restricted
-to the precreated commerce REST access-log group. It also confirmed that the
+`cloudWatchRoleArn`. Gate A therefore adds a dedicated account logging role.
+It also confirmed that the
 Lambda concurrency quota remains 10 with no pending request, the HTTP API
 default endpoint is enabled, and the commerce alarm topic has no subscriber.
 The quota increase and alarm confirmation remain explicit prerequisites.

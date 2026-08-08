@@ -48,7 +48,9 @@ approval gates.
    logs require this singleton setting. The 2026-08-08 prework read found it
    unset, and the source now adds a dedicated role plus the account setting.
    Stop if a fresh read is non-null: never overwrite or implicitly import a role
-   another stack or operator added.
+   another stack or operator added. API Gateway requires its complete
+   `AmazonAPIGatewayPushToCloudWatchLogs` action set on `Resource: "*"`; isolate
+   that policy on the dedicated role trusted only by API Gateway.
 5. Rebuild Buyer, Webhook, and Authorizer bundles and run the complete code and
    Terraform validation gate.
 6. Confirm the commerce SNS topic has a confirmed subscriber. The 2026-08-08
@@ -129,8 +131,9 @@ new REST endpoint directly without involving Stripe:
   alarms, legacy/Buyer/Webhook/Authorizer error alarms, and Webhook throttles;
   and all new IAM, logs, methods, gateway responses, and permissions match the
   reviewed source.
-- The API Gateway account logging role has only account-wide log-group
-  discovery and commerce REST log-group stream/event access.
+- The API Gateway account logging role matches the complete AWS-required Logs
+  action set on `Resource: "*"`, and only API Gateway can assume the dedicated
+  role.
 - Confirm the alarm subscription email before proceeding to Gate B.
 
 ### Gate B — CloudFront origin cutover

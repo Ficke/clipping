@@ -511,8 +511,10 @@ resource "aws_api_gateway_rest_api" "commerce_rest" {
 # REST API access logging uses the regional API Gateway account singleton.
 # The authenticated prework read confirmed that us-east-1 has no existing
 # cloudWatchRoleArn, so this stack can configure it without taking over an
-# unrelated role. Keep discovery account-wide, but restrict writes to this
-# precreated access-log group.
+# unrelated role. API Gateway validates this account role against the complete
+# AmazonAPIGatewayPushToCloudWatchLogs action set on all log resources, even
+# when the destination group is precreated. Keep that required wildcard policy
+# isolated on this dedicated service role.
 resource "aws_iam_role" "commerce_api_gateway_logs" {
   name = "${var.name}-commerce-api-gateway-logs"
   assume_role_policy = jsonencode({
@@ -530,21 +532,17 @@ resource "aws_iam_role" "commerce_api_gateway_logs" {
 
 data "aws_iam_policy_document" "commerce_api_gateway_logs" {
   statement {
-    sid       = "DiscoverLogGroups"
-    actions   = ["logs:DescribeLogGroups"]
-    resources = ["*"]
-  }
-
-  statement {
-    sid = "WriteCommerceRestAccessLogs"
+    sid = "ApiGatewayPushToCloudWatchLogs"
     actions = [
+      "logs:CreateLogGroup",
       "logs:CreateLogStream",
+      "logs:DescribeLogGroups",
       "logs:DescribeLogStreams",
       "logs:FilterLogEvents",
       "logs:GetLogEvents",
       "logs:PutLogEvents",
     ]
-    resources = ["${aws_cloudwatch_log_group.commerce_rest_api.arn}:*"]
+    resources = ["*"]
   }
 }
 
