@@ -84,3 +84,9 @@ variable "commerce_rest_cutover_enabled" {
   type        = bool
   default     = false
 }
+
+variable "commerce_http_api_dormant" {
+  description = "Disable the superseded HTTP API default endpoint after the REST cutover has fully propagated"
+  type        = bool
+  default     = false
+}

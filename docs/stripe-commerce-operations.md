@@ -27,7 +27,9 @@ using a live-mode command.
 
 The deployed HTTP API route throttle is best-effort and did not prevent a direct
 burst from invoking and throttling Buyer. Do not register the production
-webhook or activate storefront v3 until both correction apply gates below pass.
+webhook or activate storefront v3 until all three correction apply gates below
+pass. The old HTTP API remains a public invocation path until Gate C disables
+its default endpoint; CloudFront not routing to it is not an access control.
 Terraform apply, webhook registration, storefront activation, live Stripe
 actions, fulfillment upload/backfill, and site deployment remain separate
 approval gates.
@@ -40,30 +42,67 @@ approval gates.
    the increase from 10 is a separate account-change approval. Do not apply the
    reservation source while the quota is lower: AWS retains 100 units for
    unreserved functions, and the correction allocates the remaining ten as
-   Buyer 6, Webhook 3, and Authorizer 1.
+   Buyer 5, Webhook 3, and Authorizer 2.
 4. Inspect the API Gateway account's regional `cloudWatchRoleArn`. REST access
-   logs require this singleton setting. Reuse an appropriate existing role; if
-   it is absent, add a dedicated logging role and review its account-level delta
-   explicitly. Never overwrite an unrelated role merely to satisfy the stage.
+   logs require this singleton setting. The 2026-08-08 prework read found it
+   unset, and the source now adds a dedicated role plus the account setting.
+   Stop if a fresh read is non-null: never overwrite or implicitly import a role
+   another stack or operator added.
 5. Rebuild Buyer, Webhook, and Authorizer bundles and run the complete code and
    Terraform validation gate.
+6. Confirm the commerce SNS topic has a confirmed subscriber. The 2026-08-08
+   read found none. Gate A may recreate the email subscription, but its recipient
+   must confirm it before Gate B.
 
 For every plan, recover the existing origin-verification value from encrypted
 Terraform state into a history-disabled process and pass it through
-`TF_VAR_commerce_origin_verify_header_value`. Never print it, save a plan that
-contains it, write plaintext state to disk, or rotate it to make planning
-easier. Terraform derives the separate fixed-width gateway token in memory.
+`TF_VAR_commerce_origin_verify_header_value`. Never print it, write plaintext
+state to disk, or rotate it to make planning easier. Terraform derives the
+separate fixed-width gateway token in memory.
+
+### Exact-plan protocol
+
+Terraform saved-plan files contain sensitive values even when human-readable
+output redacts them. To reconcile exact-plan approval with secret handling, save
+each plan only on a temporary RAM-backed APFS volume. Do not use `/tmp`, the
+workspace, a normal disk image, `terraform show -json`, `cat`, `strings`, or a
+terminal command that expands either token. A typical macOS setup is:
+
+```sh
+unset HISTFILE
+set +x
+commerce_plan_device=$(hdiutil attach -nomount ram://262144)
+diskutil erasevolume APFS COMMERCE_TF_PLAN "$commerce_plan_device"
+commerce_plan_path=/Volumes/COMMERCE_TF_PLAN/gate-a.tfplan
+```
+
+Generate the plan with `-out="$commerce_plan_path"`, review it with the normal
+human `terraform show "$commerce_plan_path"`, stop for approval, and apply that
+same file. Never rerun `terraform plan` inside the apply command. If the shell,
+RAM volume, AWS session, source commit, state, or approval context changes,
+discard the volume and produce a new plan for review. After verification:
+
+```sh
+unset TF_VAR_commerce_origin_verify_header_value
+diskutil eject "$commerce_plan_device"
+unset commerce_plan_device commerce_plan_path
+```
+
+The unmount is mandatory even after a failed or rejected plan. No secret-bearing
+plan survives the execution session.
 
 ### Gate A — additive protected ingress
 
 Keep `commerce_rest_cutover_enabled = false`. Generate and review a fresh
 authenticated plan. It may add the Regional REST API, five explicit methods,
 the cached exact-token authorizer, Authorizer Lambda/role/logs/alarms, REST
-access logs and alarm, route-scoped invocation permissions, and reserved
-concurrency. It may update the Buyer/Webhook bundles for REST payload v1
-compatibility. It must not change CloudFront routing or destroy the deployed
-HTTP API, legacy Lambda runtime, parameters, table, or any other rollback rail.
-Stop for exact-plan approval.
+access logs and alarm, the dedicated API Gateway logging role/account setting,
+route-scoped invocation permissions, and reserved concurrency. It may update
+the Buyer/Webhook bundles for REST payload v1 compatibility and recreate the
+absent alarm email subscription. It must keep
+`commerce_http_api_dormant = false`, must not change CloudFront routing, and
+must not destroy the deployed HTTP API, legacy Lambda runtime, parameters,
+table, or any other rollback rail. Stop for exact-plan approval.
 
 After an approved apply, verify configuration and zero drift, then exercise the
 new REST endpoint directly without involving Stripe:
@@ -77,32 +116,60 @@ new REST endpoint directly without involving Stripe:
   contacting Stripe.
 - REST proxy webhook fixtures preserve exact base64-decoded bytes; do not send a
   production webhook or populate its SSM shell at this gate.
-- Buyer, Webhook, and Authorizer reservations are exactly 6, 3, and 1, and all
+- Buyer, Webhook, and Authorizer reservations are exactly 5, 3, and 2, and all
   new IAM, logs, alarms, methods, gateway responses, and permissions match the
   reviewed source.
+- The API Gateway account logging role has only account-wide log-group
+  discovery and commerce REST log-group stream/event access.
+- Confirm the alarm subscription email before proceeding to Gate B.
 
 ### Gate B — CloudFront origin cutover
 
 Only after Gate A passes, change the committed default of
 `commerce_rest_cutover_enabled` to `true`, rebuild, and review another exact
-plan. Its intended operational change is the CloudFront commerce origin domain
-and stage path plus the derived gateway-token header. It must retain the
-original handler-verification header and must not delete the HTTP API or legacy
-runtime. Stop for separate apply approval.
+plan while keeping `commerce_http_api_dormant = false`. Its intended operational
+change is the CloudFront commerce origin domain and stage path plus the derived
+gateway-token header. It must retain the original handler-verification header
+and must not disable or delete the HTTP API or legacy runtime. Stop for separate
+apply approval.
 
 After an approved cutover, wait until CloudFront reports `Deployed`, then repeat
 the safe malformed checkout/fulfillment probes through the public site. Repeat
 the direct missing/wrong-token bursts and verify zero Lambda invocation delta.
 Confirm the deployed function reservations and account unreserved pool are
-exactly 6/3/1/100, and send a malformed non-secret webhook probe concurrently
+exactly 5/3/2/100, and send a malformed non-secret webhook probe concurrently
 with a safe invalid Buyer burst to confirm the isolated path remains available.
 Finish with a zero-drift Terraform plan using the same in-memory origin value,
 then clear the environment and exit the history-disabled shell.
 
-Rollback is a separately reviewed change setting
-`commerce_rest_cutover_enabled` back to `false`, which points CloudFront at the
-still-deployed HTTP API. Do not delete the failed REST path during the rollback;
-preserve evidence and diagnose it first.
+### Gate C — make the HTTP rollback rail dormant
+
+Only after Gate B is verified and CloudFront reports `Deployed`, change the
+committed default of `commerce_http_api_dormant` to `true`. Review a third exact
+plan. Its intended operational change is one in-place HTTP API update setting
+`disable_execute_api_endpoint = true`; it must not change CloudFront, the REST
+API, Lambda code, reservations, or IAM, and it must destroy nothing. Stop for
+separate apply approval.
+
+After an approved apply, verify the old HTTP API reports its default endpoint
+disabled. Direct missing-header bursts against its known URL must return an API
+Gateway rejection and produce zero Buyer and Webhook invocation delta. The REST
+path through CloudFront must remain healthy under the safe malformed probes.
+Finish with a zero-drift exact-value plan and record sanitized evidence.
+
+### Ordered rollback
+
+Rollback requires two reviewed plans in the reverse order; never combine them:
+
+1. Set `commerce_http_api_dormant` back to `false` while keeping the REST
+   cutover enabled. Apply only the reviewed plan, verify the HTTP endpoint is
+   enabled, and use both in-memory headers with a safe malformed request to
+   prove it can serve as an origin.
+2. Set `commerce_rest_cutover_enabled` back to `false`, review and apply that
+   CloudFront-only plan, wait for `Deployed`, and repeat safe probes.
+
+Do not delete the failed REST path during rollback. Preserve evidence and
+diagnose it first. The legacy Function URL remains a separately guarded rail.
 
 ## Local sandbox acceptance
 

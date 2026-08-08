@@ -15,7 +15,7 @@ separately.
 | M2 — order state machine | complete | green | no | Domain and DynamoDB repository complete |
 | M3 — buyer/webhook APIs | complete | green | no | Durable Buyer, signed Webhook, stateless redemption complete |
 | M4 — recovery/local suite | complete | sandbox green | no | Full local sandbox drill passed; event-ordering and won-dispute findings fixed |
-| M5 — AWS infrastructure | correction source complete | 151 green; correction acceptance pending | original revision only | REST token gate and 6/3/1 isolation are staged behind additive and CloudFront-cutover apply gates |
+| M5 — AWS infrastructure | revision-5 prework complete | 151 green; correction acceptance pending | original revision only | REST token gate and 5/3/2 isolation are staged behind additive, CloudFront-cutover, and HTTP-dormancy gates |
 | M6 — storefront cutover | in progress | build green | no | POST form/polling implemented; v3 activation and browser checks pending |
 | M7 — live drill/cleanup | pending | pending | no | Production-only work remains manual |
 
@@ -77,27 +77,40 @@ immutable fulfillment object was uploaded or backfilled.
 
 ## Session handoff
 
-- Current task: the M5 ingress correction source is complete. It adds an exact
-  pre-integration REST token gate, Authorizer, REST payload-v1 compatibility,
-  and Buyer/Webhook/Authorizer reservations of 6/3/1 while retaining the HTTP
-  API and legacy Function URL rollback rails. The rollout defaults to additive;
-  CloudFront remains on the HTTP API until a second apply gate.
+- Current task: the revision-5 M5 prework is complete. It retains the exact
+  pre-integration REST token gate and REST payload-v1 compatibility, rebalances
+  Buyer/Webhook/Authorizer reservations to 5/3/2, adds the previously absent
+  regional API Gateway logging role/account setting, makes REST deployments
+  respond to every material method/integration/authorizer/gateway-response
+  change, and adds a separately gated dormant state for the old HTTP API.
+- Rollout defaults are deliberately safe:
+  `commerce_rest_cutover_enabled = false` and
+  `commerce_http_api_dormant = false`. Gate A is additive; Gate B changes
+  CloudFront only; Gate C disables the old HTTP API endpoint only after
+  CloudFront reports `Deployed`. Rollback re-enables HTTP before repointing
+  CloudFront. Never combine those operations.
 - Last verified commands: `bun test` (151 pass), `bun run typecheck`, Astro
   build, Buyer/Webhook/Authorizer bundles, all commerce and fulfillment operator
   bundles, `terraform fmt -check`, `terraform validate`, and `git diff --check`.
 - Production state: M5 infrastructure is applied. No site deployment or
   storefront-v3 activation, webhook registration/population, fulfillment
   upload/backfill, live purchase, or other Stripe live-mode action has
-  occurred. The alarm email subscription awaits recipient confirmation.
-- Next action: reauthenticate AWS, inspect the regional API Gateway
-  `cloudWatchRoleArn`, and request explicit approval for the adjustable Lambda
-  concurrency quota increase from 10 to 110. After the quota is granted,
-  recover the existing origin value only into memory, review the additive exact
-  plan with `commerce_rest_cutover_enabled = false`, and stop for apply
-  approval. The CloudFront flip is a later exact-plan/apply gate.
+  occurred. CloudFront is deployed against HTTP API `ugmazzudce`; no commerce
+  REST API or Authorizer is deployed, and the old HTTP endpoint is enabled.
+- Authenticated prework facts on 2026-08-08: us-east-1 Lambda concurrency is 10
+  with 10 unreserved and no pending quota request; API Gateway
+  `cloudWatchRoleArn` is null; the order table is active with point-in-time
+  recovery; all 12 existing alarms are `OK`; and the alarm topic has no
+  subscription. Recheck every fact immediately before planning.
+- Next action requires separate approval: request the adjustable Lambda
+  concurrency quota increase from 10 to 110 and wait for it to be granted. Then
+  recover the existing origin value only into memory, create the Gate A plan on
+  a RAM-backed volume, review its complete redacted infrastructure/IAM delta,
+  and stop for exact-plan apply approval. Do not generate a replacement origin
+  value, save a plan to persistent storage, or recompute a plan during apply.
 - Known compatibility rails: keep enriched catalog v2, legacy GET checkout, the
-  deployed HTTP API, and the legacy Function URL runtime until their documented
-  M6/M7 gates.
+  dormant HTTP API configuration, and the legacy Function URL runtime until
+  their documented M6/M7 gates.
 
 ## Verification evidence
 
@@ -249,3 +262,20 @@ customer data.
   Terraform plan/apply, CloudFront change, webhook action, storefront/site
   deployment, S3 fulfillment upload/backfill, Stripe request, or secret access
   occurred.
+- 2026-08-08: A source-only revision-5 prework review found that the retained
+  HTTP API would remain a public invocation path after the REST cutover and
+  could still consume Buyer or Webhook reservations directly. The rollout now
+  has a third apply gate that disables the HTTP API default endpoint only after
+  CloudFront has fully deployed the REST origin; ordered rollback re-enables
+  HTTP before repointing CloudFront. Reservations are rebalanced to 5/3/2 to
+  remove the Authorizer's single-slot cold-cache bottleneck. The source also
+  adds the absent regional API Gateway logging role/account setting with
+  commerce-log-group-scoped writes and expands the REST deployment fingerprint
+  to cover every material deployed configuration. Authenticated reads confirmed
+  the Lambda quota is still 10 with no pending request, `cloudWatchRoleArn` is
+  null, the HTTP API endpoint is enabled, CloudFront still uses it, the table
+  and alarms are healthy, and the alarm topic has no subscriber. No quota
+  request, Terraform plan/apply, state write, CloudFront change, webhook or
+  Stripe action, site deployment, fulfillment upload/backfill, or secret read
+  occurred. The exact-plan procedure now uses a volatile RAM-backed plan file
+  so approval and apply refer to the same artifact without persisting it.

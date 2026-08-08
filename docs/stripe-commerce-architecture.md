@@ -3,6 +3,41 @@
 Status: planned, pre-launch architecture. This document describes the target
 design, not the commerce implementation currently deployed.
 
+## Revision 5 — 2026-08-08
+
+An end-to-end pre-apply review found that revision 4 protected only the new
+REST endpoint. After its CloudFront cutover, the retained HTTP API would still
+have an enabled public `execute-api` endpoint wired directly to Buyer and
+Webhook. Direct traffic could therefore bypass the REST token gate and exhaust
+either function's reservation. Calling that API an unrouted rollback rail did
+not make it dormant.
+
+The corrected rollout has three apply gates. Gate A adds and verifies the REST
+path while the HTTP API remains active for CloudFront. Gate B points CloudFront
+at REST and waits for the distribution to report `Deployed`. Gate C then
+disables the old HTTP API's default endpoint while retaining its API, routes,
+integrations, and permissions in Terraform. Rollback reverses that order:
+re-enable and verify the HTTP API first, then repoint CloudFront. This avoids a
+propagation window in which neither origin works.
+
+The ten reserved units are rebalanced to Buyer 5, Webhook 3, and Authorizer 2.
+Buyer still matches its configured burst while the cached authorizer no longer
+has a single-invocation ceiling during a cold-cache race. The REST deployment
+fingerprint now covers methods, integrations, the authorizer identity settings,
+gateway responses, and binary media types so later source changes cannot remain
+undeployed.
+
+Authenticated prework confirmed that the regional API Gateway account has no
+`cloudWatchRoleArn`. Gate A therefore adds a dedicated account logging role:
+account-wide log-group discovery only, with stream and event access restricted
+to the precreated commerce REST access-log group. It also confirmed that the
+Lambda concurrency quota remains 10 with no pending request, the HTTP API
+default endpoint is enabled, and the commerce alarm topic has no subscriber.
+The quota increase and alarm confirmation remain explicit prerequisites.
+
+Revision 5 supersedes revision 4's two-gate rollout, active HTTP rollback rail,
+and 6/3/1 allocation. Its REST token-gate design remains unchanged.
+
 ## Revision 4 — 2026-08-02
 
 Production verification disproved revision 3's ingress safety assumption. A
@@ -226,14 +261,15 @@ by the REST API so Stripe signatures and native form bytes are not re-encoded.
 
 **Reserved concurrency requires a prior quota increase.** AWS retains 100 units
 for functions without reservations. At the current regional quota of 10 there
-is no reservable pool; at the approved target of 110, allocate Buyer 6, Webhook
-3, and Authorizer 1. Reserved concurrency is both an exclusive minimum and a
+is no reservable pool; at the approved target of 110, allocate Buyer 5, Webhook
+3, and Authorizer 2. Reserved concurrency is both an exclusive minimum and a
 maximum. A valid Buyer burst can therefore throttle Buyer but cannot consume
 Webhook or Authorizer capacity, and none of the three can consume the 100-unit
 unreserved pool used by rollback or unrelated functions.
 
-The deployed HTTP API remains intact and unrouted after the REST cutover. It is
-a fast CloudFront rollback target, not a second accepted production ingress.
+The deployed HTTP API remains intact after the REST cutover, but its default
+endpoint becomes dormant only after CloudFront finishes propagating. It is a
+recoverable configuration rail, not a second accepted production ingress.
 The legacy IAM-protected Function URL and runtime also remain through M7.
 
 CloudFront configuration:
@@ -561,10 +597,12 @@ customer data, or presigned URLs. API Gateway access logs carry only request ID,
 route, status, integration status, latency, and response size.
 
 REST API access logging requires the regional API Gateway account
-`cloudWatchRoleArn`. Before planning, inspect the existing singleton account
-setting. Reuse it if correctly scoped; if absent, add and review a dedicated
-logging role. Never overwrite an unrelated account role without importing and
-reviewing it first.
+`cloudWatchRoleArn`. The authenticated revision-5 prework read confirmed this
+singleton is unset, so Gate A adds a dedicated role and manages the account
+setting. Its only account-wide permission is log-group discovery; stream and
+event permissions are limited to the commerce REST access-log group. Recheck
+the singleton immediately before planning and stop if another actor has filled
+it rather than overwriting or importing that role implicitly.
 
 Alarm through the existing SNS topic on:
 
@@ -617,10 +655,10 @@ dispute review, order restoration, reconciliation, and manual reissue.
    here. Confirm the live Stripe checkout host for the CSP allowlist, and assert
    that `session.payment_intent` is populated for a Managed Payments
    `mode: payment` Session.
-3. Apply the M5 correction in two infrastructure gates **without exposing the
+3. Apply the M5 correction in three infrastructure gates **without exposing the
    POST storefront or registering the webhook**:
    1. Obtain the separately approved regional Lambda concurrency quota of 110.
-      Add the REST API, exact token-validation authorizer, 6/3/1 reservations,
+      Add the REST API, exact token-validation authorizer, 5/3/2 reservations,
       logs, alarms, and v1-compatible Lambda bundles while CloudFront remains on
       the HTTP API. Verify missing and wrong direct tokens produce no Lambda
       invocation; use the in-memory correct headers only with malformed safe
@@ -628,11 +666,15 @@ dispute review, order restoration, reconciliation, and manual reissue.
    2. Review and approve a separate plan that changes the CloudFront commerce
       origin to the verified REST stage and adds its derived token header. After
       propagation, repeat safe probes and prove Buyer saturation leaves Webhook
-      capacity available. Keep the strictly validated legacy GET compatibility
-      switch enabled while the deployed storefront still uses GET links.
-   Retain the HTTP API and the deployed legacy Lambda, Function URL, role, log
-   group, alarm, origin access control, and invocation permissions as guarded
-   rollback rails through the live drill.
+      capacity available.
+   3. After CloudFront reports `Deployed`, review and approve a third plan that
+      only disables the old HTTP API default endpoint. Verify its direct URL is
+      rejected without Buyer or Webhook invocation. Keep the API configuration
+      and the strictly validated legacy GET route for ordered rollback and the
+      still-deployed GET storefront.
+   Retain the dormant HTTP API configuration and the deployed legacy Lambda,
+   Function URL, role, log group, alarm, origin access control, and invocation
+   permissions as guarded rollback rails through the live drill.
 4. In a separate gate, register and populate the production webhook, then
    verify a signed event reaches DynamoDB before storefront activation.
 5. Switch the store to the POST form and deploy the CSP, referrer, and

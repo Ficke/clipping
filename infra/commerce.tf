@@ -196,7 +196,7 @@ resource "aws_lambda_function" "commerce_buyer" {
   timeout       = 15
   # Requires the separately approved us-east-1 account concurrency quota of
   # 110: AWS keeps 100 units unreserved, leaving ten for these three functions.
-  reserved_concurrent_executions = 6
+  reserved_concurrent_executions = 5
 
   filename         = data.archive_file.commerce_buyer.output_path
   source_code_hash = data.archive_file.commerce_buyer.output_base64sha256
@@ -328,14 +328,16 @@ resource "aws_cloudwatch_log_group" "commerce_authorizer" {
 }
 
 resource "aws_lambda_function" "commerce_authorizer" {
-  function_name                  = "${var.name}-commerce-authorizer"
-  role                           = aws_iam_role.commerce_authorizer.arn
-  handler                        = "index.handler"
-  runtime                        = "nodejs22.x"
-  architectures                  = ["arm64"]
-  memory_size                    = 128
-  timeout                        = 3
-  reserved_concurrent_executions = 1
+  function_name = "${var.name}-commerce-authorizer"
+  role          = aws_iam_role.commerce_authorizer.arn
+  handler       = "index.handler"
+  runtime       = "nodejs22.x"
+  architectures = ["arm64"]
+  memory_size   = 128
+  timeout       = 3
+  # Two slots prevent a simultaneous cold-cache request pair from turning the
+  # authorizer into a single-invocation availability bottleneck.
+  reserved_concurrent_executions = 2
 
   filename         = data.archive_file.commerce_authorizer.output_path
   source_code_hash = data.archive_file.commerce_authorizer.output_base64sha256
@@ -353,9 +355,17 @@ resource "aws_lambda_function" "commerce_authorizer" {
 # ---------- Deployed HTTP API rollback rail ----------
 
 resource "aws_apigatewayv2_api" "commerce" {
-  name          = "${var.name}-commerce"
-  protocol_type = "HTTP"
-  tags          = local.tags
+  name                         = "${var.name}-commerce"
+  protocol_type                = "HTTP"
+  disable_execute_api_endpoint = var.commerce_http_api_dormant
+  tags                         = local.tags
+
+  lifecycle {
+    precondition {
+      condition     = !var.commerce_http_api_dormant || var.commerce_rest_cutover_enabled
+      error_message = "The HTTP API may become dormant only after CloudFront is configured for the REST API."
+    }
+  }
 }
 
 resource "aws_apigatewayv2_integration" "commerce_buyer" {
@@ -498,6 +508,58 @@ resource "aws_api_gateway_rest_api" "commerce_rest" {
   tags = local.tags
 }
 
+# REST API access logging uses the regional API Gateway account singleton.
+# The authenticated prework read confirmed that us-east-1 has no existing
+# cloudWatchRoleArn, so this stack can configure it without taking over an
+# unrelated role. Keep discovery account-wide, but restrict writes to this
+# precreated access-log group.
+resource "aws_iam_role" "commerce_api_gateway_logs" {
+  name = "${var.name}-commerce-api-gateway-logs"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "apigateway.amazonaws.com"
+      }
+    }]
+  })
+  tags = local.tags
+}
+
+data "aws_iam_policy_document" "commerce_api_gateway_logs" {
+  statement {
+    sid       = "DiscoverLogGroups"
+    actions   = ["logs:DescribeLogGroups"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid = "WriteCommerceRestAccessLogs"
+    actions = [
+      "logs:CreateLogStream",
+      "logs:DescribeLogStreams",
+      "logs:FilterLogEvents",
+      "logs:GetLogEvents",
+      "logs:PutLogEvents",
+    ]
+    resources = ["${aws_cloudwatch_log_group.commerce_rest_api.arn}:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "commerce_api_gateway_logs" {
+  name   = "${var.name}-commerce-api-gateway-logs"
+  role   = aws_iam_role.commerce_api_gateway_logs.id
+  policy = data.aws_iam_policy_document.commerce_api_gateway_logs.json
+}
+
+resource "aws_api_gateway_account" "commerce" {
+  cloudwatch_role_arn = aws_iam_role.commerce_api_gateway_logs.arn
+
+  depends_on = [aws_iam_role_policy.commerce_api_gateway_logs]
+}
+
 resource "aws_api_gateway_resource" "commerce_rest_api" {
   rest_api_id = aws_api_gateway_rest_api.commerce_rest.id
   parent_id   = aws_api_gateway_rest_api.commerce_rest.root_resource_id
@@ -619,10 +681,35 @@ resource "aws_api_gateway_deployment" "commerce_rest" {
 
   triggers = {
     redeployment = sha1(jsonencode({
-      routes = local.commerce_rest_methods
+      methods = {
+        for key, method in aws_api_gateway_method.commerce_rest : key => {
+          resource_id   = method.resource_id
+          http_method   = method.http_method
+          authorization = method.authorization
+          authorizer_id = method.authorizer_id
+        }
+      }
+      integrations = {
+        for key, integration in aws_api_gateway_integration.commerce_rest : key => {
+          resource_id             = integration.resource_id
+          http_method             = integration.http_method
+          integration_http_method = integration.integration_http_method
+          type                    = integration.type
+          uri                     = integration.uri
+        }
+      }
       authorizer = {
-        type = aws_api_gateway_authorizer.commerce_origin.type
-        ttl  = aws_api_gateway_authorizer.commerce_origin.authorizer_result_ttl_in_seconds
+        uri                      = aws_api_gateway_authorizer.commerce_origin.authorizer_uri
+        type                     = aws_api_gateway_authorizer.commerce_origin.type
+        identity_source          = aws_api_gateway_authorizer.commerce_origin.identity_source
+        identity_validation_hash = nonsensitive(sha256(aws_api_gateway_authorizer.commerce_origin.identity_validation_expression))
+        ttl                      = aws_api_gateway_authorizer.commerce_origin.authorizer_result_ttl_in_seconds
+      }
+      gateway_responses = {
+        for key, response in aws_api_gateway_gateway_response.commerce_rest : key => {
+          response_type       = response.response_type
+          response_parameters = response.response_parameters
+        }
       }
       binary_media_types = aws_api_gateway_rest_api.commerce_rest.binary_media_types
     }))
@@ -661,6 +748,8 @@ resource "aws_api_gateway_stage" "commerce_rest" {
       responseSize      = "$context.responseLength"
     })
   }
+
+  depends_on = [aws_api_gateway_account.commerce]
 }
 
 resource "aws_api_gateway_method_settings" "commerce_rest" {

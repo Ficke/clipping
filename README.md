@@ -361,11 +361,13 @@ not on a push to `main`:
 bun run lambda:build
 ```
 
-The first M5 infrastructure revision is deployed. Its correction is a two-apply
-rollout: add and verify the protected REST ingress first, then approve the
-CloudFront cutover separately. Follow the implementation ledger and operations
-runbook; quota changes, each Terraform apply, webhook registration, catalog
-activation, and storefront cutover are separate actions.
+The first M5 infrastructure revision is deployed. Its correction is a
+three-apply rollout: add and verify the protected REST ingress, approve the
+CloudFront cutover separately, then disable the old public HTTP API endpoint
+only after CloudFront reports `Deployed`. The HTTP API configuration remains a
+dormant rollback rail. Follow the implementation ledger and operations runbook;
+quota changes, each Terraform apply, webhook registration, catalog activation,
+and storefront cutover are separate actions.
 
 **Where keys live.** In SSM Parameter Store as KMS-encrypted `SecureString`
 values, and nowhere else—never in Terraform state, a file, or Lambda environment
