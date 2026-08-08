@@ -9,7 +9,7 @@ const complete = {
   SITE_URL: 'https://adamficke.com',
   COMMERCE_ALLOW_LEGACY_GET_CHECKOUT: 'true',
   ORIGIN_VERIFY_HEADER_NAME: 'x-commerce-origin',
-  ORIGIN_VERIFY_HEADER_VALUE: 'random-origin-value',
+  ORIGIN_VERIFY_HEADER_VALUES: 'random-origin-value',
 };
 
 describe('environment', () => {
@@ -22,13 +22,24 @@ describe('environment', () => {
       siteUrl: 'https://adamficke.com',
       allowLegacyGetCheckout: true,
       originHeaderName: 'x-commerce-origin',
-      originHeaderValue: 'random-origin-value',
+      originHeaderValues: ['random-origin-value'],
     });
   });
 
   test('trims a trailing slash so built URLs never double up', () => {
     expect(readEnv({ ...complete, SITE_URL: 'https://adamficke.com/' }).siteUrl)
       .toBe('https://adamficke.com');
+  });
+
+  /* Two values are live across a rotation; an empty one would accept a
+     request that sent no header at all. */
+  test('accepts every configured origin value and never an empty one', () => {
+    expect(readEnv({ ...complete, ORIGIN_VERIFY_HEADER_VALUES: ' current , next ' }).originHeaderValues)
+      .toEqual(['current', 'next']);
+    expect(readEnv({ ...complete, ORIGIN_VERIFY_HEADER_VALUES: 'current,,' }).originHeaderValues)
+      .toEqual(['current']);
+    expect(() => readEnv({ ...complete, ORIGIN_VERIFY_HEADER_VALUES: ',' }))
+      .toThrow(/ORIGIN_VERIFY_HEADER_VALUES/);
   });
 
   test('requires an explicit legacy GET compatibility setting', () => {
@@ -51,12 +62,12 @@ describe('environment', () => {
       COMMERCE_WEBHOOK_SECRET_PARAM: '/adamficke-com/commerce-webhook',
       COMMERCE_TABLE: 'adamficke-com-orders',
       ORIGIN_VERIFY_HEADER_NAME: 'x-commerce-origin',
-      ORIGIN_VERIFY_HEADER_VALUE: 'random-origin-value',
+      ORIGIN_VERIFY_HEADER_VALUES: 'random-origin-value',
     })).toEqual({
       secretParam: '/adamficke-com/commerce-webhook',
       tableName: 'adamficke-com-orders',
       originHeaderName: 'x-commerce-origin',
-      originHeaderValue: 'random-origin-value',
+      originHeaderValues: ['random-origin-value'],
     });
   });
 });

@@ -22,11 +22,8 @@ using a live-mode command.
   on `SIGINT`, `SIGTERM`, startup failure, or normal shutdown. If the process is
   killed ungracefully, use the printed cleanup command after verifying the exact
   table name.
-- Rotating `commerce_origin_verify_header_value` also rotates the API Gateway
-  token, which is derived from it. Apply both in one run: CloudFront sends the
-  old header while the authorizer expects the new one, and every commerce
-  request 403s until the distribution finishes deploying. Rotate during a quiet
-  window and confirm a purchase afterward.
+- Terraform owns the origin-verification secrets. Never supply, print, or paste
+  one; there is no variable to set and nothing to recover before a plan.
 
 ## M5 ingress correction gates
 
@@ -62,42 +59,59 @@ approval gates.
    the email subscription, but the latest read still reported
    `PendingConfirmation`; its recipient must confirm it before Gate B.
 
-For every plan, recover the existing origin-verification value from encrypted
-Terraform state into a history-disabled process and pass it through
-`TF_VAR_commerce_origin_verify_header_value`. Never print it, write plaintext
-state to disk, or rotate it to make planning easier. Terraform derives the
-separate fixed-width gateway token in memory.
+Nothing needs to be supplied to plan or apply. Terraform generates and holds the
+origin-verification secrets, so there is no value to recover and none to unset
+afterwards:
 
-### Exact-plan protocol
+```sh
+bun run lambda:build
+terraform -chdir=infra apply
+```
 
-Terraform saved-plan files contain sensitive values even when human-readable
-output redacts them. To reconcile exact-plan approval with secret handling, save
-each plan only on a temporary RAM-backed APFS volume. Do not use `/tmp`, the
-workspace, a normal disk image, `terraform show -json`, `cat`, `strings`, or a
-terminal command that expands either token. A typical macOS setup is:
+Review the diff it prints, then confirm.
+
+### When to save a plan
+
+An interactive apply plans in memory and applies exactly what it showed you, so
+it needs no plan file. Use `-out` only when review and apply are genuinely
+separated — a plan approved now and applied later, or one someone else checks.
+
+A saved plan is a plaintext copy of every sensitive value in state, including
+the Stripe restricted key, the webhook signing secret, and the download token
+key that mints entitlements. So when you do save one, keep it off disk:
 
 ```sh
 unset HISTFILE
-set +x
 commerce_plan_device=$(hdiutil attach -nomount ram://262144)
 diskutil erasevolume APFS COMMERCE_TF_PLAN "$commerce_plan_device"
-commerce_plan_path=/Volumes/COMMERCE_TF_PLAN/gate-a.tfplan
+commerce_plan_path=/Volumes/COMMERCE_TF_PLAN/gate.tfplan
 ```
 
-Generate the plan with `-out="$commerce_plan_path"`, review it with the normal
-human `terraform show "$commerce_plan_path"`, stop for approval, and apply that
-same file. Never rerun `terraform plan` inside the apply command. If the shell,
-RAM volume, AWS session, source commit, state, or approval context changes,
-discard the volume and produce a new plan for review. After verification:
+Generate with `-out="$commerce_plan_path"`, review with the human
+`terraform show "$commerce_plan_path"`, and apply that same file. Never
+`terraform show -json` it: the JSON form does not redact. If the shell, RAM
+volume, AWS session, source commit, state, or approval context changes, discard
+the volume and produce a new plan. Afterwards:
 
 ```sh
-unset TF_VAR_commerce_origin_verify_header_value
 diskutil eject "$commerce_plan_device"
 unset commerce_plan_device commerce_plan_path
 ```
 
-The unmount is mandatory even after a failed or rejected plan. No secret-bearing
-plan survives the execution session.
+The unmount is mandatory even after a failed or rejected plan.
+
+### Rotating the origin-verification secret
+
+Both generated values are always accepted, so rotation never drops a request:
+
+1. Set `commerce_origin_verify_active = "next"` and apply. CloudFront starts
+   sending the other value; the one it stops sending is still honored, so
+   propagation is invisible.
+2. Once the distribution has deployed, regenerate the retired value:
+   `terraform -chdir=infra apply -replace=random_password.commerce_origin_verify`.
+
+Reverse the names to rotate back. No secret is ever typed, printed, or stored
+outside Terraform state.
 
 ### Gate A — additive protected ingress
 

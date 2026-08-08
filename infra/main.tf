@@ -285,18 +285,12 @@ resource "aws_cloudfront_distribution" "site" {
       origin_ssl_protocols   = ["TLSv1.2"]
     }
 
+    # One header, checked by both the gateway authorizer and the handlers.
+    # A second derived from the first would have added a rotation coupling
+    # without adding isolation: whoever learns this value can compute it.
     custom_header {
       name  = var.commerce_origin_verify_header_name
-      value = var.commerce_origin_verify_header_value
-    }
-
-    dynamic "custom_header" {
-      for_each = var.commerce_rest_cutover_enabled ? [1] : []
-
-      content {
-        name  = var.commerce_gateway_token_header_name
-        value = local.commerce_gateway_token
-      }
+      value = local.commerce_origin_verify_active
     }
   }
 

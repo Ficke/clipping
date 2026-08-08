@@ -78,7 +78,7 @@ export async function handleBuyer(
   const route = `${verb} ${path}`;
   const requestId = eventRequestId(event);
 
-  if (!hasExpectedOrigin(event, deps.env.originHeaderName, deps.env.originHeaderValue)) {
+  if (!hasExpectedOrigin(event, deps.env.originHeaderName, deps.env.originHeaderValues)) {
     logOutcome('warn', { outcome: 'origin_rejected', route, requestId, status: 403 });
     return problem(403, 'Forbidden.');
   }

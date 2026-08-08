@@ -68,11 +68,14 @@ immutable fulfillment object was uploaded or backfilled.
   `stripeWebhookSecretPrevious`.
 - Buyer environment: `COMMERCE_SECRET_PARAM`, `COMMERCE_TABLE`,
   `COMMERCE_ALLOW_LEGACY_GET_CHECKOUT`, `ORIGINALS_BUCKET`, `SITE_BUCKET`,
-  `SITE_URL`, `ORIGIN_VERIFY_HEADER_NAME`, and `ORIGIN_VERIFY_HEADER_VALUE`.
+  `SITE_URL`, `ORIGIN_VERIFY_HEADER_NAME`, and `ORIGIN_VERIFY_HEADER_VALUES`.
 - Webhook environment: `COMMERCE_WEBHOOK_SECRET_PARAM`, `COMMERCE_TABLE`, and
   both origin-verification variables.
-- Authorizer environment: `COMMERCE_GATEWAY_TOKEN` only; its IAM role can write
-  only to its exact log group.
+- Authorizer environment: `ORIGIN_VERIFY_HEADER_VALUES` only; its IAM role can
+  write only to its exact log group.
+- `ORIGIN_VERIFY_HEADER_VALUES` carries both generated secrets, comma-separated.
+  CloudFront sends one; every component accepts either, so rotation propagates
+  without a rejection window.
 - SSM caches expire after five minutes and never retain failed loads.
 
 ## Session handoff

@@ -2,14 +2,42 @@
 # functions, and an origin-authorized REST API behind the existing CloudFront
 # distribution. The previously deployed HTTP API remains as a rollback rail.
 
+# Proof that a request arrived through CloudFront rather than straight at
+# execute-api. The gateway authorizer rejects before Buyer is ever invoked,
+# which is what protects its reserved concurrency; the handlers re-check the
+# same header so a misconfigured authorizer cannot silently open the API.
+#
+# Two secrets exist so rotation never drops a request: both are always
+# accepted, and `commerce_origin_verify_active` decides which one CloudFront
+# sends. Flip it, apply, and let the distribution propagate — nothing 403s,
+# because the value it stops sending is still honored. Regenerate the retired
+# one afterwards with `-replace`.
+#
+# They are generated here, not supplied: the value lands in state either way,
+# so an out-of-band secret buys nothing and costs a recovery step per apply.
+resource "random_password" "commerce_origin_verify" {
+  length = 48
+  # Alphanumeric: this value is interpolated into the authorizer's identity
+  # validation regex, where a metacharacter would silently change the match.
+  special = false
+}
+
+resource "random_password" "commerce_origin_verify_next" {
+  length  = 48
+  special = false
+}
+
 locals {
-  # Derive a separate fixed-width bearer from the existing random origin value.
-  # This neither exposes nor rotates the handler's defense-in-depth header, and
-  # avoids persisting another independently managed secret.
-  #
-  # Rotating the origin value therefore rotates this token too. CloudFront and
-  # the authorizer must move in one apply, or requests 403 until both settle.
-  commerce_gateway_token = sha256(var.commerce_origin_verify_header_value)
+  commerce_origin_verify_accepted = [
+    random_password.commerce_origin_verify.result,
+    random_password.commerce_origin_verify_next.result,
+  ]
+
+  commerce_origin_verify_active = (
+    var.commerce_origin_verify_active == "next"
+    ? random_password.commerce_origin_verify_next.result
+    : random_password.commerce_origin_verify.result
+  )
 }
 
 # ---------- Secrets ----------
@@ -218,7 +246,7 @@ resource "aws_lambda_function" "commerce_buyer" {
       # Not a secret store: this only distinguishes CloudFront from direct
       # execute-api callers, and the REST authorizer is the actual gate. Stripe
       # keys stay in SSM for the reason config.ts gives.
-      ORIGIN_VERIFY_HEADER_VALUE = var.commerce_origin_verify_header_value
+      ORIGIN_VERIFY_HEADER_VALUES = join(",", local.commerce_origin_verify_accepted)
     }
   }
 
@@ -299,7 +327,7 @@ resource "aws_lambda_function" "commerce_webhook" {
       COMMERCE_WEBHOOK_SECRET_PARAM = aws_ssm_parameter.commerce_webhook.name
       COMMERCE_TABLE                = aws_dynamodb_table.commerce_orders.name
       ORIGIN_VERIFY_HEADER_NAME     = var.commerce_origin_verify_header_name
-      ORIGIN_VERIFY_HEADER_VALUE    = var.commerce_origin_verify_header_value
+      ORIGIN_VERIFY_HEADER_VALUES   = join(",", local.commerce_origin_verify_accepted)
     }
   }
 
@@ -352,7 +380,7 @@ resource "aws_lambda_function" "commerce_authorizer" {
 
   environment {
     variables = {
-      COMMERCE_GATEWAY_TOKEN = local.commerce_gateway_token
+      ORIGIN_VERIFY_HEADER_VALUES = join(",", local.commerce_origin_verify_accepted)
     }
   }
 
@@ -629,12 +657,14 @@ resource "aws_api_gateway_resource" "commerce_rest" {
 }
 
 resource "aws_api_gateway_authorizer" "commerce_origin" {
-  name                             = "${var.name}-commerce-origin"
-  rest_api_id                      = aws_api_gateway_rest_api.commerce_rest.id
-  authorizer_uri                   = aws_lambda_function.commerce_authorizer.invoke_arn
-  type                             = "TOKEN"
-  identity_source                  = "method.request.header.${var.commerce_gateway_token_header_name}"
-  identity_validation_expression   = "^${local.commerce_gateway_token}$"
+  name            = "${var.name}-commerce-origin"
+  rest_api_id     = aws_api_gateway_rest_api.commerce_rest.id
+  authorizer_uri  = aws_lambda_function.commerce_authorizer.invoke_arn
+  type            = "TOKEN"
+  identity_source = "method.request.header.${var.commerce_origin_verify_header_name}"
+  # Short-circuits before the authorizer is invoked; both values stay valid so a
+  # rotation in flight is never rejected at the gateway.
+  identity_validation_expression   = "^(${join("|", local.commerce_origin_verify_accepted)})$"
   authorizer_result_ttl_in_seconds = 3600
 }
 

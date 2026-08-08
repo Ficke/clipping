@@ -57,25 +57,14 @@ variable "commerce_origin_verify_header_name" {
   }
 }
 
-variable "commerce_origin_verify_header_value" {
-  description = "Random origin-verification value generated out of band; this bypass-detection value is stored in Terraform state"
+variable "commerce_origin_verify_active" {
+  description = "Which generated origin-verification secret CloudFront sends. Both are always accepted, so flipping this rotates without a propagation window"
   type        = string
-  sensitive   = true
+  default     = "current"
 
   validation {
-    condition     = length(var.commerce_origin_verify_header_value) >= 32
-    error_message = "The origin-verification value must contain at least 32 characters."
-  }
-}
-
-variable "commerce_gateway_token_header_name" {
-  description = "Header CloudFront injects for API Gateway pre-integration authorization"
-  type        = string
-  default     = "X-Commerce-Gateway-Token"
-
-  validation {
-    condition     = can(regex("^[A-Za-z0-9-]+$", var.commerce_gateway_token_header_name))
-    error_message = "The commerce gateway token header name may contain only letters, digits, and hyphens."
+    condition     = contains(["current", "next"], var.commerce_origin_verify_active)
+    error_message = "The active origin-verification secret must be either current or next."
   }
 }
 

@@ -55,7 +55,7 @@ process.env.SITE_BUCKET ??= 'adamficke-com-site';
 process.env.SITE_URL ??= `http://localhost:${PORT}`;
 process.env.COMMERCE_ALLOW_LEGACY_GET_CHECKOUT ??= 'false';
 process.env.ORIGIN_VERIFY_HEADER_NAME ??= 'x-commerce-origin';
-process.env.ORIGIN_VERIFY_HEADER_VALUE ??= 'local-commerce-origin';
+process.env.ORIGIN_VERIFY_HEADER_VALUES ??= 'local-commerce-origin';
 
 /*
  * This never runs on EC2, so the instance-metadata fallback can only ever be a
@@ -244,7 +244,7 @@ server = createServer((request, response) => {
       rawQueryString: url.searchParams.toString(),
       headers: {
         ...request.headers,
-        [process.env.ORIGIN_VERIFY_HEADER_NAME]: process.env.ORIGIN_VERIFY_HEADER_VALUE,
+        [process.env.ORIGIN_VERIFY_HEADER_NAME]: process.env.ORIGIN_VERIFY_HEADER_VALUES.split(',')[0],
       },
       requestContext: { http: { method: request.method } },
       body: body.length ? body.toString('utf8') : undefined,
@@ -253,7 +253,7 @@ server = createServer((request, response) => {
     const invocation = url.pathname.replace(/\/$/, '') === '/api/stripe-webhook'
       ? handleWebhook(lambdaEvent, {
           originHeaderName: process.env.ORIGIN_VERIFY_HEADER_NAME,
-          originHeaderValue: process.env.ORIGIN_VERIFY_HEADER_VALUE,
+          originHeaderValues: process.env.ORIGIN_VERIFY_HEADER_VALUES.split(','),
           orders: webhookOrders,
           loadSecrets: async () => ({
             stripeReadApiKey: fields.stripeApiKey,
