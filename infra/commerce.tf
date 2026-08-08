@@ -194,8 +194,9 @@ resource "aws_lambda_function" "commerce_buyer" {
   architectures = ["arm64"]
   memory_size   = 512
   timeout       = 15
-  # Infrastructure cutover may proceed against the account's shared ten-unit
-  # pool. Enable the separate 5/3/2 isolation gate after quota 1001 is applied.
+  # Gate A proceeded against the account's shared ten-unit pool. Enable the
+  # separate 5/3/2 isolation gate once at least 110 account units are applied;
+  # the current applied quota is 1000.
   reserved_concurrent_executions = var.commerce_reserved_concurrency_enabled ? 5 : null
 
   filename         = data.archive_file.commerce_buyer.output_path

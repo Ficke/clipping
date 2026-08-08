@@ -38,24 +38,24 @@ approval gates.
 
 1. Authenticate with `aws login` and confirm the branch/worktree are clean.
 2. Read the implementation ledger and architecture gates again.
-3. Inspect the us-east-1 Lambda concurrency quota and request status. Gates A-C
-   may proceed while the applied quota remains 10; all functions share that
-   hard account ceiling. Do not enable
-   `commerce_reserved_concurrency_enabled` until the quota is at least 1001.
-   Gate D then reserves Buyer 5, Webhook 3, and Authorizer 2, leaving 991 units
-   unreserved at the approved target.
+3. Inspect the us-east-1 Lambda concurrency quota and request status. Lambda
+   must retain 100 unreserved units, so the 5/3/2 allocation requires an applied
+   quota of at least 110. The 2026-08-08 read found 1000 applied while the 1001
+   request remained `CASE_OPENED`; Gate D may therefore proceed and leaves 990
+   units unreserved. If 1001 is later applied, the pool becomes 991 without a
+   Terraform change.
 4. Inspect the API Gateway account's regional `cloudWatchRoleArn`. REST access
-   logs require this singleton setting. The 2026-08-08 prework read found it
-   unset, and the source now adds a dedicated role plus the account setting.
-   Stop if a fresh read is non-null: never overwrite or implicitly import a role
-   another stack or operator added. API Gateway requires its complete
+   logs require this singleton setting. Gate A set it to the dedicated
+   `adamficke-com-commerce-api-gateway-logs` role. Stop if a fresh read is null
+   or names a different role: never overwrite or implicitly import a role
+   another stack or operator changed. API Gateway requires its complete
    `AmazonAPIGatewayPushToCloudWatchLogs` action set on `Resource: "*"`; isolate
    that policy on the dedicated role trusted only by API Gateway.
 5. Rebuild Buyer, Webhook, and Authorizer bundles and run the complete code and
    Terraform validation gate.
-6. Confirm the commerce SNS topic has a confirmed subscriber. The 2026-08-08
-   read found none. Gate A may recreate the email subscription, but its recipient
-   must confirm it before Gate B.
+6. Confirm the commerce SNS topic has a confirmed subscriber. Gate A recreated
+   the email subscription, but the latest read still reported
+   `PendingConfirmation`; its recipient must confirm it before Gate B.
 
 For every plan, recover the existing origin-verification value from encrypted
 Terraform state into a history-disabled process and pass it through
@@ -136,11 +136,28 @@ new REST endpoint directly without involving Stripe:
   role.
 - Confirm the alarm subscription email before proceeding to Gate B.
 
+### Gate D — reserved concurrency isolation
+
+With the us-east-1 Lambda concurrency quota now 1000, change the committed
+default of `commerce_reserved_concurrency_enabled` to `true` before Gate B,
+while leaving REST cutover and HTTP dormancy disabled. Review a separate exact
+plan. It must update only Buyer, Webhook, and Authorizer reserved concurrency to
+5, 3, and 2. It must not change CloudFront, either API, Lambda code, IAM, alarms,
+or any rollback rail, and it must destroy nothing. Stop for separate apply
+approval.
+
+After an approved apply, verify reservations and the account pool are exactly
+5/3/2/990. If AWS later applies the requested 1001 total, verify the unreserved
+pool becomes 991 without Terraform drift. Send a malformed non-secret webhook
+probe concurrently with a safe invalid Buyer burst to confirm the isolated path
+remains available, then finish with a zero-drift exact-value plan.
+
 ### Gate B — CloudFront origin cutover
 
-Only after Gate A passes, change the committed default of
-`commerce_rest_cutover_enabled` to `true`, rebuild, and review another exact
-plan while keeping `commerce_reserved_concurrency_enabled = false` and
+Only after Gate A and the now-unblocked Gate D pass, change the committed
+default of `commerce_rest_cutover_enabled` to `true`, rebuild, and review
+another exact plan while keeping
+`commerce_reserved_concurrency_enabled = true` and
 `commerce_http_api_dormant = false`. Its intended operational change is the
 CloudFront commerce origin domain and stage path plus the derived gateway-token
 header. It must retain the original handler-verification header and must not
@@ -150,16 +167,17 @@ approval.
 After an approved cutover, wait until CloudFront reports `Deployed`, then repeat
 the safe malformed checkout/fulfillment probes through the public site. Repeat
 the direct missing/wrong-token bursts and verify zero Lambda invocation delta.
-Confirm the account concurrency remains 10 and the functions remain unreserved.
+Confirm the account/functions remain 5/3/2/990 (or 5/3/2/991 if AWS has applied
+the final requested unit).
 Finish with a zero-drift Terraform plan using the same in-memory origin value,
 then clear the environment and exit the history-disabled shell.
 
 ### Gate C — make the HTTP rollback rail dormant
 
 Only after Gate B is verified and CloudFront reports `Deployed`, change the
-committed default of `commerce_http_api_dormant` to `true`. Review a third exact
-plan while keeping `commerce_reserved_concurrency_enabled = false`. Its intended
-operational change is one in-place HTTP API update setting
+committed default of `commerce_http_api_dormant` to `true`. Review a separate
+exact plan while keeping `commerce_reserved_concurrency_enabled = true`. Its
+intended operational change is one in-place HTTP API update setting
 `disable_execute_api_endpoint = true`; it must not change CloudFront, the REST
 API, Lambda code, concurrency, or IAM, and it must destroy nothing. Stop for
 separate apply approval.
@@ -171,26 +189,9 @@ path through CloudFront must remain healthy under the safe malformed probes.
 Finish with a zero-drift exact-value plan and record sanitized evidence.
 
 After Gate C passes, the production site may proceed through its separately
-reviewed M6 POST deployment while the account-wide Lambda ceiling remains 10.
+reviewed M6 POST deployment with the 5/3/2 reservations enabled.
 The temporary REST `GET /api/checkout` compatibility method stays enabled until
 the POST site has propagated and passed browser checks.
-
-### Gate D — reserved concurrency isolation
-
-When the us-east-1 Lambda concurrency quota reports at least 1001, change the
-committed default of `commerce_reserved_concurrency_enabled` to `true` while
-leaving the REST cutover and HTTP dormancy enabled. Review a fourth exact plan.
-It must update only Buyer, Webhook, and Authorizer reserved concurrency to 5, 3,
-and 2. It must not change CloudFront, either API, Lambda code, IAM, alarms, or
-any rollback rail, and it must destroy nothing. Stop for separate apply
-approval. If AWS grants the quota before Gates A-C finish, run Gate D at the
-next exact-plan boundary rather than leaving the enlarged account pool
-unallocated.
-
-After an approved apply, verify reservations and the account pool are exactly
-5/3/2/991. Send a malformed non-secret webhook probe concurrently with a safe
-invalid Buyer burst to confirm the isolated path remains available, then finish
-with a zero-drift exact-value plan.
 
 ### Ordered rollback
 

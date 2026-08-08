@@ -1,7 +1,42 @@
 # Stripe commerce architecture migration
 
-Status: planned, pre-launch architecture. This document describes the target
-design, not the commerce implementation currently deployed.
+Status: in-progress pre-launch migration. Gate A is deployed; Gates B-D and the
+storefront cutover remain pending.
+
+## Revision 9 — 2026-08-08
+
+AWS raised the applied us-east-1 Lambda concurrency quota from 10 to 1000 while
+the request for 1001 remained `CASE_OPENED`. That is already sufficient for the
+ten requested reserved units because Lambda requires 100 units to remain
+unreserved. Gate D therefore moves to the next exact-plan boundary, before Gate
+B: reserve Buyer 5, Webhook 3, and Authorizer 2, leaving 990 unreserved. If AWS
+later applies 1001, the unreserved pool increases to 991 without a Terraform
+change.
+
+This earlier isolation is safer than cutting CloudFront over with the newly
+enlarged pool entirely shared. Gate D remains reservation-only and must not
+change either API, CloudFront, Lambda code, IAM, alarms, or rollback rails. The
+subsequent Gate B and Gate C plans keep reservations enabled. Revision 9
+supersedes prior current-state references to a quota of 10 or a requirement to
+wait specifically for 1001; historical evidence remains unchanged.
+
+## Revision 8 — 2026-08-08
+
+The corrected RAM-backed Gate A recovery plan applied successfully. The
+Regional REST API, exact-token Authorizer, logging role/account setting, stage,
+five protected methods, compatible Buyer/Webhook bundles, consolidated seven
+alarms, and pending email subscription now exist. CloudFront remains deployed
+against the enabled HTTP API, so the new REST path is not yet serving the
+production site. Buyer, Webhook, and Authorizer remain unreserved under the
+account-wide concurrency limit of 10.
+
+Five missing-token and five same-length incorrect-token direct REST requests
+all returned `401`. REST access logs recorded no integration status, and
+CloudWatch recorded no Authorizer, Buyer, or Webhook invocation. The authorized
+malformed-body probe and zero-drift check remain for the next session, followed
+by alarm-email confirmation and a separately approved Gate B CloudFront-only
+cutover plan. No Stripe, webhook registration, site deployment, or fulfillment
+upload/backfill action occurred.
 
 ## Revision 7 — 2026-08-08
 
@@ -302,14 +337,14 @@ REST proxy payload v1 and the deployed HTTP API/Function URL payload v2 are both
 accepted while rollback rails remain. JSON and form bodies are base64-preserved
 by the REST API so Stripe signatures and native form bytes are not re-encoded.
 
-**Reserved concurrency requires a prior quota increase.** AWS retains at least
-100 units for functions without reservations. At the current regional quota of
-10 there is no reservable pool. AWS's self-service quota workflow rejected the
-smaller 110 target because it is below the published default, so the approved
-target is 1001: allocate Buyer 5, Webhook 3, and Authorizer 2, leaving 991 units
-unreserved. Reserved concurrency is both an exclusive minimum and a maximum. A
-valid Buyer burst can therefore throttle Buyer but cannot consume Webhook,
-Authorizer, rollback, or unrelated-function capacity.
+**Reserved concurrency requires at least 110 account units.** AWS retains 100
+units for functions without reservations. The applied regional quota is now
+1000, so Gate D can allocate Buyer 5, Webhook 3, and Authorizer 2 while leaving
+990 units unreserved. The still-open request targets 1001; if applied, it will
+leave 991 unreserved without another Terraform change. Reserved concurrency is
+both an exclusive minimum and a maximum. A valid Buyer burst can therefore
+throttle Buyer but cannot consume Webhook, Authorizer, rollback, or
+unrelated-function capacity.
 
 The deployed HTTP API remains intact after the REST cutover, but its default
 endpoint becomes dormant only after CloudFront finishes propagating. It is a
@@ -706,20 +741,21 @@ dispute review, order restoration, reconciliation, and manual reissue.
    here. Confirm the live Stripe checkout host for the CSP allowlist, and assert
    that `session.payment_intent` is populated for a Managed Payments
    `mode: payment` Session.
-3. Apply the M5 correction in three infrastructure gates **without registering
-   the webhook**. The account-wide Lambda concurrency limit remains the shared
-   hard ceiling of 10 throughout these gates:
+3. Apply the M5 correction in four infrastructure gates **without registering
+   the webhook**:
    1. Add the REST API, exact token-validation authorizer, logs, alarms, and
       v1-compatible Lambda bundles without function-level reservations while
       CloudFront remains on the HTTP API. Verify missing and wrong direct tokens
       produce no Lambda invocation; use the in-memory correct headers only with
       malformed safe probes to verify the authorized path without Stripe or
       DynamoDB.
-   2. Review and approve a separate plan that changes the CloudFront commerce
+   2. With the applied quota now 1000, review and approve a reservation-only
+      plan for Buyer 5, Webhook 3, and Authorizer 2. Verify 990 units remain
+      unreserved.
+   3. Review and approve a separate plan that changes the CloudFront commerce
       origin to the verified REST stage and adds its derived token header. After
-      propagation, repeat safe probes and confirm the functions still share the
-      ten-unit account ceiling.
-   3. After CloudFront reports `Deployed`, review and approve a third plan that
+      propagation, repeat safe probes and confirm the 5/3/2 isolation.
+   4. After CloudFront reports `Deployed`, review and approve a separate plan that
       only disables the old HTTP API default endpoint. Verify its direct URL is
       rejected without Buyer or Webhook invocation. Keep the API configuration
       and the strictly validated legacy GET route for ordered rollback and the
@@ -730,11 +766,7 @@ dispute review, order restoration, reconciliation, and manual reissue.
 4. Switch the store to the POST form and deploy the CSP, referrer, and
    purchase-page changes. After the deploy has propagated, disable legacy GET
    checkout and verify it returns `405` with no Stripe call.
-5. When the separately approved regional Lambda concurrency request reaches
-   1001, apply a reservation-only exact plan for Buyer 5, Webhook 3, and
-   Authorizer 2. If AWS grants the request earlier, run this gate at the next
-   exact-plan boundary so the enlarged account pool is not left unallocated.
-6. In a separate gate, register and populate the production webhook, then
+5. In a separate gate, register and populate the production webhook, then
    verify a signed event reaches DynamoDB. Complete the live drill: one
    controlled purchase, download, and manual reissue — then refund that purchase
    from the Dashboard to verify the live external-reversal path, and confirm

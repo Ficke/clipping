@@ -15,7 +15,7 @@ separately.
 | M2 — order state machine | complete | green | no | Domain and DynamoDB repository complete |
 | M3 — buyer/webhook APIs | complete | green | no | Durable Buyer, signed Webhook, stateless redemption complete |
 | M4 — recovery/local suite | complete | sandbox green | no | Full local sandbox drill passed; event-ordering and won-dispute findings fixed |
-| M5 — AWS infrastructure | revision-5 prework complete | 151 green; correction acceptance pending | original revision only | REST token gate and 5/3/2 isolation are staged behind additive, CloudFront-cutover, and HTTP-dormancy gates |
+| M5 — AWS infrastructure | revision-9 Gate A complete | 151 green; negative ingress passed | Gate A | Protected REST is deployed but unrouted; authorized malformed probe, zero drift, Gate D, and Gates B-C remain |
 | M6 — storefront cutover | in progress | build green | no | POST form/polling implemented; v3 activation and browser checks pending |
 | M7 — live drill/cleanup | pending | pending | no | Production-only work remains manual |
 
@@ -77,48 +77,62 @@ immutable fulfillment object was uploaded or backfilled.
 
 ## Session handoff
 
-- Current task: the revision-6 M5 prework splits the additive ingress and
-  reserved-concurrency changes so protected REST infrastructure can proceed
-  while AWS reviews the quota request. It retains the exact
-  pre-integration REST token gate and REST payload-v1 compatibility, rebalances
-  Buyer/Webhook/Authorizer reservations to 5/3/2, adds the previously absent
-  regional API Gateway logging role/account setting, makes REST deployments
-  respond to every material method/integration/authorizer/gateway-response
-  change, and adds a separately gated dormant state for the old HTTP API. A
-  cost review consolidated the eventual alarm set from 15 to seven: both API
-  `5xx` alarms, legacy/Buyer/Webhook/Authorizer errors, and Webhook throttles.
+- Current task: finish Gate A verification, then prepare Gate D's exact
+  reservation-only plan. Gate A is deployed: REST API `w98yd824p3`, its
+  exact-token Authorizer and stage, the regional API Gateway logging
+  role/account setting, five protected methods, compatible Buyer/Webhook
+  bundles, required logs, and seven consolidated alarms exist. CloudFront still
+  routes commerce to HTTP API `ugmazzudce`, whose default endpoint remains
+  enabled.
 - Rollout defaults are deliberately safe:
   `commerce_reserved_concurrency_enabled = false`,
   `commerce_rest_cutover_enabled = false`, and
-  `commerce_http_api_dormant = false`. Gate A is additive for request-path
-  infrastructure but deliberately removes the six redundant DynamoDB alarms
-  and Buyer throttle alarm; Gate B changes CloudFront only; Gate C disables the
-  old HTTP API endpoint only after CloudFront reports `Deployed`; and Gate D
-  adds only 5/3/2 reservations after the quota grant. M6 deploys the POST
-  storefront after the REST infrastructure is active. Rollback re-enables HTTP
-  before repointing CloudFront. Never combine those operations.
+  `commerce_http_api_dormant = false`. Gate D now adds only 5/3/2 reservations;
+  Gate B then changes CloudFront only; and Gate C disables the old HTTP API
+  endpoint only after CloudFront reports `Deployed`. M6 deploys the POST
+  storefront after Gate C. Rollback re-enables HTTP before repointing CloudFront.
+  Never combine those operations.
 - Last verified commands: `bun test` (151 pass), `bun run typecheck`, Astro
   build, Buyer/Webhook/Authorizer bundles, all commerce and fulfillment operator
   bundles, `terraform fmt -check`, `terraform validate`, and `git diff --check`.
-- Production state: M5 infrastructure is applied. No site deployment or
-  storefront-v3 activation, webhook registration/population, fulfillment
-  upload/backfill, live purchase, or other Stripe live-mode action has
-  occurred. CloudFront is deployed against HTTP API `ugmazzudce`; no commerce
-  REST API or Authorizer is deployed, and the old HTTP endpoint is enabled.
-- Authenticated prework facts on 2026-08-08: us-east-1 Lambda concurrency is 10
-  with 10 unreserved and no pending quota request; API Gateway
-  `cloudWatchRoleArn` is null; the order table is active with point-in-time
-  recovery; all 12 existing alarms are `OK`; and the alarm topic has no
-  subscription. Recheck every fact immediately before planning.
+- Gate A evidence: five direct requests without the gateway token and five with
+  a same-length incorrect token all returned `401`. REST access logs showed no
+  integration status, and CloudWatch reported no Authorizer, Buyer, or Webhook
+  invocation. The authorized malformed checkout probe and final zero-drift
+  check were deliberately stopped and remain pending. The order table remains
+  empty. The SNS email subscription is `PendingConfirmation`; it must be
+  confirmed before Gate B.
+- Production state: CloudFront is `Deployed` against HTTP API `ugmazzudce`; the
+  HTTP default endpoint is enabled. REST API `w98yd824p3` is deployed and
+  protected but unrouted. API Gateway's regional `cloudWatchRoleArn` points to
+  the dedicated logging role. Buyer, Webhook, and Authorizer are active and
+  unreserved; the account limit and unreserved pool are both 1000. Seven commerce
+  alarms exist; the new REST `5xx` alarm may initially report
+  `INSUFFICIENT_DATA`. No site/storefront activation, webhook registration or
+  secret population, Stripe request, fulfillment upload/backfill, or live
+  purchase occurred.
 - The separately approved Lambda concurrency request targets 1001 because AWS
   rejects self-service requests below its published default of 1000. Request
-  `c2417d3b4a624900a758f086935b5722QepcbJ1M` is pending. Gate A may proceed
-  without reservations while CloudFront remains on HTTP API. Recover the
-  existing origin value only into memory, create the Gate A plan on a
-  RAM-backed volume, review its complete redacted infrastructure/IAM delta, and
-  stop for exact-plan apply approval. After AWS grants 1001, Gate D must be a
-  separate reservation-only exact plan. Do not generate a replacement origin
-  value, save a plan to persistent storage, or recompute a plan during apply.
+  `c2417d3b4a624900a758f086935b5722QepcbJ1M` remains `CASE_OPENED`, but AWS has
+  already raised the applied quota to 1000. Gate D is now the next separate
+  reservation-only exact plan and will leave 990 unreserved. Do not generate a
+  replacement origin value, save a plan to persistent storage, or recompute a
+  plan during apply.
+- Next session order: re-read all three commerce documents; authenticate and
+  confirm a clean worktree; refresh quota/subscription/API/CloudFront/Lambda/
+  alarm/table state; recover the existing origin value only into memory; run
+  one correctly authorized empty-form checkout probe and verify a non-cacheable
+  `400`, exactly one Authorizer/Buyer invocation, no Webhook invocation, and no
+  DynamoDB write; run a zero-drift check; confirm the SNS subscription; then
+  change only the committed default of
+  `commerce_reserved_concurrency_enabled` to `true`, rebuild/validate, and
+  prepare Gate D exclusively as a reviewed RAM-backed saved plan. Gate D must
+  change only Buyer/Webhook/Authorizer reservations to 5/3/2 and stop for
+  exact-plan approval. After Gate D applies and verifies 990 unreserved, prepare
+  Gate B with reservations enabled and HTTP dormancy false. Gate B must
+  retain the original handler-verification header, change only the CloudFront
+  commerce origin/path and derived gateway-token header, and stop for exact-plan
+  approval.
 - Known compatibility rails: keep enriched catalog v2, legacy GET checkout, the
   dormant HTTP API configuration, and the legacy Function URL runtime until
   their documented M6/M7 gates.
@@ -334,3 +348,22 @@ customer data.
   set on `Resource: "*"`, isolated on the dedicated API Gateway role. No retry,
   replacement plan, CloudFront/site change, Stripe/webhook action, or
   fulfillment upload/backfill occurred.
+- 2026-08-08: The separately approved RAM-backed Gate A recovery plan at source
+  commit `489af92` passed its artifact hash, clean-worktree, and AWS-account
+  checks and applied directly without regeneration: eight additions, three
+  in-place changes, and zero deletions. It corrected the dedicated API Gateway
+  Logs policy, set the regional `cloudWatchRoleArn`, created the REST stage and
+  five method settings, added the REST `5xx` alarm, and converged both gateway
+  responses. Gate A now has seven alarms total and an email subscription
+  awaiting confirmation. Five missing-token and five same-length wrong-token
+  direct REST probes all returned `401`; access logs showed no integration and
+  CloudWatch reported zero Authorizer, Buyer, and Webhook invocations. The user
+  paused before the correct-token malformed-body probe, so it and the zero-drift
+  check remain pending. Both consumed RAM volumes were ejected, all in-memory
+  origin/token values were cleared, and no secret-bearing shell remains. The
+  quota request remains `CASE_OPENED` at desired 1001. A later monitor read
+  confirmed AWS raised the applied limit and unreserved pool to 1000; all three
+  functions remain unreserved. Gate D is therefore next and should produce
+  5/3/2/990. CloudFront remains on the enabled HTTP API. No Stripe, webhook
+  registration, site deployment, or fulfillment upload/backfill action
+  occurred.
