@@ -3,6 +3,23 @@ locals {
     Project   = var.name
     ManagedBy = "terraform"
   }
+
+  # Shared by both response-headers policies below, which differ only in
+  # referrer policy. One string, so the two cannot drift apart.
+  content_security_policy = join("; ", [
+    "default-src 'none'",
+    "script-src 'self' https://*.googletagmanager.com",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com",
+    "font-src 'self'",
+    "connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    # The storefront posts to Stripe Checkout; 'none' would block the buy form.
+    "form-action 'self' https://checkout.stripe.com",
+  ])
+
+  permissions_policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
 }
 
 # ---------- S3 (private; CloudFront-only access) ----------
@@ -86,13 +103,6 @@ resource "aws_s3_bucket_policy" "site" {
 resource "aws_cloudfront_origin_access_control" "site" {
   name                              = var.name
   origin_access_control_origin_type = "s3"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
-}
-
-resource "aws_cloudfront_origin_access_control" "commerce" {
-  name                              = "${var.name}-commerce"
-  origin_access_control_origin_type = "lambda"
   signing_behavior                  = "always"
   signing_protocol                  = "sigv4"
 }
@@ -183,7 +193,7 @@ resource "aws_cloudfront_response_headers_policy" "security" {
     }
 
     content_security_policy {
-      content_security_policy = "default-src 'none'; script-src 'self' https://*.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google-analytics.com https://*.googletagmanager.com; font-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+      content_security_policy = local.content_security_policy
       override                = true
     }
   }
@@ -191,7 +201,48 @@ resource "aws_cloudfront_response_headers_policy" "security" {
   custom_headers_config {
     items {
       header   = "Permissions-Policy"
-      value    = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+      value    = local.permissions_policy
+      override = true
+    }
+  }
+}
+
+# Purchase responses carry the same controls as the rest of the static site,
+# but suppress the Checkout Session bearer capability from outgoing referrers.
+resource "aws_cloudfront_response_headers_policy" "purchase_security" {
+  name = "${var.name}-purchase-security-headers"
+
+  security_headers_config {
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = true
+      override                   = true
+    }
+
+    content_type_options {
+      override = true
+    }
+
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+
+    referrer_policy {
+      referrer_policy = "no-referrer"
+      override        = true
+    }
+
+    content_security_policy {
+      content_security_policy = local.content_security_policy
+      override                = true
+    }
+  }
+
+  custom_headers_config {
+    items {
+      header   = "Permissions-Policy"
+      value    = local.permissions_policy
       override = true
     }
   }
@@ -219,11 +270,13 @@ resource "aws_cloudfront_distribution" "site" {
     origin_access_control_id = aws_cloudfront_origin_access_control.site.id
   }
 
-  # CloudFront signs every request to the IAM-protected Lambda Function URL.
+  # First apply the REST API additively with this origin still targeting the
+  # deployed HTTP API. After direct ingress verification, a separate exact-plan
+  # gate flips this origin to REST. Both APIs remain managed as rollback rails.
   origin {
-    origin_id                = "commerce"
-    domain_name              = local.commerce_origin_domain
-    origin_access_control_id = aws_cloudfront_origin_access_control.commerce.id
+    origin_id   = "commerce"
+    domain_name = var.commerce_rest_cutover_enabled ? "${aws_api_gateway_rest_api.commerce_rest.id}.execute-api.us-east-1.amazonaws.com" : replace(aws_apigatewayv2_api.commerce.api_endpoint, "https://", "")
+    origin_path = var.commerce_rest_cutover_enabled ? "/${aws_api_gateway_stage.commerce_rest.stage_name}" : null
 
     custom_origin_config {
       origin_protocol_policy = "https-only"
@@ -232,16 +285,29 @@ resource "aws_cloudfront_distribution" "site" {
       origin_ssl_protocols   = ["TLSv1.2"]
     }
 
+    custom_header {
+      name  = var.commerce_origin_verify_header_name
+      value = var.commerce_origin_verify_header_value
+    }
+
+    dynamic "custom_header" {
+      for_each = var.commerce_rest_cutover_enabled ? [1] : []
+
+      content {
+        name  = var.commerce_gateway_token_header_name
+        value = local.commerce_gateway_token
+      }
+    }
   }
 
-  # Checkout, fulfillment, and download redirects. No caching, query strings
-  # forwarded, and no viewer-request function: the
+  # Checkout, webhook, fulfillment, and download responses. No caching, all
+  # viewer methods and headers forwarded, and no viewer-request function: the
   # pretty-URL rewrite would turn /api/checkout into /api/checkout/index.html.
   ordered_cache_behavior {
     path_pattern             = "api/*"
     target_origin_id         = "commerce"
     viewer_protocol_policy   = "redirect-to-https"
-    allowed_methods          = ["GET", "HEAD", "OPTIONS"]
+    allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods           = ["GET", "HEAD"]
     compress                 = true
     cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # managed CachingDisabled
@@ -250,6 +316,22 @@ resource "aws_cloudfront_distribution" "site" {
     # Deliberately no response_headers_policy: the site's CSP and frame rules
     # describe HTML, and attaching them here would put a CSP on JSON and on
     # 302s to S3 that no browser needs to evaluate.
+  }
+
+  ordered_cache_behavior {
+    path_pattern               = "purchase/*"
+    target_origin_id           = "s3"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD"]
+    cached_methods             = ["GET", "HEAD"]
+    compress                   = true
+    cache_policy_id            = "658327ea-f89d-4fab-a63d-7e88639e58f6" # managed CachingOptimized
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.purchase_security.id
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.rewrite.arn
+    }
   }
 
   ordered_cache_behavior {

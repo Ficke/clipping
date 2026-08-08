@@ -139,6 +139,12 @@ data "aws_iam_policy_document" "media_build" {
   }
 
   statement {
+    sid       = "PublishFulfillmentAssets"
+    actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${aws_s3_bucket.originals.arn}/fulfillment/*"]
+  }
+
+  statement {
     sid       = "WriteManifests"
     actions   = ["s3:GetObject", "s3:PutObject"]
     resources = ["${aws_s3_bucket.originals.arn}/manifests/*"]

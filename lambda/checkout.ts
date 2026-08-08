@@ -1,60 +1,79 @@
 import type Stripe from 'stripe';
-import {
-  CURRENCY,
-  formatPrice,
-  type DownloadCatalog,
-} from '../src/lib/downloads';
+import { CURRENCY, formatPrice, type DownloadCatalog } from '../src/lib/downloads';
 import { requireItem } from './catalog';
 import { INTEGRATION_IDENTIFIER } from './integration';
+import type { OrderRepository } from './order-repository';
+import { createPendingOrder, type Order } from './orders';
 
-/**
- * The browser supplies only an opaque photo ID; the price comes from the catalog. That is
- * what makes a plain `<a href>` a safe buy button, needing no signing.
- */
-
-/** Stable by design: changing it splits the Stripe Dashboard's reporting history. */
 export interface CheckoutDeps {
   stripe: Stripe;
+  orders: OrderRepository;
   catalog: DownloadCatalog;
   siteUrl: string;
-  /** Shared Managed Payments Product. The per-photo identity stays in metadata. */
   stripeProductId: string;
+  livemode: boolean;
+  now?: number;
 }
 
+export interface CheckoutResult {
+  order: Order;
+  session: Stripe.Checkout.Session;
+}
+
+/** Create the durable order before making the idempotent Stripe request. */
 export async function createCheckoutSession(
   photoId: string,
-  { stripe, catalog, siteUrl, stripeProductId }: CheckoutDeps,
-): Promise<Stripe.Checkout.Session> {
+  {
+    stripe,
+    orders,
+    catalog,
+    siteUrl,
+    stripeProductId,
+    livemode,
+    now = Math.floor(Date.now() / 1000),
+  }: CheckoutDeps,
+): Promise<CheckoutResult> {
   const item = requireItem(catalog, photoId);
+  if (!item.assetRef) throw new Error('Catalog item has no immutable fulfillment asset');
 
-  return stripe.checkout.sessions.create({
+  const pending = createPendingOrder({
+    livemode,
+    photoId,
+    assetRef: item.assetRef,
+    expectedAmount: item.priceCents,
+    albumTitle: item.albumTitle,
+    label: item.label,
+    ...(item.previewSrc ? { previewSrc: item.previewSrc } : {}),
+  }, now);
+  await orders.create(pending);
+
+  const metadata = {
+    order_id: pending.orderId,
+    photo_id: photoId,
+    integration: INTEGRATION_IDENTIFIER,
+  };
+  const session = await stripe.checkout.sessions.create({
     mode: 'payment',
-    /* Stripe/Link is merchant of record for this digital-goods transaction. */
     managed_payments: { enabled: true },
     integration_identifier: INTEGRATION_IDENTIFIER,
-    /* No payment_method_types: omitting it lets the Dashboard decide. */
-    line_items: [
-      {
-        quantity: 1,
-        price_data: {
-          currency: CURRENCY,
-          unit_amount: item.priceCents,
-          /* The Product owns the license/classification; price remains ours. */
-          product: stripeProductId,
-        },
+    line_items: [{
+      quantity: 1,
+      price_data: {
+        currency: CURRENCY,
+        unit_amount: item.priceCents,
+        product: stripeProductId,
       },
-    ],
-    /* Managed Payments owns the Checkout disclosures and does not accept
-     * Checkout's custom_text field. License terms remain on our storefront. */
-    metadata: { photo_id: photoId, integration: INTEGRATION_IDENTIFIER },
-    client_reference_id: photoId,
+    }],
+    metadata,
+    client_reference_id: pending.orderId,
     payment_intent_data: {
       description: `${formatPrice(item.priceCents)} — full-resolution digital photograph (${photoId})`,
-      /* Duplicate the identity onto the payment record for Dashboard search,
-       * reconciliation, refunds, disputes, and manual fulfillment. */
-      metadata: { photo_id: photoId, integration: INTEGRATION_IDENTIFIER },
+      metadata,
     },
     success_url: `${siteUrl}/purchase/?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${siteUrl}/store/`,
-  });
+  }, { idempotencyKey: pending.orderId });
+
+  const order = await orders.attachCheckoutSession(pending.orderId, session.id, session.expires_at);
+  return { order, session };
 }

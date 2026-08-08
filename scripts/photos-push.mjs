@@ -13,6 +13,7 @@ import {
   serializePhotos,
   splitFrontmatter,
 } from './photo-frontmatter.mjs';
+import { ensureFulfillmentAsset, sha256Hex } from './photo-fulfillment.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
@@ -22,6 +23,7 @@ const buildBucket = 'adamficke-com-builds';
 const mediaProject = 'adamficke-com-media';
 const mediaBucket = 'adamficke-com-media';
 const manifestBucket = 'adamficke-com-originals';
+const fulfillmentBucket = 'adamficke-com-originals';
 const buildPollInterval = Number.parseInt(process.env.PHOTO_BUILD_POLL_INTERVAL_MS ?? '5000', 10);
 const terminalBuildStatuses = new Set(['FAILED', 'FAULT', 'STOPPED', 'SUCCEEDED', 'TIMED_OUT']);
 const supportedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
@@ -100,9 +102,16 @@ try {
         runAsync('aws', syncArgs),
         runAsync('aws', metadataArgs),
       ]);
+      const sellableCount = sellableFiles(albumDirectory).length;
+      console.log(`Would verify and publish ${sellableCount} immutable fulfillment asset${sellableCount === 1 ? '' : 's'}`);
       console.log(`Would build immutable media and write ${path.relative(repoRoot, albumDirectory)}/photos.json`);
       continue;
     }
+
+    // Do not publish a new manifest until every retained source has a verified
+    // immutable fulfillment object. A later archive/media failure can leave a
+    // harmless content-addressed orphan; the inverse would break fulfillment.
+    await publishFulfillmentAssets(stagedDirectory, albumDirectory, images);
 
     if (buildLocally) {
       // The local builder consumes staged files, not S3, so archive upload and
@@ -128,6 +137,32 @@ try {
 } finally {
   if (sourceBundle) rmSync(sourceBundle.directory, { recursive: true, force: true });
   rmSync(stagingRoot, { recursive: true, force: true });
+}
+
+async function publishFulfillmentAssets(stagedDirectory, albumDirectory, images) {
+  const sellable = sellableFiles(albumDirectory);
+  let uploaded = 0;
+  let reused = 0;
+  for (const file of sellable) {
+    if (!images.includes(file)) fail(`Sellable photo is missing from the staged album: ${file}`);
+    const stagedFile = path.join(stagedDirectory, file);
+    const result = ensureFulfillmentAsset({
+      bucket: fulfillmentBucket,
+      file: stagedFile,
+      sourceHash: sha256Hex(stagedFile),
+    });
+    if (result.action === 'uploaded') uploaded++;
+    else reused++;
+  }
+  console.log(`Fulfillment assets: ${uploaded} uploaded, ${reused} verified and reused`);
+}
+
+function sellableFiles(albumDirectory) {
+  const indexPath = path.join(albumDirectory, 'index.md');
+  if (!existsSync(indexPath)) return [];
+  const { lines } = splitFrontmatter(readFileSync(indexPath, 'utf8'), albumDirectory);
+  const { entries } = readPhotosBlock(lines);
+  return entries.filter((entry) => entry.forSale === true).map((entry) => entry.file);
 }
 
 function stageAlbum(album, albumDirectory) {

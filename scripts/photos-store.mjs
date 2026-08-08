@@ -118,7 +118,7 @@ async function confirmPurge(file) {
   if (!process.stdin.isTTY) fail('catalog purge needs an interactive confirmation or --yes');
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    console.log('Warning: purging breaks fulfillment and manual reissue for every prior purchase of this photo.');
+    console.log('Warning: purging removes the private mapping used by future checkouts; durable orders retain their asset.');
     const answer = (await rl.question(`Type ${file} to purge it from the private catalog: `)).trim();
     if (answer !== file) fail('catalog purge cancelled');
   } finally {

@@ -4,7 +4,7 @@
  * deployed function, the way photos-media-dev.mjs is to the CodeBuild job.
  *
  *   bun run commerce:dev                                  # serves :8787
- *   open http://localhost:8787/api/checkout?photo_id=<photo_id>
+ *   open http://localhost:8787/store/
  *
  * It runs the real handler, so what passes here is the code that runs in
  * production. Keys come from Parameter Store exactly as they do on the deployed
@@ -25,6 +25,11 @@ import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  resolveDevTable,
+  TemporaryTableLifecycle,
+  validateDevSecrets,
+} from './commerce-dev-support.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.COMMERCE_PORT ?? process.env.PORT ?? 8787);
@@ -36,9 +41,21 @@ const PORT = Number(process.env.COMMERCE_PORT ?? process.env.PORT ?? 8787);
 const DEFAULT_SECRET_PARAM = '/adamficke-com/commerce-test';
 
 process.env.COMMERCE_SECRET_PARAM ??= DEFAULT_SECRET_PARAM;
+let tableConfig;
+try {
+  tableConfig = resolveDevTable();
+} catch (error) {
+  console.error(`commerce:dev: ${error instanceof Error ? error.message : 'Invalid table configuration.'}`);
+  process.exit(1);
+}
+const { ownsTemporaryTable, tableName } = tableConfig;
+process.env.COMMERCE_TABLE = tableName;
 process.env.ORIGINALS_BUCKET ??= 'adamficke-com-originals';
 process.env.SITE_BUCKET ??= 'adamficke-com-site';
 process.env.SITE_URL ??= `http://localhost:${PORT}`;
+process.env.COMMERCE_ALLOW_LEGACY_GET_CHECKOUT ??= 'false';
+process.env.ORIGIN_VERIFY_HEADER_NAME ??= 'x-commerce-origin';
+process.env.ORIGIN_VERIFY_HEADER_VALUE ??= 'local-commerce-origin';
 
 /*
  * This never runs on EC2, so the instance-metadata fallback can only ever be a
@@ -73,16 +90,67 @@ try {
   process.exit(1);
 }
 
-if (/^[sr]k_live/.test(fields.stripeApiKey ?? '')) {
+if (/^[sr]k_live/.test(fields?.stripeApiKey ?? '')) {
   console.error(`commerce:dev: ${secretParam} holds a LIVE Stripe key — refusing to run.`);
   console.error(secretParam === DEFAULT_SECRET_PARAM
     ? `             Put test keys in ${DEFAULT_SECRET_PARAM}, and roll that live key: it is in the wrong parameter.`
     : `             Unset COMMERCE_SECRET_PARAM to use ${DEFAULT_SECRET_PARAM}.`);
   process.exit(1);
 }
+try {
+  validateDevSecrets(fields);
+} catch (error) {
+  console.error(`commerce:dev: ${error instanceof Error ? error.message : 'Invalid test secret.'}`);
+  process.exit(1);
+}
 
 SSMClient.prototype.send = async () => ({ Parameter: { Value: JSON.stringify(fields) } });
 console.log(`commerce:dev: secrets from ${secretParam}`);
+
+const {
+  CreateTableCommand,
+  DeleteTableCommand,
+  DynamoDBClient,
+  waitUntilTableExists,
+} = await import('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient } = await import('@aws-sdk/lib-dynamodb');
+const dynamo = new DynamoDBClient({ maxAttempts: 2 });
+let tableLifecycle;
+let requestedTermination;
+let resolveStopping;
+const stopping = new Promise((resolve) => { resolveStopping = resolve; });
+const stopServer = (termination) => {
+  requestedTermination ??= termination;
+  resolveStopping(requestedTermination);
+};
+process.once('SIGINT', () => stopServer({ signal: 'SIGINT' }));
+process.once('SIGTERM', () => stopServer({ signal: 'SIGTERM' }));
+let server;
+
+try {
+if (ownsTemporaryTable) {
+  tableLifecycle = new TemporaryTableLifecycle({
+    tableName: process.env.COMMERCE_TABLE,
+    create: (name) => dynamo.send(new CreateTableCommand({
+      TableName: name,
+      BillingMode: 'PAY_PER_REQUEST',
+      AttributeDefinitions: [{ AttributeName: 'orderId', AttributeType: 'S' }],
+      KeySchema: [{ AttributeName: 'orderId', KeyType: 'HASH' }],
+      Tags: [
+        { Key: 'application', Value: 'adamficke-com' },
+        { Key: 'purpose', Value: 'local-commerce-acceptance' },
+      ],
+    })),
+    waitUntilReady: (name) => waitUntilTableExists(
+      { client: dynamo, maxWaitTime: 60 },
+      { TableName: name },
+    ),
+    remove: (name) => dynamo.send(new DeleteTableCommand({ TableName: name })),
+  });
+  await tableLifecycle.start();
+  console.log(`commerce:dev: temporary table ${process.env.COMMERCE_TABLE}`);
+  console.log(`  cleanup: aws dynamodb delete-table --table-name ${process.env.COMMERCE_TABLE}`);
+}
 
 /*
  * Serve the catalog from the last `bun run build` instead of the site bucket, so
@@ -105,6 +173,15 @@ S3Client.prototype.send = function send(command, ...rest) {
 };
 
 const { handler } = await import('../lambda/index.ts');
+const { handleWebhook } = await import('../lambda/webhook.ts');
+const { DynamoOrderRepository } = await import('../lambda/order-repository.ts');
+const { STRIPE_API_VERSION } = await import('../lambda/integration.ts');
+const { default: Stripe } = await import('stripe');
+const webhookStripe = new Stripe(fields.stripeApiKey, { apiVersion: STRIPE_API_VERSION });
+const webhookOrders = new DynamoOrderRepository(
+  process.env.COMMERCE_TABLE,
+  DynamoDBDocumentClient.from(dynamo),
+);
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -153,7 +230,7 @@ function serveStatic(url, response) {
   response.end(readFileSync(file));
 }
 
-createServer((request, response) => {
+server = createServer((request, response) => {
   const chunks = [];
   request.on('data', (chunk) => chunks.push(chunk));
   request.on('end', async () => {
@@ -162,25 +239,70 @@ createServer((request, response) => {
 
     if (!url.pathname.startsWith('/api/')) return serveStatic(url, response);
 
-    const result = await handler({
+    const lambdaEvent = {
       rawPath: url.pathname,
       rawQueryString: url.searchParams.toString(),
-      headers: request.headers,
+      headers: {
+        ...request.headers,
+        [process.env.ORIGIN_VERIFY_HEADER_NAME]: process.env.ORIGIN_VERIFY_HEADER_VALUE,
+      },
       requestContext: { http: { method: request.method } },
       body: body.length ? body.toString('utf8') : undefined,
       isBase64Encoded: false,
-    }).catch((error) => {
-      console.error(error);
-      return { statusCode: 500, body: JSON.stringify({ error: String(error) }) };
+    };
+    const invocation = url.pathname.replace(/\/$/, '') === '/api/stripe-webhook'
+      ? handleWebhook(lambdaEvent, {
+          originHeaderName: process.env.ORIGIN_VERIFY_HEADER_NAME,
+          originHeaderValue: process.env.ORIGIN_VERIFY_HEADER_VALUE,
+          orders: webhookOrders,
+          loadSecrets: async () => ({
+            stripeReadApiKey: fields.stripeApiKey,
+            stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+          }),
+          stripeFor: () => webhookStripe,
+        })
+      : handler(lambdaEvent);
+    const result = await invocation.catch((error) => {
+      console.error(`commerce:dev: request failed (${error instanceof Error ? error.name : 'UnknownError'})`);
+      return { statusCode: 500, body: JSON.stringify({ error: 'Local commerce request failed.' }) };
     });
 
     console.log(`${request.method} ${url.pathname} -> ${result.statusCode}`);
     response.writeHead(result.statusCode, result.headers ?? {});
     response.end(result.body ?? '');
   });
-}).listen(PORT, () => {
-  console.log(`commerce:dev serving dist/ and the store on http://localhost:${PORT}`);
-  if (!existsSync(path.join(repoRoot, 'dist', 'index.html'))) {
-    console.log('  note:      dist/ is empty — run `bun run build`');
-  }
 });
+
+await new Promise((resolve, reject) => {
+  const startupError = (error) => reject(error);
+  server.once('error', startupError);
+  server.listen(PORT, () => {
+    server.off('error', startupError);
+    resolve();
+  });
+});
+console.log(`commerce:dev serving dist/ and the store on http://localhost:${PORT}`);
+if (!existsSync(path.join(repoRoot, 'dist', 'index.html'))) {
+  console.log('  note:      dist/ is empty — run `bun run build`');
+}
+if (!process.env.STRIPE_WEBHOOK_SECRET) {
+  console.log('  webhook:   set STRIPE_WEBHOOK_SECRET from `stripe listen` before testing events');
+}
+server.once('error', (error) => stopServer({ error }));
+const termination = await stopping;
+if (termination.error) throw termination.error;
+} catch (error) {
+  console.error(`commerce:dev: stopped after ${error instanceof Error ? error.name : 'UnknownError'}`);
+  process.exitCode = 1;
+} finally {
+  if (server?.listening) await new Promise((resolve) => server.close(resolve));
+  if (tableLifecycle) {
+    try {
+      await tableLifecycle.stop();
+      console.log(`commerce:dev: deleted temporary table ${process.env.COMMERCE_TABLE}`);
+    } catch (error) {
+      console.error(`commerce:dev: could not delete ${process.env.COMMERCE_TABLE}: ${error instanceof Error ? error.name : 'UnknownError'}`);
+      process.exitCode = 1;
+    }
+  }
+}

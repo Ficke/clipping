@@ -1,6 +1,6 @@
 import { GetObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { catalogItem, originalKey, type DownloadCatalog } from '../src/lib/downloads';
+import { fulfillmentKey } from '../src/lib/downloads';
 import { readToken } from './tokens';
 
 /**
@@ -19,31 +19,28 @@ export interface DownloadDeps {
   s3: S3Client;
   originalsBucket: string;
   downloadTokenKey: string;
-  catalog: DownloadCatalog;
   now?: number;
 }
 
 export async function resolveDownload(
   token: string,
-  { s3, originalsBucket, downloadTokenKey, catalog, now = Date.now() }: DownloadDeps,
+  { s3, originalsBucket, downloadTokenKey, now = Date.now() }: DownloadDeps,
 ): Promise<string> {
   const entitlement = readToken(token, downloadTokenKey, now);
-  const item = catalogItem(catalog, entitlement.photoId);
-  if (!item) throw new Error(`Photo ID ${entitlement.photoId} is absent from the fulfillment catalog`);
 
   return getSignedUrl(
     s3,
     new GetObjectCommand({
       Bucket: originalsBucket,
-      Key: originalKey(item),
+      Key: fulfillmentKey(entitlement.assetRef),
       /* Save rather than open, under a name that says where it came from. */
-      ResponseContentDisposition: `attachment; filename="${downloadFilename(item)}"`,
+      ResponseContentDisposition: `attachment; filename="${downloadFilename(entitlement)}"`,
     }),
     { expiresIn: PRESIGN_SECONDS },
   );
 }
 
-export function downloadFilename({ photoId, file }: { photoId: string; file: string }): string {
-  const extension = file.match(/\.[A-Za-z0-9]+$/)?.[0].toLowerCase() ?? '.jpg';
+export function downloadFilename({ photoId, assetRef }: { photoId: string; assetRef: string }): string {
+  const extension = assetRef.match(/\.[a-z0-9]+$/)?.[0] ?? '.jpg';
   return `adam-ficke-${photoId}${extension}`;
 }

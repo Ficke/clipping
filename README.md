@@ -1,9 +1,10 @@
 # adamficke.com
 
 Photography portfolio. Astro 7 static site, built in AWS CodeBuild and served
-from private S3 buckets through CloudFront. No servers, no database, no admin
-surface. Bun runs installs and scripts; photo originals and generated media
-live in S3, while git holds album text and small photo manifests.
+from private S3 buckets through CloudFront. Commerce uses serverless APIs and a
+durable order table, with no long-running server or public admin surface. Bun
+runs installs and scripts; photo originals and generated media live in S3,
+while git holds album text and small photo manifests.
 
 ## First-time setup on a machine
 
@@ -219,13 +220,20 @@ obsolete by committed manifests and unused by every current album.
 
 ## Selling downloads
 
+The durable v3 commerce source is described below. It is not deployed yet; the
+[implementation ledger](docs/stripe-commerce-implementation.md) separates code,
+test, infrastructure, Stripe, and production state. The target design is in the
+[architecture plan](docs/stripe-commerce-architecture.md), and sandbox/recovery
+procedures are in the [operations runbook](docs/stripe-commerce-operations.md).
+
 Photographs can be sold as full-resolution downloads. Payment is Stripe-hosted
 Checkout with Managed Payments: Stripe/Link is merchant of record and handles
 covered sales tax, VAT, GST, fraud, disputes, transaction support, and payment
 emails. The file is the single full-resolution, metadata-minimized fulfillment
 export in the archive bucket, presigned for the buyer. It retains its embedded
 color profile and copyright information, but not GPS, camera, or editing
-metadata. There is still no database — a signed token carries the entitlement.
+metadata. A DynamoDB order snapshots the immutable fulfillment asset before
+Checkout is created; a signed seven-day token carries the issued entitlement.
 
 Every photograph shares one generic Stripe Product, **Full-resolution
 photograph download**. Its description carries the personal-license terms, and
@@ -284,7 +292,7 @@ bun run photos:site -- olympics DSCF7588.jpg --show
 # Reversibly removes/restores the public photo; hiding also delists it.
 
 bun run photos:store -- olympics DSCF7588.jpg --purge-catalog
-# Also removes fulfillment mapping. Requires confirmation because old purchases break.
+# Removes future catalog lookup; durable prior orders retain their immutable asset.
 
 bun run photos:store -- olympics DSCF7588.jpg --restore-catalog
 # Restores the private mapping; it does not relist the photo for sale.
@@ -317,97 +325,70 @@ Stripe Product and offer without changing the photograph's `photo_id`.
 ### The money path
 
 ```
-/store/     ─ <a href="/api/checkout?photo_id=…">   (a plain link: no JS, no CSP change)
-                 │
-CloudFront   /api/*  ──►  commerce Lambda ──►  Managed Payments Checkout ──► 303
-                 │
-buyer pays on checkout.stripe.com
-                 │
-                 └─ GET  /purchase/?session_id=…  → verify paid → mint token
-                                                        │
-                          GET /api/download?t=…  ──►  302 to a presigned S3 URL
+/store/ POST form -> CloudFront -> REST token gate -> Buyer Lambda -> Stripe Checkout
+                                                    |
+                                                    +-> pending DynamoDB order first
+
+Stripe signed webhook -> CloudFront -> REST token gate -> Webhook Lambda -> DynamoDB
+Browser return -> GET /api/fulfill -> current Stripe state + durable order
+Download token -> GET /api/download -> stateless 302 to immutable S3 asset
 ```
 
-Three GET routes, one Lambda, behind the existing distribution at `/api/*`.
-CloudFront signs every origin request with SigV4; the Function URL uses IAM auth
-and is not directly public.
+The native POST prevents crawlers and prefetchers from creating orders. The
+pending order is durable before Stripe sees the request, and browser return plus
+signed webhooks converge through the same entitlement operation. Refunds and
+disputes revoke future fulfillment; already-issued tokens remain valid until
+their seven-day expiry and redeem without a DynamoDB or catalog read.
 
-Entitlements are signed tokens rather than rows: a token names only the opaque
-photo ID and Checkout Session, expires in seven days, and is exchanged through
-the catalog for a *fresh* 15-minute presigned URL on every download. So a leaked
-link is useful for minutes while the buyer's own link keeps working, and the
-originals bucket stays private and un-fronted by CloudFront.
-
-The Checkout return URL is only an immediate handoff. It stops minting new
-entitlements shortly after the Checkout Session expires, so retaining browser
-history is not permanent access. Stripe/Link sends and owns the payment receipt.
-If a buyer
-loses an expired link, reissue one from a trusted machine:
+If a verified buyer loses a link, reissue one from a trusted machine:
 
 ```sh
 aws login
-bun run commerce:link -- cs_test_…   # sandbox; link points at localhost:8787
-bun run commerce:link -- cs_live_…   # production, later
+bun run commerce:link -- cs_live_…
 ```
 
-The command re-reads the purchase from Stripe, refuses unpaid, refunded, or
-disputed charges, and prints a fresh seven-day link. There is no public admin
-route, database, or custom delivery-email service.
+The command re-reads Stripe and the durable order, refuses unpaid, closed,
+revoked, refunded, or disputed purchases, and prints a fresh link. There is no
+public admin route, customer account, or custom delivery-email service.
 
 ### Deploying it
 
-The Lambda is bundled locally and shipped by Terraform, so it deploys on
-`terraform apply`, not on a push to `main`:
+Buyer, Webhook, and the origin Authorizer are bundled locally and shipped by
+Terraform, so they deploy through a separately reviewed infrastructure gate,
+not on a push to `main`:
 
 ```sh
-bun run lambda:build            # → dist-lambda/index.mjs (gitignored)
-cd infra && terraform apply
+bun run lambda:build
 ```
 
-`terraform apply` fails if the bundle is missing — build first.
-
-Terraform creates the parameter holding `{}`, on purpose: Stripe keys must never
-pass through Terraform state, and `ignore_changes` keeps it that way. Populate it
-out of band:
-
-```sh
-aws ssm put-parameter --overwrite \
-  --name /adamficke-com/commerce \
-  --type SecureString \
-  --value "$(jq -nc \
-      --arg k "rk_live_…" \
-      --arg p "prod_…" \
-      --arg d "$(openssl rand -hex 32)" \
-      '{stripeApiKey:$k, stripeProductId:$p, downloadTokenKey:$d}')"
-```
-
-Use a [restricted key](https://docs.stripe.com/keys/restricted-api-keys) (`rk_`),
-not a secret key, with read/write access to Checkout Sessions and read access to
-PaymentIntents and Charges for manual refund/dispute checks.
-Rotating `downloadTokenKey` voids every live download link.
+The first M5 infrastructure revision is deployed. Its correction is a
+three-apply rollout: add and verify the protected REST ingress, approve the
+CloudFront cutover separately, then disable the old public HTTP API endpoint
+only after CloudFront reports `Deployed`. The HTTP API configuration remains a
+dormant rollback rail. Follow the implementation ledger and operations runbook;
+quota changes, each Terraform apply, webhook registration, catalog activation,
+and storefront cutover are separate actions.
 
 **Where keys live.** In SSM Parameter Store as KMS-encrypted `SecureString`
-values, and nowhere else — not a file, not a shell export, not a Lambda
-environment variable. Two parameters:
+values, and nowhere else—never in Terraform state, a file, or Lambda environment
+variables. Three parameters keep Buyer and Webhook permissions separate:
 
 | Parameter | Holds | Read by |
 | --- | --- | --- |
-| `/adamficke-com/commerce` | live key, live Product ID, token key | the deployed Lambda |
-| `/adamficke-com/commerce-test` | test key, sandbox Product ID, token key | `bun run commerce:dev` |
+| `/adamficke-com/commerce` | live key, live Product ID, token key | Buyer Lambda |
+| `/adamficke-com/commerce-webhook` | live read key, current/previous signing secret | Webhook Lambda and live operator reads |
+| `/adamficke-com/commerce-test` | test key, sandbox Product ID, token key | local suite and test operators |
 
-Separate parameters rather than one, because the Lambda's IAM policy names only
-the first: local development cannot reach a live key, and the deployed function
-cannot accidentally run on test ones.
+Use least-privilege restricted keys. The live Buyer key needs Checkout Sessions
+write. The live Webhook/operator key needs read access to Checkout Sessions,
+Payment Intents, Charges and Refunds, Payment Disputes, and Events. The combined
+sandbox key needs those read permissions plus Checkout Sessions write, and must
+remain a test-mode key.
 
 `commerce:dev` refuses to start if the parameter it reads holds a live key, and
-`.githooks/pre-commit` refuses to commit either kind.
-
-Parameter Store rather than Secrets Manager because the two are equivalent for
-this — both KMS-encrypted under a KMS key, both IAM-gated, both audited in
-CloudTrail — while Secrets Manager charges $0.40 per secret per month for managed
-rotation, cross-region replication, and resource policies that go unused here.
-Rotation is pasting a new key from the Stripe dashboard. Standard-tier parameters
-are free up to 4 KB.
+test-mode operator commands refuse the production table. Rotating
+`downloadTokenKey` voids all outstanding download links; signing-secret rotation
+uses the five-minute cache overlap procedure in the operations runbook.
 
 ### Running the store locally
 
@@ -418,32 +399,23 @@ viewer-request function resolves them. It runs the real handler, so what passes
 here is the code that runs in production.
 
 ```sh
-aws login                             # keys come from Parameter Store
-bun run build                         # the store reads dist/, so build first
-bun run commerce:dev                  # → http://localhost:8787
+aws login
+bun run build
+bun run commerce:dev
 ```
 
-Nothing is for sale until a photo has both `forSale: true` and `price`, so use
-`photos:store`, rebuild, and browse to the store: real Stripe test
-Checkout, card `4242 4242 4242 4242`, any future expiry and CVC.
+The command reads the test parameter, creates a uniquely named and tagged
+temporary DynamoDB table, serves `dist/`, runs the real handlers, and deletes
+the table on shutdown. It prints the table name so test-mode reconciliation,
+restoration, and reissue can share the same orders from another terminal. An
+explicit `COMMERCE_TABLE` is never deleted, and a production-shaped table is
+refused.
 
-**No key is ever written to disk.** Local development reads
-`/adamficke-com/commerce-test` from Parameter Store through the same code path
-the deployed Lambda uses. Populate it once, with the same command as the
-production secret but with test keys:
-
-```sh
-aws ssm put-parameter --overwrite --name /adamficke-com/commerce-test --type SecureString --value …
-```
-
-Exactly one thing is faked: the catalog is read from
-`dist/downloads-catalog.json` instead of the site bucket, so putting a photo on
-sale locally needs no deploy. Everything else is real, which is why **redeeming
-a download link needs a working AWS session** — the file is genuinely presigned
-out of the archive bucket.
-
-`commerce:dev` refuses to start if the secret it reads holds an `rk_live`/`sk_live`
-key.
+The catalog alone is intercepted from `dist/downloads-catalog.json`; Stripe,
+DynamoDB, and S3 signing are real sandbox dependencies. Follow the complete
+[local acceptance procedure](docs/stripe-commerce-operations.md#local-sandbox-acceptance)
+for signed webhook forwarding, successful purchase, refund revocation, dispute
+restoration, reissue, and cleanup.
 
 Because `dist/` is served rather than watched, rerun `bun run build` after a
 change. For pure UI work with hot reload, `bun run dev` is still the right tool —
@@ -526,11 +498,14 @@ mutating published assets.
   frame-deny), and a viewer-request function for pretty URLs, legacy-URL
   redirects, and the canonical-host redirect. Deploys invalidate mutable site
   paths without evicting immutable `/_astro/*` or `/media/*` assets. `/api/*`
-  routes to the commerce Lambda, uncached and with no viewer-request function
-- **Commerce** (`lambda/`): one Node 22 Lambda on ARM behind `/api/*` — Stripe
-  Checkout and presigned downloads. Stateless: Stripe holds the
-  order, a signed token holds the entitlement, and `/downloads-catalog.json`
-  from the site build holds the fulfillment mapping, sale state, and prices.
+  routes uncached through an origin-authorized commerce REST API after its
+  staged cutover
+- **Commerce** (`lambda/`): separate Node 22 Buyer, Webhook, and origin
+  Authorizer Lambdas behind an explicit REST API. An exact CloudFront token is
+  checked before integration; reserved concurrency isolates Buyer and Webhook;
+  route throttles remain best-effort shaping. DynamoDB holds durable immutable
+  order snapshots; Stripe holds payment state; signed tokens redeem statelessly; and
+  `/downloads-catalog.json` holds current sale state and prices.
   See [Selling downloads](#selling-downloads)
 - **Analytics**: GA4 (`G-P2XYT72XL6`) for visitor and page-level reporting;
   privacy-reduced CloudFront standard logs in S3 for operational analysis.

@@ -89,12 +89,29 @@ import Layout from '../../layouts/Layout.astro';
     fail('This page needs the link from your checkout to find your order.');
   } else {
     try {
-      const response = await fetch(`/api/fulfill?session_id=${encodeURIComponent(sessionId)}`);
-      const body = await response.json();
+      const deadline = Date.now() + 30_000;
+      let response: Response;
+      let body: Record<string, any>;
+
+      while (true) {
+        response = await fetch(`/api/fulfill?session_id=${encodeURIComponent(sessionId)}`, {
+          cache: 'no-store',
+        });
+        body = await response.json();
+        if (response.status !== 202 && body.status !== 'pending') break;
+
+        const retrySeconds = Number.parseInt(response.headers.get('retry-after') ?? '2', 10);
+        const delayMs = Math.max(250, Math.min(Number.isFinite(retrySeconds) ? retrySeconds * 1000 : 2000, 5000));
+        if (Date.now() + delayMs > deadline) {
+          heading.textContent = 'Payment is clearing';
+          show('pending');
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
 
       if (response.status === 202 || body.status === 'pending') {
-        heading.textContent = 'Payment is clearing';
-        show('pending');
+        // The loop already rendered the durable pending state at its deadline.
       } else if (!response.ok) {
         fail(body.error ?? 'Your order could not be confirmed.');
       } else {

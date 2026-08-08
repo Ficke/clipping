@@ -45,3 +45,60 @@ variable "enable_custom_domain" {
   type        = bool
   default     = true
 }
+
+variable "commerce_origin_verify_header_name" {
+  description = "Header CloudFront injects so commerce handlers can detect direct execute-api requests"
+  type        = string
+  default     = "X-Commerce-Origin-Verify"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9-]+$", var.commerce_origin_verify_header_name))
+    error_message = "The origin-verification header name may contain only letters, digits, and hyphens."
+  }
+}
+
+variable "commerce_origin_verify_header_value" {
+  description = "Random origin-verification value generated out of band; this bypass-detection value is stored in Terraform state"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(var.commerce_origin_verify_header_value) >= 32
+    error_message = "The origin-verification value must contain at least 32 characters."
+  }
+}
+
+variable "commerce_gateway_token_header_name" {
+  description = "Header CloudFront injects for API Gateway pre-integration authorization"
+  type        = string
+  default     = "X-Commerce-Gateway-Token"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9-]+$", var.commerce_gateway_token_header_name))
+    error_message = "The commerce gateway token header name may contain only letters, digits, and hyphens."
+  }
+}
+
+variable "commerce_allow_legacy_get_checkout" {
+  description = "Accept the superseded GET /api/checkout while cached storefront HTML still carries buy links; a state-changing GET is prefetchable, so turn this off once the POST form has propagated"
+  type        = bool
+  default     = true
+}
+
+variable "commerce_rest_cutover_enabled" {
+  description = "Route CloudFront commerce traffic to the origin-authorized REST API after its additive verification gate"
+  type        = bool
+  default     = true
+}
+
+variable "commerce_reserved_concurrency_enabled" {
+  description = "Reserve Buyer/Webhook/Authorizer concurrency after the regional Lambda quota increase is granted"
+  type        = bool
+  default     = true
+}
+
+variable "commerce_http_api_dormant" {
+  description = "Disable the superseded HTTP API default endpoint after the REST cutover has fully propagated"
+  type        = bool
+  default     = true
+}

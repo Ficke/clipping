@@ -1,20 +1,28 @@
 import { describe, expect, test } from 'bun:test';
-import { parseSecrets, readEnv } from './config';
+import { parseSecrets, parseWebhookSecrets, readEnv, readWebhookEnv } from './config';
 
 const complete = {
   COMMERCE_SECRET_PARAM: '/adamficke-com/commerce',
+  COMMERCE_TABLE: 'adamficke-com-orders',
   ORIGINALS_BUCKET: 'adamficke-com-originals',
   SITE_BUCKET: 'adamficke-com-site',
   SITE_URL: 'https://adamficke.com',
+  COMMERCE_ALLOW_LEGACY_GET_CHECKOUT: 'true',
+  ORIGIN_VERIFY_HEADER_NAME: 'x-commerce-origin',
+  ORIGIN_VERIFY_HEADER_VALUE: 'random-origin-value',
 };
 
 describe('environment', () => {
   test('reads the wiring', () => {
     expect(readEnv(complete)).toEqual({
       secretParam: '/adamficke-com/commerce',
+      tableName: 'adamficke-com-orders',
       originalsBucket: 'adamficke-com-originals',
       siteBucket: 'adamficke-com-site',
       siteUrl: 'https://adamficke.com',
+      allowLegacyGetCheckout: true,
+      originHeaderName: 'x-commerce-origin',
+      originHeaderValue: 'random-origin-value',
     });
   });
 
@@ -23,12 +31,33 @@ describe('environment', () => {
       .toBe('https://adamficke.com');
   });
 
+  test('requires an explicit legacy GET compatibility setting', () => {
+    expect(readEnv({ ...complete, COMMERCE_ALLOW_LEGACY_GET_CHECKOUT: 'false' }).allowLegacyGetCheckout)
+      .toBe(false);
+    expect(() => readEnv({ ...complete, COMMERCE_ALLOW_LEGACY_GET_CHECKOUT: 'yes' }))
+      .toThrow(/COMMERCE_ALLOW_LEGACY_GET_CHECKOUT/);
+  });
+
   test('fails at cold start, by name, when wiring is missing', () => {
     for (const key of Object.keys(complete)) {
       const rest: Record<string, string> = { ...complete };
       delete rest[key];
       expect(() => readEnv(rest)).toThrow(new RegExp(key));
     }
+  });
+
+  test('reads the webhook-specific wiring without buyer bucket access', () => {
+    expect(readWebhookEnv({
+      COMMERCE_WEBHOOK_SECRET_PARAM: '/adamficke-com/commerce-webhook',
+      COMMERCE_TABLE: 'adamficke-com-orders',
+      ORIGIN_VERIFY_HEADER_NAME: 'x-commerce-origin',
+      ORIGIN_VERIFY_HEADER_VALUE: 'random-origin-value',
+    })).toEqual({
+      secretParam: '/adamficke-com/commerce-webhook',
+      tableName: 'adamficke-com-orders',
+      originHeaderName: 'x-commerce-origin',
+      originHeaderValue: 'random-origin-value',
+    });
   });
 });
 
@@ -72,5 +101,25 @@ describe('secrets', () => {
     expect(() => parseSecrets('rk_test_abc')).toThrow(/not valid JSON/);
     expect(() => parseSecrets('"rk_test_abc"')).toThrow(/not a JSON object/);
     expect(() => parseSecrets('null')).toThrow(/not a JSON object/);
+  });
+
+  test('parses webhook secrets with an optional overlap secret', () => {
+    expect(parseWebhookSecrets(JSON.stringify({
+      stripeReadApiKey: 'rk_test_read',
+      stripeWebhookSecret: 'whsec_current',
+      stripeWebhookSecretPrevious: 'whsec_previous',
+    }))).toEqual({
+      stripeReadApiKey: 'rk_test_read',
+      stripeWebhookSecret: 'whsec_current',
+      stripeWebhookSecretPrevious: 'whsec_previous',
+    });
+  });
+
+  test('rejects a blank webhook overlap secret', () => {
+    expect(() => parseWebhookSecrets(JSON.stringify({
+      stripeReadApiKey: 'rk_test_read',
+      stripeWebhookSecret: 'whsec_current',
+      stripeWebhookSecretPrevious: '',
+    }))).toThrow(/stripeWebhookSecretPrevious/);
   });
 });

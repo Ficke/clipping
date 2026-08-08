@@ -1,12 +1,13 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { isAssetRef, isPhotoId } from '../src/lib/downloads';
+import { isOrderId } from './orders';
 
 /**
  * Download entitlements, as self-contained signed tokens.
  *
- * The alternative — a row in a database keyed by Checkout Session — would make
- * this the only stateful part of the site. A token signed with a key only the
- * Lambda holds carries the same information and needs no store, which is why
- * there is still no database here.
+ * The durable order is consulted before this token is issued. Redemption does
+ * not consult that row again: a token signed with a key only the Lambda holds
+ * carries the immutable order and asset identity needed to presign the file.
  *
  * The token is not the S3 URL. It is exchanged for a freshly presigned URL on
  * every download, so the entitlement can outlive S3's presigning limits and the
@@ -14,10 +15,13 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
  */
 
 export interface Entitlement {
+  version: 1;
+  /** Local durable-order identity. */
+  orderId: string;
   /** The opaque photograph identity recorded on the Stripe payment. */
   photoId: string;
-  /** Originating Checkout Session, so a download can be traced to a payment. */
-  sessionId: string;
+  /** Immutable sanitized S3 object identity, with its file format. */
+  assetRef: string;
   /** Seconds since the epoch. */
   expiresAt: number;
 }
@@ -63,9 +67,14 @@ export function readToken(token: string, key: string, now = Date.now()): Entitle
     throw new InvalidToken('Download token payload is not JSON');
   }
   if (
-    typeof entitlement?.photoId !== 'string'
-    || typeof entitlement?.sessionId !== 'string'
-    || typeof entitlement?.expiresAt !== 'number'
+    entitlement?.version !== 1
+    || typeof entitlement?.orderId !== 'string'
+    || !isOrderId(entitlement.orderId)
+    || typeof entitlement?.photoId !== 'string'
+    || !isPhotoId(entitlement.photoId)
+    || typeof entitlement?.assetRef !== 'string'
+    || !isAssetRef(entitlement.assetRef)
+    || !Number.isInteger(entitlement?.expiresAt)
   ) {
     throw new InvalidToken('Download token payload is incomplete');
   }

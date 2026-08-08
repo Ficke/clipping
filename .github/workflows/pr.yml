@@ -28,5 +28,21 @@ jobs:
       - name: Test
         run: bun test
 
+      - name: Typecheck
+        run: bun run typecheck
+
       - name: Build
         run: bun run build
+
+      - name: Build commerce Lambdas
+        run: bun run lambda:build
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Check Terraform formatting
+        run: terraform -chdir=infra fmt -check
+
+      - name: Validate Terraform
+        run: |
+          terraform -chdir=infra init -backend=false
+          terraform -chdir=infra validate

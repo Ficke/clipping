@@ -1,10 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  assetRefFor,
   catalogItem,
   formatPrice,
   licenseTerms,
   licenseTier,
   isPhotoId,
+  fulfillmentKey,
+  isAssetRef,
   originalKey,
   photoIdFor,
   type DownloadCatalog,
@@ -58,6 +61,24 @@ describe('photo IDs', () => {
   test('the private catalog—not the ID—determines the S3 path', () => {
     expect(originalKey({ storyId: 'lost-coast', file: 'DSCF1250.jpg' }))
       .toBe('albums/lost-coast/DSCF1250.jpg');
+  });
+});
+
+describe('immutable fulfillment assets', () => {
+  test('derives a content-addressed reference with a normalized extension', () => {
+    const hash = 'ab'.repeat(32);
+    const assetRef = assetRefFor(hash, 'DSCF1250.JPEG');
+
+    expect(assetRef).toBe(`${hash}.jpeg`);
+    expect(isAssetRef(assetRef)).toBe(true);
+    expect(fulfillmentKey(assetRef)).toBe(`fulfillment/${hash}.jpeg`);
+  });
+
+  test('rejects invalid hashes, unsupported formats, and malformed references', () => {
+    expect(() => assetRefFor('short', 'photo.jpg')).toThrow(/invalid source hash/);
+    expect(() => assetRefFor('ab'.repeat(32), 'photo.tiff')).toThrow(/unsupported file extension/);
+    expect(() => fulfillmentKey('../photo.jpg')).toThrow(/invalid asset reference/);
+    expect(isAssetRef(`${'A'.repeat(64)}.jpg`)).toBe(false);
   });
 });
 
