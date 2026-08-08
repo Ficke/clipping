@@ -1,5 +1,7 @@
 import type Stripe from 'stripe';
 
+/* `warning_closed` is an early-warning inquiry that closed without a dispute.
+   It is not a win, but it blocks nothing, so `wonDispute` covers both. */
 const NON_BLOCKING_STATUSES = new Set<Stripe.Dispute.Status>(['won', 'warning_closed']);
 
 export function disputeFacts(

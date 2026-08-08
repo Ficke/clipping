@@ -51,7 +51,10 @@ try {
   });
   console.log(`Restored ${restored.orderId}; audit actor and reason recorded.`);
 } catch (error) {
-  fail(`Restoration refused (${error instanceof Error ? error.name : 'UnknownError'}).`);
+  /* An operator ran this; the name alone does not say which check refused. */
+  const name = error instanceof Error ? error.name : 'UnknownError';
+  const detail = error instanceof Error && error.message ? `: ${error.message}` : '';
+  fail(`Restoration refused (${name})${detail}`);
 }
 
 async function parameter(client, name) {
