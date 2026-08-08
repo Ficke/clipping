@@ -70,7 +70,7 @@ function runtime(envOverrides: Partial<Env> = {}) {
   } as unknown as Stripe;
   const env: Env = {
     secretParam: '/test', tableName: 'orders', originalsBucket: 'originals', siteBucket: 'site',
-    siteUrl: 'https://example.test', allowLegacyGetCheckout: true,
+    siteUrl: 'https://example.test',
     originHeaderName: 'x-commerce-origin', originHeaderValues: [ORIGIN], ...envOverrides,
   };
   const secrets: Secrets = {
@@ -134,37 +134,37 @@ describe('Buyer API', () => {
     expect(h.sequence).toEqual(['order', 'stripe']);
   });
 
-  test('keeps the legacy GET storefront working only while the cutover flag is enabled', async () => {
+  /*
+   * A checkout that a link can trigger is prefetchable and cross-site
+   * triggerable, and CloudFront adds the origin header to any browser request.
+   * Reject before loading a secret or writing an order.
+   */
+  test('refuses a GET checkout whatever payload shape it arrives in', async () => {
     forgetCatalog();
-    const legacy = runtime();
-    const request = event({
-      rawQueryString: `photo_id=${PHOTO_ID}`,
-      requestContext: { http: { method: 'GET' } },
-      headers: { 'x-commerce-origin': ORIGIN },
-      body: undefined,
-    });
-    expect(await handleBuyer(request, legacy.deps)).toMatchObject({ statusCode: 303 });
-    expect(legacy.sequence).toEqual(['order', 'stripe']);
+    const requests = [
+      event({
+        rawQueryString: `photo_id=${PHOTO_ID}`,
+        requestContext: { http: { method: 'GET' } },
+        headers: { 'x-commerce-origin': ORIGIN },
+        body: undefined,
+      }),
+      restEvent({
+        httpMethod: 'GET',
+        headers: { 'X-Commerce-Origin': ORIGIN },
+        body: undefined,
+        isBase64Encoded: false,
+        queryStringParameters: { photo_id: PHOTO_ID },
+      }),
+    ];
 
-    const disabled = runtime({ allowLegacyGetCheckout: false });
-    expect(await handleBuyer(request, disabled.deps)).toMatchObject({
-      statusCode: 405,
-      headers: { allow: 'POST' },
-    });
-    expect(disabled.secretLoads()).toBe(0);
-    expect(disabled.sequence).toEqual([]);
-
-    const duplicateRest = runtime();
-    const duplicateRequest = restEvent({
-      httpMethod: 'GET',
-      headers: { 'X-Commerce-Origin': ORIGIN },
-      body: undefined,
-      isBase64Encoded: false,
-      queryStringParameters: { photo_id: PHOTO_ID },
-      multiValueQueryStringParameters: { photo_id: [PHOTO_ID, PHOTO_ID] },
-    });
-    expect(await handleBuyer(duplicateRequest, duplicateRest.deps)).toMatchObject({ statusCode: 400 });
-    expect(duplicateRest.secretLoads()).toBe(0);
-    expect(duplicateRest.sequence).toEqual([]);
+    for (const request of requests) {
+      const h = runtime();
+      expect(await handleBuyer(request, h.deps)).toMatchObject({
+        statusCode: 405,
+        headers: { allow: 'POST' },
+      });
+      expect(h.secretLoads()).toBe(0);
+      expect(h.sequence).toEqual([]);
+    }
   });
 });

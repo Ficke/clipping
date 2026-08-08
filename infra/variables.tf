@@ -68,12 +68,6 @@ variable "commerce_origin_verify_active" {
   }
 }
 
-variable "commerce_allow_legacy_get_checkout" {
-  description = "Accept the superseded GET /api/checkout. The POST storefront has propagated and the old HTML has expired, so this stays off; a state-changing GET is prefetchable and cross-site triggerable"
-  type        = bool
-  default     = false
-}
-
 variable "commerce_rest_cutover_enabled" {
   description = "Route CloudFront commerce traffic to the origin-authorized REST API after its additive verification gate"
   type        = bool

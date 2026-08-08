@@ -7,7 +7,6 @@ const complete = {
   ORIGINALS_BUCKET: 'adamficke-com-originals',
   SITE_BUCKET: 'adamficke-com-site',
   SITE_URL: 'https://adamficke.com',
-  COMMERCE_ALLOW_LEGACY_GET_CHECKOUT: 'true',
   ORIGIN_VERIFY_HEADER_NAME: 'x-commerce-origin',
   ORIGIN_VERIFY_HEADER_VALUES: 'random-origin-value',
 };
@@ -20,7 +19,6 @@ describe('environment', () => {
       originalsBucket: 'adamficke-com-originals',
       siteBucket: 'adamficke-com-site',
       siteUrl: 'https://adamficke.com',
-      allowLegacyGetCheckout: true,
       originHeaderName: 'x-commerce-origin',
       originHeaderValues: ['random-origin-value'],
     });
@@ -40,13 +38,6 @@ describe('environment', () => {
       .toEqual(['current']);
     expect(() => readEnv({ ...complete, ORIGIN_VERIFY_HEADER_VALUES: ',' }))
       .toThrow(/ORIGIN_VERIFY_HEADER_VALUES/);
-  });
-
-  test('requires an explicit legacy GET compatibility setting', () => {
-    expect(readEnv({ ...complete, COMMERCE_ALLOW_LEGACY_GET_CHECKOUT: 'false' }).allowLegacyGetCheckout)
-      .toBe(false);
-    expect(() => readEnv({ ...complete, COMMERCE_ALLOW_LEGACY_GET_CHECKOUT: 'yes' }))
-      .toThrow(/COMMERCE_ALLOW_LEGACY_GET_CHECKOUT/);
   });
 
   test('fails at cold start, by name, when wiring is missing', () => {

@@ -22,7 +22,6 @@ export interface Env {
   originalsBucket: string;
   siteBucket: string;
   siteUrl: string;
-  allowLegacyGetCheckout: boolean;
   originHeaderName: string;
   originHeaderValues: string[];
 }
@@ -62,17 +61,12 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     if (!value) throw new Error(`Missing required environment variable ${name}`);
     return value;
   };
-  const legacyGet = required('COMMERCE_ALLOW_LEGACY_GET_CHECKOUT');
-  if (legacyGet !== 'true' && legacyGet !== 'false') {
-    throw new Error('COMMERCE_ALLOW_LEGACY_GET_CHECKOUT must be true or false');
-  }
   return {
     secretParam: required('COMMERCE_SECRET_PARAM'),
     tableName: required('COMMERCE_TABLE'),
     originalsBucket: required('ORIGINALS_BUCKET'),
     siteBucket: required('SITE_BUCKET'),
     siteUrl: required('SITE_URL').replace(/\/$/, ''),
-    allowLegacyGetCheckout: legacyGet === 'true',
     originHeaderName: required('ORIGIN_VERIFY_HEADER_NAME'),
     originHeaderValues: originValues(required('ORIGIN_VERIFY_HEADER_VALUES')),
   };
