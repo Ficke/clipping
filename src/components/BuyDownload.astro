@@ -13,16 +13,22 @@ const { offers } = Astro.props;
   {
     offers.map((offer) => {
       const price = formatPrice(offer.priceCents);
+      const displayPrice = `${price} USD`;
+      /* Alt first: this names the button for a screen reader, and a caption is
+         display prose rather than a description of the photograph. */
+      const photoLabel = offer.photo.alt?.trim()
+        || offer.photo.caption?.trim()
+        || offer.fallbackLabel;
       return (
         <div class="offer">
-          <span class="license">{offer.tier.summary}</span>
+          <a class="license" href="/license/">{offer.tier.summary}</a>
           <span class="price">{price}</span>
           <form action="/api/checkout" method="post">
             <input type="hidden" name="photo_id" value={offer.photoId} />
             <button
               class="buy"
               type="submit"
-              aria-label={`Buy ${offer.tier.summary.toLowerCase()} download for ${price}`}
+              aria-label={`Buy download of ${photoLabel} for ${displayPrice}`}
             >
               Buy download
             </button>
@@ -56,10 +62,19 @@ const { offers } = Astro.props;
     color: var(--muted);
     font-size: 0.76rem;
     line-height: 1.25;
+    text-decoration-line: underline;
+    text-decoration-color: var(--hairline);
+    text-underline-offset: 0.18em;
+  }
+
+  .license:hover,
+  .license:focus-visible {
+    color: var(--accent);
+    text-decoration-color: currentColor;
   }
 
   .price {
-    font-size: 0.88rem;
+    font-size: 0.95rem;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;

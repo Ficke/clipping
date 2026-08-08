@@ -8,8 +8,9 @@ import Layout from '../layouts/Layout.astro';
   section="about"
 >
   <section class="about rise">
-    <p class="kicker">About</p>
-    <h1>Adam Ficke</h1>
+    <header class="page-heading">
+      <h1>About</h1>
+    </header>
     <div class="about-copy">
       <p>Photographs from trips and around town. Based in SF.</p>
     </div>
@@ -21,18 +22,11 @@ import Layout from '../layouts/Layout.astro';
 
 <style>
   .about {
-    margin-top: clamp(1rem, 4vw, 3rem);
     max-width: var(--measure);
   }
 
-  .about h1 {
-    font-size: clamp(2rem, 6vw, 3.4rem);
-    margin: 0.3rem 0 1.2rem;
-  }
-
   .about-copy {
-    display: grid;
-    gap: 0.8rem;
+    margin-top: clamp(1.5rem, 4vw, 3rem);
   }
 
   .about-links {

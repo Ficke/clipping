@@ -1,4 +1,4 @@
-import { allPhotosOf, getAlbums, photosOf, slugOf, type Album, type AlbumPhoto } from './albums';
+import { allPhotosOf, getAlbums, slugOf, type Album, type AlbumPhoto } from './albums';
 import {
   DOWNLOAD_PRODUCTS,
   assetRefFor,
@@ -13,29 +13,39 @@ export interface SellablePhoto {
   tier: LicenseTier;
   priceCents: number;
   photoId: string;
-  /** Where the buy link points. Same-origin, so the strict CSP is unaffected. */
-  href: string;
+  /** Used when a photo carries neither alt text nor a caption. */
+  fallbackLabel: string;
 }
 
-export function offersFor(album: Album, photo: AlbumPhoto): SellablePhoto[] {
+export function offersFor(
+  album: Album,
+  photo: AlbumPhoto,
+  fallbackLabel: string,
+): SellablePhoto[] {
   if (!photo.forSale || photo.priceCents === undefined) return [];
   const priceCents = photo.priceCents;
-  return DOWNLOAD_PRODUCTS.map((tier) => {
-    const photoId = photoIdFor(photo.image.sourceHash);
-    return {
-      photo,
-      tier,
-      priceCents,
-      photoId,
-      href: `/api/checkout?photo_id=${encodeURIComponent(photoId)}`,
-    };
-  });
+  return DOWNLOAD_PRODUCTS.map((tier) => ({
+    photo,
+    tier,
+    priceCents,
+    photoId: photoIdFor(photo.image.sourceHash),
+    fallbackLabel,
+  }));
+}
+
+/**
+ * Counted over `allPhotosOf`, so the storefront and the catalog agree. Indexing
+ * the public subset instead would number a photo differently in the button and
+ * in the order record.
+ */
+function positionLabel(album: Album, index: number, total: number): string {
+  return `${album.data.title}, photograph ${index + 1} of ${total}`;
 }
 
 function labelFor(album: Album, photo: AlbumPhoto, index: number, total: number): string {
   return photo.caption?.trim()
     ?? photo.alt?.trim()
-    ?? `${album.data.title}, photograph ${index + 1} of ${total}`;
+    ?? positionLabel(album, index, total);
 }
 
 /** A photo not flagged for sale cannot be bought, whatever ID a request carries. */
@@ -87,8 +97,12 @@ export async function albumsWithDownloads(): Promise<AlbumDownloads[]> {
   const albums = await getAlbums();
   const results: AlbumDownloads[] = [];
   for (const album of albums) {
-    const photos = (await photosOf(album))
-      .map((photo) => ({ photo, offers: offersFor(album, photo) }))
+    const all = await allPhotosOf(album);
+    const photos = all
+      .map((photo, index) => ({
+        photo,
+        offers: photo.hidden ? [] : offersFor(album, photo, positionLabel(album, index, all.length)),
+      }))
       .filter(({ offers }) => offers.length > 0);
     if (photos.length) results.push({ album, slug: slugOf(album), photos });
   }
