@@ -15,8 +15,10 @@ import {
   type FunctionUrlEvent,
   type FunctionUrlResult,
 } from './http';
+import { INTEGRATION_IDENTIFIER } from './integration';
 import { errorCategory, hashIdentifier, logOutcome } from './logging';
 import { OrderNotFound, type OrderRepository } from './order-repository';
+import { InvalidOrderTransition } from './orders';
 
 export const WEBHOOK_EVENT_TYPES = [
   'checkout.session.completed',
@@ -129,10 +131,7 @@ export async function applyStripeEvent(
         sourceEventId: event.id,
       });
     } catch (error) {
-      // A dispute can arrive before Checkout completion. Revocation is
-      // terminal for automation, so acknowledge the later paid event instead
-      // of asking Stripe to retry an impossible entitlement forever.
-      if (!(error instanceof EntitlementUnavailable && error.orderState === 'revoked')) throw error;
+      if (!reachedTerminalState(error)) throw error;
     }
     return;
   }
@@ -146,14 +145,19 @@ export async function applyStripeEvent(
     const order = await orders.get(orderId);
     if (!order) throw new OrderNotFound('Referenced order does not exist');
     validateSession(session, order);
-    if (session.payment_status === 'paid') {
-      await ensureEntitlement(session.id, { stripe, orders, sourceEventId: event.id });
-      return;
+    try {
+      if (session.payment_status === 'paid') {
+        await ensureEntitlement(session.id, { stripe, orders, sourceEventId: event.id });
+        return;
+      }
+      await orders.close(orderId, event.type.endsWith('expired') ? 'expired' : 'failed', event.id);
+    } catch (error) {
+      if (!reachedTerminalState(error)) throw error;
     }
-    await orders.close(orderId, event.type.endsWith('expired') ? 'expired' : 'failed', event.id);
     return;
   }
 
+  /* Any refund revokes: refunds here are Stripe-imposed, not a business flow. */
   const object = event.data.object as Stripe.Charge | Stripe.Dispute;
   const disputeCharge = event.type === 'charge.refunded' ? undefined : (object as Stripe.Dispute).charge;
   if (event.type !== 'charge.refunded' && !disputeCharge) throw new Error('Dispute has no Charge');
@@ -170,7 +174,7 @@ export async function applyStripeEvent(
   const order = await orders.get(orderId);
   if (!order) throw new OrderNotFound('Referenced order does not exist');
   if (order.livemode !== event.livemode
-    || intent.metadata.integration !== 'photo-download-qkzvhrmw'
+    || intent.metadata.integration !== INTEGRATION_IDENTIFIER
     || intent.metadata.photo_id !== order.photoId) {
     throw new Error('Charge event integrity mismatch');
   }
@@ -185,4 +189,18 @@ export async function applyStripeEvent(
     stripePaymentIntentId: intent.id,
     stripeChargeId: charge.id,
   });
+}
+
+/**
+ * A dispute can arrive before Checkout completion, and Stripe redelivers
+ * events, so an order may already have moved past what an event implies.
+ * Entitlement and revocation are terminal for automation: acknowledge the
+ * event rather than asking Stripe to retry an impossible transition forever.
+ */
+function reachedTerminalState(error: unknown): boolean {
+  if (error instanceof EntitlementUnavailable) return error.orderState === 'revoked';
+  if (error instanceof InvalidOrderTransition) {
+    return error.from === 'entitled' || error.from === 'revoked';
+  }
+  return false;
 }

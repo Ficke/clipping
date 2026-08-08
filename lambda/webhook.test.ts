@@ -4,7 +4,13 @@ import Stripe from 'stripe';
 import type { WebhookSecrets } from './config';
 import type { HttpApiEvent, RestApiEvent } from './http';
 import type { OrderRepository } from './order-repository';
-import { createPendingOrder, type EntitlementAudit, type Order, type RevocationAudit } from './orders';
+import {
+  InvalidOrderTransition,
+  createPendingOrder,
+  type EntitlementAudit,
+  type Order,
+  type RevocationAudit,
+} from './orders';
 import { applyStripeEvent, handleWebhook, verifyEvent } from './webhook';
 
 const CURRENT = 'whsec_current_test';
@@ -209,5 +215,64 @@ describe('Stripe webhook', () => {
 
     await expect(applyStripeEvent(stripeEvent(), stripe, orders)).resolves.toBeUndefined();
     expect(entitlementWrites).toBe(0);
+  });
+
+  /*
+   * Stripe redelivers, so an expiry or failure can land after the order has
+   * already reached a terminal state. `close` refuses that transition; the
+   * handler must acknowledge rather than 500 into an endless retry.
+   */
+  test.each([
+    ['checkout.session.expired', 'revoked'],
+    ['checkout.session.async_payment_failed', 'entitled'],
+  ] as const)('acknowledges %s for an order already %s', async (type, state) => {
+    const order = { ...pending(), state };
+    let closes = 0;
+    const orders = {
+      get: async () => order,
+      close: async () => {
+        closes += 1;
+        throw new InvalidOrderTransition(ORDER_ID, state, 'closed');
+      },
+      entitle: async () => { throw new Error('must not entitle'); },
+    } as unknown as OrderRepository;
+    const stripe = {
+      checkout: { sessions: { retrieve: async () => ({
+        id: SESSION_ID,
+        client_reference_id: ORDER_ID,
+        mode: 'payment',
+        metadata: { integration: 'photo-download-qkzvhrmw', order_id: ORDER_ID, photo_id: order.photoId },
+        livemode: false,
+        payment_status: 'unpaid',
+        currency: 'usd',
+        amount_subtotal: 4_000,
+      }) } },
+    } as unknown as Stripe;
+
+    await expect(applyStripeEvent(stripeEvent(type), stripe, orders)).resolves.toBeUndefined();
+    expect(closes).toBe(1);
+  });
+
+  test('still surfaces a close failure the order state does not explain', async () => {
+    const order = { ...pending(), state: 'pending' as const };
+    const orders = {
+      get: async () => order,
+      close: async () => { throw new Error('DynamoDB unavailable'); },
+    } as unknown as OrderRepository;
+    const stripe = {
+      checkout: { sessions: { retrieve: async () => ({
+        id: SESSION_ID,
+        client_reference_id: ORDER_ID,
+        mode: 'payment',
+        metadata: { integration: 'photo-download-qkzvhrmw', order_id: ORDER_ID, photo_id: order.photoId },
+        livemode: false,
+        payment_status: 'unpaid',
+        currency: 'usd',
+        amount_subtotal: 4_000,
+      }) } },
+    } as unknown as Stripe;
+
+    await expect(applyStripeEvent(stripeEvent('checkout.session.expired'), stripe, orders))
+      .rejects.toThrow('DynamoDB unavailable');
   });
 });
