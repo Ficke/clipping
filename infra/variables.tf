@@ -82,17 +82,17 @@ variable "commerce_gateway_token_header_name" {
 variable "commerce_rest_cutover_enabled" {
   description = "Route CloudFront commerce traffic to the origin-authorized REST API after its additive verification gate"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "commerce_reserved_concurrency_enabled" {
   description = "Reserve Buyer/Webhook/Authorizer concurrency after the regional Lambda quota increase is granted"
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "commerce_http_api_dormant" {
   description = "Disable the superseded HTTP API default endpoint after the REST cutover has fully propagated"
   type        = bool
-  default     = false
+  default     = true
 }

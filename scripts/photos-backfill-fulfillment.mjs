@@ -63,10 +63,10 @@ function backfillAlbum(albumDirectory) {
     return;
   }
   const { lines } = splitFrontmatter(contents, albumDirectory);
-  const retained = readPhotosBlock(lines).entries.filter((entry) => entry.catalog !== false);
+  const sellable = readPhotosBlock(lines).entries.filter((entry) => entry.forSale === true);
   const manifestByFile = new Map((manifest.photos ?? []).map((photo) => [photo.file, photo]));
 
-  for (const entry of retained) {
+  for (const entry of sellable) {
     const photo = manifestByFile.get(entry.file);
     const label = `${storyId}/${entry.file}`;
     if (!photo || !/^[a-f0-9]{64}$/.test(photo.sourceHash ?? '')) {

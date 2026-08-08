@@ -670,6 +670,11 @@ resource "aws_api_gateway_gateway_response" "commerce_rest" {
 
   rest_api_id   = aws_api_gateway_rest_api.commerce_rest.id
   response_type = each.value
+  # API Gateway restores this service-default template when it is omitted.
+  # Model it explicitly so refreshes do not produce a perpetual removal plan.
+  response_templates = {
+    "application/json" = "{\"message\":$context.error.messageString}"
+  }
   response_parameters = {
     "gatewayresponse.header.Cache-Control" = "'no-store, private'"
   }

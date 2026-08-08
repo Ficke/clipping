@@ -32,6 +32,9 @@ function fixture() {
     'location: "Nowhere"',
     'photos:',
     '  - file: retained.jpg',
+    '    forSale: true',
+    '    price: 40',
+    '  - file: catalog-only.jpg',
     '  - file: purged.jpg',
     '    catalog: false',
     '---',
@@ -43,6 +46,7 @@ function fixture() {
     album: 'backfill-test',
     photos: [
       { file: 'retained.jpg', sourceHash },
+      { file: 'catalog-only.jpg', sourceHash },
       { file: 'purged.jpg', sourceHash: '0'.repeat(64) },
     ],
   }));
@@ -77,6 +81,7 @@ exit 99
     expect(result.stdout).toContain('0 uploaded, 0 reused, 1 would upload, 0 failed');
     const calls = readFileSync(log, 'utf8');
     expect(calls).not.toContain('put-object');
+    expect(calls).not.toContain('catalog-only.jpg');
     expect(calls).not.toContain('purged.jpg');
   });
 

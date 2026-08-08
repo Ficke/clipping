@@ -11,11 +11,11 @@ separately.
 | Milestone | Code | Tests | Deployed | Notes |
 | --- | --- | --- | --- | --- |
 | M0 — contracts and gates | complete | green | no | Ledger, SDKs, split bundles, and CI gates implemented |
-| M1 — immutable assets/catalog | code complete | green | no | Backfill command implemented; AWS backfill not run |
+| M1 — immutable assets/catalog | code complete | 151 green; sellable dry run passed | 6 sellable assets | Exactly six checksum-verified objects remain; nonsellable surplus was removed |
 | M2 — order state machine | complete | green | no | Domain and DynamoDB repository complete |
 | M3 — buyer/webhook APIs | complete | green | no | Durable Buyer, signed Webhook, stateless redemption complete |
 | M4 — recovery/local suite | complete | sandbox green | no | Full local sandbox drill passed; event-ordering and won-dispute findings fixed |
-| M5 — AWS infrastructure | revision-9 Gate A complete | 151 green; negative ingress passed | Gate A | Protected REST is deployed but unrouted; authorized malformed probe, zero drift, Gate D, and Gates B-C remain |
+| M5 — AWS infrastructure | complete | 151 green; ingress and isolation passed | Gates A-D | CloudFront routes commerce to protected REST with 5/3/2 reservations; old HTTP endpoint is disabled |
 | M6 — storefront cutover | in progress | build green | no | POST form/polling implemented; v3 activation and browser checks pending |
 | M7 — live drill/cleanup | pending | pending | no | Production-only work remains manual |
 
@@ -77,62 +77,44 @@ immutable fulfillment object was uploaded or backfilled.
 
 ## Session handoff
 
-- Current task: finish Gate A verification, then prepare Gate D's exact
-  reservation-only plan. Gate A is deployed: REST API `w98yd824p3`, its
-  exact-token Authorizer and stage, the regional API Gateway logging
-  role/account setting, five protected methods, compatible Buyer/Webhook
-  bundles, required logs, and seven consolidated alarms exist. CloudFront still
-  routes commerce to HTTP API `ugmazzudce`, whose default endpoint remains
-  enabled.
-- Rollout defaults are deliberately safe:
-  `commerce_reserved_concurrency_enabled = false`,
-  `commerce_rest_cutover_enabled = false`, and
-  `commerce_http_api_dormant = false`. Gate D now adds only 5/3/2 reservations;
-  Gate B then changes CloudFront only; and Gate C disables the old HTTP API
-  endpoint only after CloudFront reports `Deployed`. M6 deploys the POST
-  storefront after Gate C. Rollback re-enables HTTP before repointing CloudFront.
-  Never combine those operations.
+- Current task: commit and publish the reviewed branch, then perform the M6 POST
+  storefront deployment through the main-only release workflow. The six
+  sellable assets and infrastructure Gates A-D are deployed, verified, and
+  drift-free.
+- Rollout defaults are `commerce_reserved_concurrency_enabled = true`,
+  `commerce_rest_cutover_enabled = true`, and
+  `commerce_http_api_dormant = true`. M6 deploys the POST storefront and catalog
+  containing immutable `assetRef` values. Rollback re-enables HTTP before
+  repointing CloudFront. Never combine those operations.
 - Last verified commands: `bun test` (151 pass), `bun run typecheck`, Astro
   build, Buyer/Webhook/Authorizer bundles, all commerce and fulfillment operator
   bundles, `terraform fmt -check`, `terraform validate`, and `git diff --check`.
-- Gate A evidence: five direct requests without the gateway token and five with
-  a same-length incorrect token all returned `401`. REST access logs showed no
-  integration status, and CloudWatch reported no Authorizer, Buyer, or Webhook
-  invocation. The authorized malformed checkout probe and final zero-drift
-  check were deliberately stopped and remain pending. The order table remains
-  empty. The SNS email subscription is `PendingConfirmation`; it must be
-  confirmed before Gate B.
-- Production state: CloudFront is `Deployed` against HTTP API `ugmazzudce`; the
-  HTTP default endpoint is enabled. REST API `w98yd824p3` is deployed and
-  protected but unrouted. API Gateway's regional `cloudWatchRoleArn` points to
-  the dedicated logging role. Buyer, Webhook, and Authorizer are active and
-  unreserved; the account limit and unreserved pool are both 1000. Seven commerce
-  alarms exist; the new REST `5xx` alarm may initially report
-  `INSUFFICIENT_DATA`. No site/storefront activation, webhook registration or
-  secret population, Stripe request, fulfillment upload/backfill, or live
-  purchase occurred.
+- Gate A evidence: missing and same-length incorrect tokens returned `401`
+  without Lambda invocation. One authorized empty-form checkout returned a
+  non-cacheable `400`, invoked Authorizer and Buyer exactly once, did not invoke
+  Webhook, and wrote no order. The final Terraform plan had zero drift. The SNS
+  email subscription was replaced after its old link expired and is confirmed.
+- Production state: CloudFront is `Deployed` against REST API `w98yd824p3` at
+  `/commerce`, with both protected origin headers. Public checkout and fulfill
+  validation probes return the expected non-cacheable `400`; direct REST
+  requests with missing or incorrect gateway tokens return `401` before Lambda.
+  HTTP API `ugmazzudce` remains managed but its default endpoint is disabled.
+  Buyer, Webhook, and Authorizer reserve
+  5/3/2 concurrency, leaving 990 unreserved from the 1000 account limit. Seven
+  commerce alarms exist, the SNS email subscription is confirmed, and the order
+  table is empty. No site/storefront activation, webhook registration or secret
+  population, Stripe request, fulfillment upload/backfill, or live purchase
+  occurred.
 - The separately approved Lambda concurrency request targets 1001 because AWS
   rejects self-service requests below its published default of 1000. Request
   `c2417d3b4a624900a758f086935b5722QepcbJ1M` remains `CASE_OPENED`, but AWS has
-  already raised the applied quota to 1000. Gate D is now the next separate
-  reservation-only exact plan and will leave 990 unreserved. Do not generate a
-  replacement origin value, save a plan to persistent storage, or recompute a
-  plan during apply.
-- Next session order: re-read all three commerce documents; authenticate and
-  confirm a clean worktree; refresh quota/subscription/API/CloudFront/Lambda/
-  alarm/table state; recover the existing origin value only into memory; run
-  one correctly authorized empty-form checkout probe and verify a non-cacheable
-  `400`, exactly one Authorizer/Buyer invocation, no Webhook invocation, and no
-  DynamoDB write; run a zero-drift check; confirm the SNS subscription; then
-  change only the committed default of
-  `commerce_reserved_concurrency_enabled` to `true`, rebuild/validate, and
-  prepare Gate D exclusively as a reviewed RAM-backed saved plan. Gate D must
-  change only Buyer/Webhook/Authorizer reservations to 5/3/2 and stop for
-  exact-plan approval. After Gate D applies and verifies 990 unreserved, prepare
-  Gate B with reservations enabled and HTTP dormancy false. Gate B must
-  retain the original handler-verification header, change only the CloudFront
-  commerce origin/path and derived gateway-token header, and stop for exact-plan
-  approval.
+  already raised the applied quota to 1000. The applied 5/3/2 reservations leave
+  990 unreserved. Do not generate a replacement origin value, save a plan to
+  persistent storage, or recompute a plan during apply.
+- Next session order: publish and review this branch; merge it through the
+  main-only release workflow; monitor the M6 CodeBuild deployment; verify the
+  propagated POST storefront and browser checkout; then disable legacy GET
+  checkout and prepare production webhook registration/live drill separately.
 - Known compatibility rails: keep enriched catalog v2, legacy GET checkout, the
   dormant HTTP API configuration, and the legacy Function URL runtime until
   their documented M6/M7 gates.
@@ -367,3 +349,63 @@ customer data.
   5/3/2/990. CloudFront remains on the enabled HTTP API. No Stripe, webhook
   registration, site deployment, or fulfillment upload/backfill action
   occurred.
+- 2026-08-08: Gates A, D, and B completed. The authorized empty-form Gate A
+  probe returned a non-cacheable `400` with exactly one Authorizer and Buyer
+  invocation, no Webhook invocation, and no order write; the source now models
+  API Gateway's restored default response templates and plans with zero drift.
+  The expired SNS subscription was replaced and the new email subscription is
+  confirmed. The exact Gate D apply changed only Buyer/Webhook/Authorizer
+  reservations to 5/3/2, leaving 990 unreserved; five concurrent Buyer probes
+  and one malformed Webhook probe all returned `400` without an order write.
+  The exact Gate B apply materially changed only CloudFront, which is `Deployed`
+  against REST API `w98yd824p3` at `/commerce` with both protected headers.
+  Public validation probes returned expected non-cacheable `400` responses and
+  direct missing/incorrect-token requests returned `401` with no Lambda
+  invocation. Final Terraform plans after Gates D and B had zero drift. All 151
+  tests, typecheck, site and Lambda builds, Terraform validation, and diff checks
+  passed. HTTP API `ugmazzudce` remains enabled for Gate C; no site deployment,
+  Stripe/webhook registration, fulfillment upload/backfill, or live purchase
+  occurred.
+- 2026-08-08: The approved Gate C RAM-backed plan hash was rechecked and applied
+  without regeneration. It changed only HTTP API `ugmazzudce` by setting
+  `disable_execute_api_endpoint = true`: zero additions, one in-place change,
+  and zero deletions. Five direct requests returned `404` with zero Buyer and
+  Webhook invocation delta. Public CloudFront checkout and fulfillment probes
+  continued to return their expected non-cacheable `400` responses through the
+  protected REST API, and the order table remained empty. The final plan
+  reported no changes. The RAM volume was ejected, the in-memory origin value
+  was cleared, and no secret-bearing shell remains. Gates A-D are complete; no
+  site deployment, fulfillment upload/backfill, webhook registration, Stripe
+  request, or live purchase occurred.
+- 2026-08-08: The production fulfillment backfill dry run completed against
+  `adamficke-com-originals`: zero uploaded, zero reused, 71 would upload, and
+  zero failed. It downloaded source objects only to its automatically removed
+  temporary directory and made no S3 changes. The real immutable upload remains
+  a separate approval boundary before the M6 storefront deployment.
+- 2026-08-08: The approved production fulfillment backfill was interrupted in
+  the UI while the user clarified why separate fulfillment objects are
+  required, but its detached process continued to completion. All 71
+  conditional, checksum-verified objects were created under `fulfillment/`,
+  totaling 323,537,723 bytes. Existing `albums/` objects were not modified or
+  deleted, and no storefront, catalog, webhook, Stripe, or order change
+  occurred.
+- 2026-08-08: Publishing and backfill tooling was narrowed from every retained
+  catalog photo to only explicit `forSale: true` photos. The complete suite
+  remained green at 151 tests and typecheck passed. The revised production dry
+  run selected exactly six sellable objects, verified all six as reusable, and
+  reported zero missing and zero failed. Those six total 77,776,354 bytes; the
+  other 65 completed copies total 245,761,369 redundant bytes and remain pending
+  an explicit cleanup decision.
+- 2026-08-08: After explicit approval, the exact 65 nonsellable fulfillment
+  object versions were permanently deleted with zero errors. Final inventory is
+  six current versions totaling 77,776,354 bytes and zero delete markers. A
+  production dry run checksum-verified all six as reusable with zero missing and
+  zero failed. Existing album originals were not modified or deleted.
+- 2026-08-08: M6's local release build passed. Generated store HTML contains six
+  native POST checkout forms and no checkout links; the purchase page is
+  present; and the compatible additive-v2 private catalog contains six sellable
+  entries with six valid immutable asset references and no malformed sellable
+  entry. Photo media cleanup reported nothing obsolete. The production site
+  synchronization was previewed only; no site object or CloudFront invalidation
+  changed. Normal deployment remains restricted to a main-branch CodeBuild
+  release after the branch is committed, reviewed, and merged.

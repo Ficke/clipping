@@ -102,8 +102,8 @@ try {
         runAsync('aws', syncArgs),
         runAsync('aws', metadataArgs),
       ]);
-      const retainedCount = catalogFiles(albumDirectory, images).length;
-      console.log(`Would verify and publish ${retainedCount} immutable fulfillment asset${retainedCount === 1 ? '' : 's'}`);
+      const sellableCount = sellableFiles(albumDirectory).length;
+      console.log(`Would verify and publish ${sellableCount} immutable fulfillment asset${sellableCount === 1 ? '' : 's'}`);
       console.log(`Would build immutable media and write ${path.relative(repoRoot, albumDirectory)}/photos.json`);
       continue;
     }
@@ -140,10 +140,11 @@ try {
 }
 
 async function publishFulfillmentAssets(stagedDirectory, albumDirectory, images) {
-  const retained = catalogFiles(albumDirectory, images);
+  const sellable = sellableFiles(albumDirectory);
   let uploaded = 0;
   let reused = 0;
-  for (const file of retained) {
+  for (const file of sellable) {
+    if (!images.includes(file)) fail(`Sellable photo is missing from the staged album: ${file}`);
     const stagedFile = path.join(stagedDirectory, file);
     const result = ensureFulfillmentAsset({
       bucket: fulfillmentBucket,
@@ -156,12 +157,12 @@ async function publishFulfillmentAssets(stagedDirectory, albumDirectory, images)
   console.log(`Fulfillment assets: ${uploaded} uploaded, ${reused} verified and reused`);
 }
 
-function catalogFiles(albumDirectory, images) {
+function sellableFiles(albumDirectory) {
   const indexPath = path.join(albumDirectory, 'index.md');
-  if (!existsSync(indexPath)) return images;
+  if (!existsSync(indexPath)) return [];
   const { lines } = splitFrontmatter(readFileSync(indexPath, 'utf8'), albumDirectory);
   const { entries } = readPhotosBlock(lines);
-  return entries.filter((entry) => entry.catalog !== false).map((entry) => entry.file);
+  return entries.filter((entry) => entry.forSale === true).map((entry) => entry.file);
 }
 
 function stageAlbum(album, albumDirectory) {

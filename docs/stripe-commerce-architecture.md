@@ -1,7 +1,52 @@
 # Stripe commerce architecture migration
 
-Status: in-progress pre-launch migration. Gate A is deployed; Gates B-D and the
-storefront cutover remain pending.
+Status: in-progress pre-launch migration. Infrastructure Gates A-D and the six
+sellable fulfillment assets are deployed and verified; the storefront cutover
+remains pending.
+
+## Revision 12 — 2026-08-08
+
+Fulfillment materialization is limited to photos explicitly marked
+`forSale: true`, not every retained catalog photo and never every purchase. Each
+sellable photo has one checksum-verified, content-addressed object reused by all
+orders. The six current sellable objects are present and total 77,776,354 bytes.
+
+The first production backfill process continued after its UI command was
+interrupted and created all 71 catalog objects. After explicit approval, the 65
+nonsellable versions totaling 245,761,369 redundant bytes were permanently
+removed. Exactly six current fulfillment versions remain with no delete markers.
+Existing album originals were not modified. Publishing and backfill tooling now
+select only sellable photos, preventing this surplus for future albums.
+
+## Revision 11 — 2026-08-08
+
+Gate C applied the single intended in-place change: HTTP API `ugmazzudce` now
+has its default execute-api endpoint disabled. Direct requests return the API
+Gateway rejection without Buyer or Webhook invocation, while CloudFront remains
+healthy against protected REST API `w98yd824p3`. The final Terraform plan had
+zero drift, and the order table remained empty.
+
+Infrastructure Gates A-D are therefore complete. The next launch boundary is
+the immutable fulfillment-asset backfill followed by the separately reviewed M6
+POST storefront and catalog deployment. Production webhook registration and the
+controlled live purchase/download drill remain later, separate actions.
+
+## Revision 10 — 2026-08-08
+
+Gate A verification completed with an authorized empty-form request, no order
+write, and a zero-drift plan. The replacement SNS email subscription is
+confirmed. Gate D applied only the Buyer 5, Webhook 3, and Authorizer 2 reserved
+concurrency settings, leaving 990 unreserved from the applied account quota of
+1000, and its concurrent isolation probes passed.
+
+Gate B then moved the deployed CloudFront commerce behavior to protected REST
+API `w98yd824p3` at `/commerce`, retaining the origin-verification header and
+adding the derived gateway-token header. Public validation requests reach REST,
+while missing and incorrect direct-origin gateway tokens are rejected before
+Lambda invocation. HTTP API `ugmazzudce` remains enabled as the rollback rail.
+Gate C is the next separate exact-plan boundary and may only disable that HTTP
+API default endpoint after approval; the M6 storefront deployment remains a
+later action.
 
 ## Revision 9 — 2026-08-08
 
