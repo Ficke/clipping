@@ -24,14 +24,14 @@ export interface Env {
   siteUrl: string;
   allowLegacyGetCheckout: boolean;
   originHeaderName: string;
-  originHeaderValue: string;
+  originHeaderValues: string[];
 }
 
 export interface WebhookEnv {
   secretParam: string;
   tableName: string;
   originHeaderName: string;
-  originHeaderValue: string;
+  originHeaderValues: string[];
 }
 
 export interface Secrets {
@@ -74,7 +74,7 @@ export function readEnv(source: NodeJS.ProcessEnv = process.env): Env {
     siteUrl: required('SITE_URL').replace(/\/$/, ''),
     allowLegacyGetCheckout: legacyGet === 'true',
     originHeaderName: required('ORIGIN_VERIFY_HEADER_NAME'),
-    originHeaderValue: required('ORIGIN_VERIFY_HEADER_VALUE'),
+    originHeaderValues: originValues(required('ORIGIN_VERIFY_HEADER_VALUES')),
   };
 }
 
@@ -88,8 +88,15 @@ export function readWebhookEnv(source: NodeJS.ProcessEnv = process.env): Webhook
     secretParam: required('COMMERCE_WEBHOOK_SECRET_PARAM'),
     tableName: required('COMMERCE_TABLE'),
     originHeaderName: required('ORIGIN_VERIFY_HEADER_NAME'),
-    originHeaderValue: required('ORIGIN_VERIFY_HEADER_VALUE'),
+    originHeaderValues: originValues(required('ORIGIN_VERIFY_HEADER_VALUES')),
   };
+}
+
+/** Comma-separated because two values are live across a rotation. */
+function originValues(raw: string): string[] {
+  const values = raw.split(',').map((value) => value.trim()).filter(Boolean);
+  if (!values.length) throw new Error('ORIGIN_VERIFY_HEADER_VALUES has no values');
+  return values;
 }
 
 const SECRET_FIELDS = [

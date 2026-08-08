@@ -102,7 +102,7 @@ describe('Stripe webhook', () => {
     const orders = { get: async () => { reads += 1; } } as unknown as OrderRepository;
     const base = signedRequest(stripeEvent());
     const runtime = {
-      originHeaderName: 'x-commerce-origin', originHeaderValue: ORIGIN, orders,
+      originHeaderName: 'x-commerce-origin', originHeaderValues: [ORIGIN], orders,
       loadSecrets: async () => secrets(), stripeFor: () => stripe,
     };
     expect((await handleWebhook({ ...base, headers: { ...base.headers, 'x-commerce-origin': undefined } }, runtime)).statusCode)
@@ -131,7 +131,7 @@ describe('Stripe webhook', () => {
       amount_total: 4_000, payment_intent: 'pi_test_1',
     }) as unknown as Stripe.Checkout.Session;
     const response = await handleWebhook(signedRequest(stripeEvent()), {
-      originHeaderName: 'x-commerce-origin', originHeaderValue: ORIGIN, orders,
+      originHeaderName: 'x-commerce-origin', originHeaderValues: [ORIGIN], orders,
       loadSecrets: async () => secrets(), stripeFor: () => stripe,
     });
     expect(response.statusCode).toBe(200);
@@ -157,7 +157,7 @@ describe('Stripe webhook', () => {
     }) as unknown as Stripe.Checkout.Session;
 
     const response = await handleWebhook(restSignedRequest(stripeEvent()), {
-      originHeaderName: 'x-commerce-origin', originHeaderValue: ORIGIN, orders,
+      originHeaderName: 'x-commerce-origin', originHeaderValues: [ORIGIN], orders,
       loadSecrets: async () => secrets(), stripeFor: () => stripe,
     });
     expect(response.statusCode).toBe(200);

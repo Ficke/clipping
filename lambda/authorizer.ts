@@ -19,16 +19,27 @@ interface AuthorizerPolicy {
 }
 
 /**
- * API Gateway validates the CloudFront token against an exact regular
+ * API Gateway validates the CloudFront header against an exact regular
  * expression before this function runs. Repeat the comparison here so a
  * configuration drift cannot turn the authorizer into an unconditional allow.
- * Never log the submitted or expected token.
+ * Never log the submitted or expected value.
+ *
+ * Two values are accepted so a rotation in flight is never rejected while the
+ * distribution propagates. Every candidate is compared, without an early exit.
  */
 export async function handler(event: TokenAuthorizerEvent): Promise<AuthorizerPolicy> {
-  const expected = process.env.COMMERCE_GATEWAY_TOKEN ?? '';
-  const allowed = Boolean(expected)
-    && Boolean(event.authorizationToken)
-    && timingSafeTextEqual(event.authorizationToken!, expected);
+  const accepted = (process.env.ORIGIN_VERIFY_HEADER_VALUES ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const submitted = event.authorizationToken ?? '';
+
+  let allowed = false;
+  if (submitted) {
+    for (const expected of accepted) {
+      if (expected.length === submitted.length && timingSafeTextEqual(submitted, expected)) allowed = true;
+    }
+  }
 
   return policy(allowed ? 'Allow' : 'Deny', event.methodArn);
 }

@@ -71,7 +71,7 @@ function runtime(envOverrides: Partial<Env> = {}) {
   const env: Env = {
     secretParam: '/test', tableName: 'orders', originalsBucket: 'originals', siteBucket: 'site',
     siteUrl: 'https://example.test', allowLegacyGetCheckout: true,
-    originHeaderName: 'x-commerce-origin', originHeaderValue: ORIGIN, ...envOverrides,
+    originHeaderName: 'x-commerce-origin', originHeaderValues: [ORIGIN], ...envOverrides,
   };
   const secrets: Secrets = {
     stripeApiKey: 'rk_test_key', stripeProductId: 'prod_download', downloadTokenKey: 'k'.repeat(64),

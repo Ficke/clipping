@@ -17,7 +17,7 @@ let stripeClient: { key: string; client: Stripe } | undefined;
 export async function handler(event: FunctionUrlEvent): Promise<FunctionUrlResult> {
   return handleWebhook(event, {
     originHeaderName: env.originHeaderName,
-    originHeaderValue: env.originHeaderValue,
+    originHeaderValues: env.originHeaderValues,
     orders,
     loadSecrets: () => loadWebhookSecrets(env.secretParam),
     stripeFor(secrets: WebhookSecrets) {

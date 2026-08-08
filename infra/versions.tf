@@ -12,6 +12,12 @@ terraform {
       source  = "hashicorp/archive"
       version = ">= 2.4"
     }
+
+    # Owns the origin-verification secrets, so no operator ever handles them.
+    random = {
+      source  = "hashicorp/random"
+      version = ">= 3.5"
+    }
   }
 }
 

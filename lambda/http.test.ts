@@ -90,8 +90,11 @@ describe('request parsing', () => {
 
   test('checks the CloudFront origin header without depending on casing', () => {
     const event = request({ headers: { 'X-Commerce-Origin': 'expected-value' } });
-    expect(hasExpectedOrigin(event, 'x-commerce-origin', 'expected-value')).toBe(true);
-    expect(hasExpectedOrigin(event, 'x-commerce-origin', 'different-value')).toBe(false);
+    expect(hasExpectedOrigin(event, 'x-commerce-origin', ['expected-value'])).toBe(true);
+    expect(hasExpectedOrigin(event, 'x-commerce-origin', ['different-value'])).toBe(false);
+    /* Either live value passes, so a rotation mid-propagation is never rejected. */
+    expect(hasExpectedOrigin(event, 'x-commerce-origin', ['rotated-in', 'expected-value'])).toBe(true);
+    expect(hasExpectedOrigin(event, 'x-commerce-origin', [])).toBe(false);
   });
 });
 

@@ -35,7 +35,7 @@ const MAX_WEBHOOK_BYTES = 256 * 1024;
 
 export interface WebhookRuntime {
   originHeaderName: string;
-  originHeaderValue: string;
+  originHeaderValues: readonly string[];
   orders: OrderRepository;
   loadSecrets(): Promise<WebhookSecrets>;
   stripeFor(secrets: WebhookSecrets): Stripe;
@@ -48,7 +48,7 @@ export async function handleWebhook(
   const requestPath = path(request).replace(/\/$/, '');
   const route = `${method(request)} ${requestPath}`;
   const requestId = eventRequestId(request);
-  if (!hasExpectedOrigin(request, deps.originHeaderName, deps.originHeaderValue)) {
+  if (!hasExpectedOrigin(request, deps.originHeaderName, deps.originHeaderValues)) {
     logOutcome('warn', { outcome: 'origin_rejected', route, requestId, status: 403 });
     return problem(403, 'Forbidden.');
   }

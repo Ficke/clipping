@@ -94,14 +94,24 @@ function isHttpApiEvent(event: FunctionUrlEvent): event is HttpApiEvent {
   return 'rawPath' in event;
 }
 
+/**
+ * Any accepted value passes. Two are live at once so rotating the header does
+ * not depend on CloudFront finishing propagation before the handlers change.
+ * Every candidate is compared, without an early exit, so the work does not
+ * reveal which one matched.
+ */
 export function hasExpectedOrigin(
   event: FunctionUrlEvent,
   name: string,
-  expected: string,
+  accepted: readonly string[],
 ): boolean {
   const actual = header(event, name);
-  if (!actual || actual.length !== expected.length) return false;
-  return timingSafeTextEqual(actual, expected);
+  if (!actual) return false;
+  let matched = false;
+  for (const expected of accepted) {
+    if (expected.length === actual.length && timingSafeTextEqual(actual, expected)) matched = true;
+  }
+  return matched;
 }
 
 function timingSafeTextEqual(left: string, right: string): boolean {
