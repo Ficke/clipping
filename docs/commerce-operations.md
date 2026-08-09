@@ -1,65 +1,86 @@
-# Commerce operations
+# Store operations
 
-Runbooks for the store described in [`commerce.md`](commerce.md). Everything
-here touches live money or live infrastructure; read the safety rules first.
+These procedures are for testing purchases and recovering live orders. The
+commands can read production payment data, so run them from a trusted machine
+with an authenticated AWS session.
 
-## Safety rules
+Treat Checkout Session IDs and download links like passwords. Do not paste them,
+Stripe keys, webhook secrets, request bodies, or customer details into tickets,
+chat, commits, logs, or operational notes.
 
-- Treat Checkout Session IDs and download links as bearer capabilities. Do not
-  paste them into tickets, chat, commits, logs, or operational notes.
-- Never copy API keys or webhook signing secrets into this repository. The
-  commands read KMS-encrypted SSM parameters; `commerce:dev` accepts only a test
-  Stripe key.
-- Always pass `--mode test|live` to reconciliation and restoration. Test-mode
-  commands require `COMMERCE_TABLE` and refuse a production-shaped table name.
-- Start recovery with a dry run. Restoration is the only operator command that
-  can move a revoked order back to `entitled`, and Stripe must show a won
-  dispute, no refund, and no current dispute.
-- `commerce:dev` creates a tagged, uniquely named DynamoDB table and deletes it
-  on `SIGINT`, `SIGTERM`, startup failure, or normal shutdown. If the process is
-  killed ungracefully, use the printed cleanup command after verifying the exact
-  table name.
-- Terraform owns the origin-verification secrets. Never supply, print, or paste
-  one; there is no variable to set and nothing to recover before a plan.
+## Recovering orders after an alarm
 
-## Rotating the origin-verification secret
+Reconciliation compares open orders in DynamoDB with their current state in
+Stripe. It can recover a Checkout Session that was created but not attached to
+its order, complete a paid order, close a failed order, or revoke a refunded or
+disputed order.
 
-Both generated values are always accepted, so rotation never drops a request:
+Begin with a dry run:
 
-1. Set `commerce_origin_verify_active = "next"` and apply. CloudFront starts
-   sending the other value; the one it stops sending is still honored, so
-   propagation is invisible.
-2. Once the distribution has deployed, regenerate the retired value:
-   `terraform -chdir=infra apply -replace=random_password.commerce_origin_verify`.
+```sh
+aws login
+bun run commerce:reconcile -- --mode live --dry-run
+```
 
-Reverse the names to rotate back. No secret is ever typed, printed, or stored
-outside Terraform state.
+The command checks every open order unless you add `--order ord_…`. Review the
+result before running it again without `--dry-run`.
 
-## Local sandbox acceptance
+- `REPAIRED` describes a change that was made, or that would be made in a dry
+  run.
+- `UNCHANGED` means the records already agree or the payment is still pending.
+- `REVIEW` means automation stopped because a won dispute needs a person to
+  approve restoration.
+- `FAILED` means a dependency or integrity check failed. Investigate the error
+  before running the command again.
 
-This exercise uses a real Stripe sandbox, the real Buyer and Webhook handlers,
-and a temporary DynamoDB table in AWS. It never uses a live Stripe key and does
-not deploy the site or Terraform. Run it before the storefront cutover and
-after changes to checkout, fulfillment, webhooks, recovery, or token handling.
+## Sending a new download link
 
-Prerequisites:
+Only accept a request that comes as a reply from the address that received the
+Stripe or Link receipt. Reconcile that order before creating another link:
 
-- An authenticated AWS session that can read
-  `/adamficke-com/commerce-test`, create/delete the temporary table, and presign
-  the originals bucket.
-- A valid test secret containing `stripeApiKey`, `stripeProductId`, and
-  `downloadTokenKey`. Its restricted Stripe test key needs Checkout Sessions
-  write plus Payment Intents, Charges and Refunds, Payment Disputes, and Events
-  read permissions. Keep this key in test mode.
-- Stripe CLI authenticated to the same sandbox.
-- A catalog v3 build with at least one sellable photo. Following the final S3
-  redirect also requires that photo's `photos/<photoId>` master.
+```sh
+aws login
+bun run commerce:reconcile -- --mode live --order ord_… --dry-run
+bun run commerce:link -- cs_live_…
+```
 
-### Start the environment
+The link command checks Stripe and the stored order again. It refuses purchases
+that are unpaid, closed, refunded, or disputed. Send the printed link directly
+to the verified buyer and do not save it elsewhere.
 
-Terminal 1 forwards only the events the handler accepts. The signing secret is
-the one printed by [`stripe listen`](https://docs.stripe.com/stripe-cli/use-cli),
-not a Dashboard endpoint secret:
+## Restoring a won dispute
+
+An open, lost, or refunded dispute must remain revoked. If Stripe marks a
+dispute as won, reconcile the order first. A `REVIEW` result means it is eligible
+for a manual decision.
+
+After checking the payment and dispute in Stripe, restore the order with:
+
+```sh
+bun run commerce:restore -- ord_… \
+  --actor operator-name \
+  --reason 'Stripe dispute won and reviewed on YYYY-MM-DD' \
+  --mode live
+```
+
+The command retrieves the Stripe records again before making the change. It
+also records who restored the order, when they did it, and why. Finish with a
+single-order dry reconciliation. Only send a new link if the buyer asked for
+one.
+
+## Testing a purchase locally
+
+The local checkout test uses the real Buyer and Webhook handlers with Stripe
+test mode and a temporary DynamoDB table. It reads test credentials from
+`/adamficke-com/commerce-test` in SSM and uses the private photo bucket for the
+final download. It does not deploy the site or Terraform, and it refuses live
+Stripe keys.
+
+You will need AWS access to the test parameter and originals bucket, Stripe CLI
+access to the same test account, and at least one priced photo in the local site
+build.
+
+In the first terminal, ask Stripe CLI to forward the events the webhook handles:
 
 ```sh
 stripe login
@@ -68,8 +89,8 @@ stripe listen \
   --forward-to http://localhost:8787/api/stripe-webhook
 ```
 
-Copy the displayed `whsec_…` into a hidden prompt in terminal 2; do not put the
-value in shell history:
+Stripe CLI prints a signing secret beginning with `whsec_`. Enter it through a
+hidden prompt in a second terminal so it does not end up in shell history:
 
 ```sh
 read -s STRIPE_WEBHOOK_SECRET
@@ -79,174 +100,61 @@ bun run build
 bun run commerce:dev
 ```
 
-The server prints its temporary table name. In terminal 3, set only that
-non-secret name so operator commands address the same sandbox orders:
+`commerce:dev` prints the name of its temporary DynamoDB table. Export that
+non-secret name in a third terminal before running test-mode operator commands:
 
 ```sh
 export COMMERCE_TABLE=adamficke-com-commerce-dev-…
 ```
 
-Open `http://localhost:8787/store/`. Before paying, verify the generated page
-uses a `POST` form and has no purchase link, and verify invalid requests stay
-local:
+Open `http://localhost:8787/store/` and buy an item with Stripe's test card
+`4242 4242 4242 4242`. Use any future expiration date and any three-digit CVC.
+The webhook should return `200`, and the purchase page should eventually show a
+working download.
+
+Finish by checking that Stripe and DynamoDB agree:
 
 ```sh
-curl -i http://localhost:8787/api/checkout
-curl -i -X POST -H 'content-type: application/x-www-form-urlencoded' \
-  --data 'photo_id=bad&price=1' http://localhost:8787/api/checkout
+bun run commerce:reconcile -- --mode test --dry-run
 ```
 
-Both requests must be rejected without a Stripe request in the CLI stream.
+The order should be reported as unchanged. Stop `commerce:dev` with Ctrl-C and
+confirm that it deletes the temporary table. If the process was killed before
+cleanup, use the exact deletion command it printed at startup after checking the
+table name.
 
-### Successful purchase and reissue
+## Rotating the API verification value
 
-1. Buy a sandbox item using card `4242 4242 4242 4242`, any future expiry,
-   three-digit CVC, and postal code.
-2. Confirm the browser reaches `/purchase/`, polling converges to the download
-   view, and `stripe listen` reports `200` for `checkout.session.completed`.
-3. Confirm the Session is `mode=payment`, has a populated PaymentIntent, and its
-   integration currency amount matches the catalog. Inspect this in the sandbox
-   Dashboard without copying the Session object into logs.
-4. Follow the download. A `302` to S3 proves token redemption; the final object
-   succeeds only while the photograph's current master exists.
-5. Run `bun run commerce:link -- cs_test_…` from terminal 3. Confirm it prints a
-   fresh seven-day link, then clear the terminal if it is recorded.
-6. Run `bun run commerce:reconcile -- --mode test --dry-run`. The paid order
-   should be `UNCHANGED already_entitled`, and the command must exit zero.
+Terraform creates and stores both API verification values. CloudFront sends one
+while the API accepts both, which allows either value to be replaced without
+interrupting purchases. Never print or copy either value.
 
-### Refund revocation
-
-Use a separate successful sandbox purchase. Simulate the external fact by
-refunding that sandbox payment in the Dashboard; this is a test of inbound
-revocation, not a production refund procedure.
-
-1. Confirm `charge.refunded` reaches the local webhook with `200`.
-2. Confirm browser-return fulfillment is unavailable and
-   `commerce:link` refuses a new link.
-3. Confirm a token issued before the refund still redirects until its seven-day
-   expiry; redemption is intentionally stateless.
-4. Run test-mode reconciliation. It should leave the already-revoked order
-   unchanged and exit zero.
-
-### Dispute and restoration
-
-Use another sandbox purchase with Stripe's documented
-[dispute test card](https://docs.stripe.com/testing?testing-method=card-numbers)
-`4000 0000 0000 0259`.
-
-1. Confirm `charge.dispute.created` is accepted and future fulfillment/reissue
-   is refused.
-2. In the sandbox Dashboard, submit `winning_evidence` as the dispute's
-   additional information. Wait for `charge.dispute.closed`.
-3. Run reconciliation. The order must report
-   `REVIEW won_dispute_requires_manual_restore`; reconciliation never restores
-   automatically.
-4. After reviewing the Stripe facts, restore explicitly:
-
-   ```sh
-   bun run commerce:restore -- ord_… \
-     --actor operator-name \
-     --reason 'sandbox won-dispute drill' \
-     --mode test
-   ```
-
-5. Confirm `commerce:link` can issue a fresh link again and the DynamoDB order
-   records `restoredAt`, `restoredBy`, and `restorationReason`.
-
-Stop `commerce:dev` with Ctrl-C and verify that it prints deletion of the exact
-temporary table. Unset `STRIPE_WEBHOOK_SECRET` and `COMMERCE_TABLE` afterward.
-Record only pass/fail evidence in operational notes—never IDs, tokens,
-signatures, presigned URLs, or customer data.
-
-## Reconciliation after an alarm
-
-Reconciliation scans every non-closed order using current Stripe facts. It is
-manual by design; there is no scheduled sweep.
+Move traffic to `next`, wait for the CloudFront deployment to finish, then
+replace the retired `current` value:
 
 ```sh
-aws login
-bun run commerce:reconcile -- --mode live --dry-run
-bun run commerce:reconcile -- --mode live
+terraform -chdir=infra apply -var='commerce_origin_verify_active=next'
+terraform -chdir=infra apply \
+  -var='commerce_origin_verify_active=next' \
+  -replace=random_password.commerce_origin_verify
 ```
 
-Use `--order ord_…` for a single known order. Outcomes mean:
+To rotate in the other direction, set `commerce_origin_verify_active` to
+`current`, wait for CloudFront, and replace
+`random_password.commerce_origin_verify_next`. Keep the variable set to
+`current` on the replacement apply as well.
 
-- `REPAIRED`: the command attached a recovered Session, entitled a paid order,
-  closed an expired/failed order, or revoked a refunded/disputed order.
-- `UNCHANGED`: current durable and Stripe state already agree, payment remains
-  legitimately pending, or no matching Session has appeared yet.
-- `REVIEW`: automation stopped at a won dispute; follow the restoration
-  procedure below.
-- `FAILED`: a dependency or integrity check failed. The command continues the
-  scan but exits non-zero. Do not bypass the check; investigate and rerun.
+## Rotating the Stripe webhook secret
 
-A dry run performs every Stripe read and integrity check but no DynamoDB write.
-Its `REPAIRED` lines describe writes the non-dry command would make.
+Start the rotation in Stripe with an overlap period so the old secret remains
+valid. Update `/adamficke-com/commerce-webhook` with the new secret in
+`stripeWebhookSecret` and the old one in `stripeWebhookSecretPrevious`. Preserve
+the existing `stripeReadApiKey`.
 
-## Manual download reissue
+Wait at least five minutes for the Lambda secret cache, then send a signed test
+event and confirm that it produces the expected order update. After Stripe ends
+the overlap period, remove `stripeWebhookSecretPrevious`, wait another five
+minutes, and test again.
 
-Accept a reissue request only through a reply to the Stripe/Link receipt. From a
-trusted machine:
-
-```sh
-aws login
-bun run commerce:reconcile -- --mode live --order ord_… --dry-run
-bun run commerce:link -- cs_live_…
-```
-
-The command re-reads current payment, Charge, refund, dispute, and durable-order
-state. It refuses unpaid, closed, revoked, refunded, or disputed purchases. Send
-the resulting link only to the verified receipt correspondent; do not store it.
-
-## Dispute review and restoration
-
-Every opened or closed dispute revokes the order. Review the dispute in Stripe.
-A lost, open, or refunded order stays revoked. After Stripe records the dispute
-as won and reconciliation reports `REVIEW`, run:
-
-```sh
-bun run commerce:restore -- ord_… \
-  --actor operator-name \
-  --reason 'Stripe dispute won; reviewed YYYY-MM-DD' \
-  --mode live
-```
-
-The command independently retrieves the Session, expanded Charge, and disputes.
-It conditionally restores only a currently revoked order and writes the audit
-fields. Then run a single-order dry reconciliation and, only if requested,
-manual reissue.
-
-## Link escalation response
-
-Keep the support address in Stripe business settings monitored. Respond to Link
-escalations within 48 hours. The store does not offer voluntary refunds, but
-Stripe or Link can impose one; never suppress or reverse that event locally.
-After any externally imposed refund or dispute, verify webhook delivery and run
-single-order reconciliation if the durable state did not change.
-
-## Webhook signing-secret rotation
-
-The webhook parameter contains `stripeReadApiKey`, `stripeWebhookSecret`, and an
-optional `stripeWebhookSecretPrevious`. Rotation uses the overlap field because
-Lambda caches successful SSM reads for up to five minutes.
-
-1. Begin a signing-secret roll in Stripe with an overlap period. Keep the old
-   secret active.
-2. Update `/adamficke-com/commerce-webhook` so the new secret is current and the
-   old secret is `stripeWebhookSecretPrevious`. Preserve the read key. Use a
-   hidden shell variable or an approved secret-management UI; never put literal
-   values in the command history.
-3. Wait at least five minutes, then deliver a signed test event through the
-   production endpoint and confirm a `2xx` plus the expected durable write.
-4. After Stripe's overlap ends, remove `stripeWebhookSecretPrevious`, wait five
-   minutes, and verify another signed event.
-5. If delivery fails, restore the last known-good two-secret document while the
-   old Stripe secret remains active. Run reconciliation for any affected order.
-
-Never record either signing secret, an event body, or a full event identifier in
-operational notes.
-
-The live Buyer key needs only Checkout Sessions write. The separate live
-Webhook/operator read key needs Checkout Sessions, Payment Intents, Charges and
-Refunds, Payment Disputes, and Events read permissions. Do not add write access
-to the read key.
+If delivery fails, restore the last working two-secret document while the old
+secret is still active. Reconcile any order whose webhook may have been missed.

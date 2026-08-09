@@ -1,139 +1,99 @@
-# Photo architecture
+# Photo publishing
 
-Photograph masters are private, are not committed to Git, and are also the
-files delivered to buyers. Those constraints separate media generation from the
-static Astro build.
+The full-resolution photos do not live in Git. They are private files in S3 and
+are also the files delivered to buyers. The repository only keeps the writing
+for each album and a generated manifest describing the public image sizes.
 
-## Storage model
+This separation keeps the original files private and makes ordinary site builds
+fast. Changing a caption or page layout does not require downloading and
+processing the photo archive again.
 
-Each photograph has a permanent `photoId` and two private objects:
+## What belongs in the repository
 
-```text
-photos/<photoId>            metadata-minimized full-resolution master
-metadata/<photoId>.json     archived capture metadata, including GPS
+Every album has two files:
+
+- `index.md` contains the title, photo order, captions, alternative text,
+  prices, and removal history. This is the file you edit.
+- `photos.json` records dimensions and URLs for the generated images. The photo
+  tools create it. Commit it with the album, but do not edit it by hand.
+
+Both files live in `content/albums/<folder>/`. The site can build entirely from
+these committed files.
+
+S3 keeps the private master at `photos/<photoId>`. Metadata removed from that
+master, including location and camera details, is archived separately at
+`metadata/<photoId>.json`. Public images use content-based URLs, so changing the
+master creates new URLs while an unchanged photo continues to use its existing
+ones.
+
+## Publishing an album
+
+Always preview a publish first:
+
+```sh
+bun run photos:push -- <album-folder> --dry-run
 ```
 
-The media build reads these objects and writes immutable, content-addressed
-derivatives. The site build reads committed manifests and never downloads a
-master. This separation keeps full-resolution files private, avoids reprocessing
-the archive for text-only changes, and preserves long-lived derivative URLs.
+If the preview is correct, run the command again without `--dry-run`. For a new
+album, the command asks for its title, dates, location, cover, and store prices.
+It assigns permanent IDs to the album and its photos, removes private metadata
+from the uploaded masters, and builds the public image sizes.
 
-## Sources of truth
+The command offers two ways to build the images. CodeBuild creates them from the
+committed revision and is the default. A local build is faster while you are
+working and uses the files in your current checkout. Choose `local` at the
+prompt, or pass `--local`:
 
-Each layer owns a different kind of state:
-
-| Layer | Location | Authoritative for |
-| --- | --- | --- |
-| Authored content | `content/albums/<dir>/index.md` | Album fields, display order, captions, alt text, price, and lifecycle dates |
-| Media output | `content/albums/<dir>/photos.json` | Source hash, dimensions, shot metadata, and derivative URLs |
-| Media input | S3 `manifests/<storyId>/source.json` | Photo IDs and filenames included in a media build |
-| Private bytes | S3 `photos/` and `metadata/` | Full-resolution masters and archived metadata |
-| Commerce | private catalog and DynamoDB | Current offers and durable orders |
-
-`index.md` contains human decisions and cannot be regenerated. `photos.json`
-contains measured and generated media facts and can be rebuilt from the masters.
-It is committed because the site build needs dimensions and URLs but cannot read
-the source images.
-
-The similarly named S3 `source.json` travels in the other direction. It is the
-input written by `photos:push` so the media build knows which masters belong to
-the album.
-
-Each master also carries album and filename metadata for provenance. These
-values are descriptive rather than authoritative: an album or filename can
-change without changing the photograph's identity.
-
-## Publishing pipelines
-
-```mermaid
-flowchart TB
-  subgraph local["photos:push"]
-    A[album exports] --> B[sanitize master]
-    B --> C[photos/photoId]
-    B --> D[metadata/photoId.json]
-    B --> E[manifests/storyId/source.json]
-  end
-
-  subgraph media["media build"]
-    C --> F[sharp variants]
-    D --> F
-    E --> F
-    F --> G[media/photo-v1/hash/...]
-    F --> H[photos.json]
-  end
-
-  subgraph site["site build"]
-    H --> I[Astro]
-    I --> J[static site]
-    I --> K[private commerce catalog]
-  end
+```sh
+bun run photos:push -- <album-folder> --local
 ```
 
-`photos:push` losslessly strips GPS, camera, editing, and descriptive metadata
-from the uploaded master while retaining its color profile and approved
-copyright fields. The removed metadata is archived in the sidecar. The same
-media generator runs locally or in CodeBuild.
+The album's `storyId` and each photo's `photoId` stay with them permanently.
+Folder names, filenames, titles, captions, order, and cover choice can all
+change without changing those IDs.
 
-The media build emits AVIF, WebP, and JPEG responsive variants, a lightbox
-variant, and a social-preview image. Variant paths include the source hash, so
-unchanged photographs reuse existing objects and changed bytes receive new
-immutable URLs.
+## Updating an album
 
-The site build runs on every merge to `main`. It reads `index.md` and
-`photos.json`, deploys static output, invalidates mutable CloudFront paths, and
-runs `photos:gc` only after the new pages are available.
+Download the current masters before changing an existing album:
 
-## Serving
-
-One CloudFront distribution uses three origins:
-
-| Path | Origin | Cache behavior |
-| --- | --- | --- |
-| `/media/*` | private media bucket | One year, `immutable` |
-| `/api/*` | API Gateway and Lambda | Disabled |
-| Everything else | private site bucket | Static-site policy |
-
-`/downloads-catalog.json` exists in the site bucket but returns `404` through
-CloudFront. Buyer reads it directly through IAM. The originals bucket is not a
-CloudFront origin; full-resolution bytes leave it only through short-lived,
-presigned download URLs.
-
-## Identity
-
-`photoId` is `photo_` plus 24 random hexadecimal characters. `photos:push`
-mints it once and writes it to frontmatter. It names the master, joins
-frontmatter to `photos.json`, and is the photograph reference stored on an
-order.
-
-Identity is independent of bytes. Re-exporting a photograph overwrites
-`photos/<photoId>` so existing download links serve the current master.
-`sourceHash` changes with the bytes and is used only for derivative caching and
-change detection.
-
-`storyId` is the permanent album identity. Album directory names, filenames,
-titles, captions, ordering, and cover choice may change without changing either
-identity.
-
-## Lifecycle
-
-```mermaid
-stateDiagram-v2
-  [*] --> Live: photos:push
-  Live --> Removed: photos:remove
-  Removed --> Live: photos:restore + photos:push
-  Removed --> Deleted: photos:delete
-  Deleted --> [*]
+```sh
+bun run photos:pull -- <album>
 ```
 
-- **Live:** The photograph appears in its album, has public derivatives, and is
-  purchasable when it has a price.
-- **Removed:** The photograph leaves the album and catalog, but its master
-  remains available to existing buyers. The next `photos:gc` deletes unreferenced
-  derivatives. Restoration rebuilds them from the master.
-- **Deleted:** The master and metadata are deleted after explicit confirmation.
-  The frontmatter entry remains as a tombstone, download attempts return `410`,
-  and S3 versioning provides a 90-day recovery window.
+Make your edits, then use the same dry-run and publish commands. If you replace
+the contents of an existing photo, `photos:push` asks you to confirm the change.
+Past buyers will receive the new master. S3 keeps the previous version for 90
+days.
 
-Deleting a file from an album directory is not a lifecycle transition.
-`photos:push` stops when a live file disappears so identity and purchase records
-cannot be discarded accidentally.
+## Removing a photo
+
+Removing a photo from an album is different from deleting its master. Use:
+
+```sh
+bun run photos:remove -- <album> <photo-id-or-file>
+```
+
+The photo disappears from the album and store, but people who already bought it
+can still download the master. To put it back, run `photos:restore`, followed by
+`photos:push` to rebuild any public images that have been cleaned up.
+
+Permanent deletion removes the master and archived metadata. It is only allowed
+after the photo has been removed:
+
+```sh
+bun run photos:sales -- <photo-id>
+bun run photos:delete -- <photo-id>
+```
+
+Check the sales record first because deletion stops past purchases from working.
+The deleted S3 objects remain recoverable through version history for 90 days.
+
+Never represent a removal by deleting the local image. `photos:push` treats a
+missing live photo as an error so that an accidental file deletion cannot break
+its identity or purchase history.
+
+## How photos reach the site
+
+CloudFront serves the static site from one private bucket and the public image
+sizes from another. It never exposes the master bucket. After a purchase, a
+valid download token can be exchanged for a short-lived S3 URL to one master.
