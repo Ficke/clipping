@@ -31,6 +31,17 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
+      # CodeBuild stores its buildspec in the project configuration rather than
+      # reading it from the source archive. Refuse to deploy when that live
+      # configuration has not caught up with the tracked Terraform input.
+      - name: Verify CodeBuild buildspec is current
+        run: |
+          aws codebuild batch-get-projects \
+            --names adamficke-com-site \
+            --query 'projects[0].source.buildspec' \
+            --output text > live-buildspec-site.yml
+          diff --unified=3 buildspec-site.yml live-buildspec-site.yml
+
       - name: Build and deploy in AWS CodeBuild
         run: |
           git archive --format=zip --output=source.zip HEAD

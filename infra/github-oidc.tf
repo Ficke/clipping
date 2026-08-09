@@ -45,7 +45,7 @@ data "aws_iam_policy_document" "deploy" {
 
   statement {
     sid       = "RunSiteBuild"
-    actions   = ["codebuild:StartBuild", "codebuild:BatchGetBuilds"]
+    actions   = ["codebuild:StartBuild", "codebuild:BatchGetBuilds", "codebuild:BatchGetProjects"]
     resources = [aws_codebuild_project.site.arn]
   }
 }
