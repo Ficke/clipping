@@ -24,7 +24,8 @@ export interface RestApiEvent {
 
 /**
  * The legacy Function URL, HTTP API, and REST API all use Lambda proxy events.
- * Accept both payload generations while the two deployed rollback rails remain.
+ * REST proxy v1 is the only format now reaching these handlers. The v2 branch is
+ * left over from the HTTP API and Function URL, both since removed, and can go.
  */
 export type FunctionUrlEvent = HttpApiEvent | RestApiEvent;
 

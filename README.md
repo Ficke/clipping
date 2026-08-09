@@ -222,11 +222,9 @@ obsolete by committed manifests and unused by every current album.
 
 ## Selling downloads
 
-The durable v3 commerce source is described below. It is not deployed yet; the
-[implementation ledger](docs/stripe-commerce-implementation.md) separates code,
-test, infrastructure, Stripe, and production state. The target design is in the
-[architecture plan](docs/stripe-commerce-architecture.md), and sandbox/recovery
-procedures are in the [operations runbook](docs/stripe-commerce-operations.md).
+The design is in [commerce.md](docs/commerce.md); the runbooks for anything
+touching live money are in
+[commerce-operations.md](docs/commerce-operations.md).
 
 Photographs can be sold as full-resolution downloads. Payment is Stripe-hosted
 Checkout with Managed Payments: Stripe/Link is merchant of record and handles
@@ -372,13 +370,10 @@ not on a push to `main`:
 bun run lambda:build
 ```
 
-The first M5 infrastructure revision is deployed. Its correction is a
-three-apply rollout: add and verify the protected REST ingress, approve the
-CloudFront cutover separately, then disable the old public HTTP API endpoint
-only after CloudFront reports `Deployed`. The HTTP API configuration remains a
-dormant rollback rail. Follow the implementation ledger and operations runbook;
-quota changes, each Terraform apply, webhook registration, catalog activation,
-and storefront cutover are separate actions.
+The commerce infrastructure is deployed and the production webhook is
+registered. Terraform applies, webhook registration, and catalog activation
+stay separate, individually reviewed actions — see
+[commerce-operations.md](docs/commerce-operations.md).
 
 **Where keys live.** In SSM Parameter Store as KMS-encrypted `SecureString`
 values, and nowhere else—never in Terraform state, a file, or Lambda environment
@@ -424,7 +419,7 @@ refused.
 
 The catalog alone is intercepted from `dist/downloads-catalog.json`; Stripe,
 DynamoDB, and S3 signing are real sandbox dependencies. Follow the complete
-[local acceptance procedure](docs/stripe-commerce-operations.md#local-sandbox-acceptance)
+[local acceptance procedure](docs/commerce-operations.md#local-sandbox-acceptance)
 for signed webhook forwarding, successful purchase, refund revocation, dispute
 restoration, reissue, and cleanup.
 
