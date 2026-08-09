@@ -37,11 +37,26 @@ Three things are:
   under `/media/photo-v1/<hash>/` with a one-year `immutable` cache that
   survives deploys, so a caption change invalidates none of them.
 
-Astro also supports custom image services through `image.service`. The most
-Astro-native form of this architecture would register the existing sharp profile
-as a service rather than running it alongside Astro. That would be tidier, but
-it would not change where the work happens or make a private bucket readable —
-the same two builds would still exist.
+A custom `image.service` does not rescue this either, and it is worth recording
+why so nobody retries it. Astro has two service kinds and neither fits: an
+**external** service is the right idea — "transformed elsewhere, here is the
+URL" — but `getSrcSet()` is a local-service-only hook, so it cannot produce the
+four-width `srcset` this site is built on. A **local** service can, but must
+implement `transform()`, which takes an image buffer at build time. That is
+exactly what the site build does not have.
+
+Two smaller obstacles stand behind that one. The URL is not a function of the
+requested width: `photo-profile.mjs:17` clamps to `Math.min(requestedWidth,
+sourceWidth)` and puts the clamped value in the filename, so a service would
+need each photograph's source dimensions — from `photos.json`, which therefore
+does not go away. And service hooks receive only `options` and `imageConfig`,
+so per-photograph variant data has to be smuggled through
+`Astro.CustomImageProps` regardless.
+
+`src/components/PhotoPicture.astro` is 37 lines of declarative markup with no
+abstraction to learn. It is not a workaround for missing Astro support; it is
+the right amount of code for a site whose derivatives are pre-built and
+enumerated rather than computed on demand.
 
 Everything else here is either a consequence of that, or a consequence of
 selling some of the photographs.
@@ -246,6 +261,6 @@ adds a schema without any merging.
 membership list. Supporting reuse means a photograph record independent of any
 album, which is not worth it at eight albums. Nothing here blocks it later.
 
-**Astro's image service for album photos.** Ruled out by the reasons in the
-opening section, not by a missing feature. The site's own non-album images can
-still use it.
+**Astro's image service for album photos.** Ruled out by the service API itself,
+as set out above, not merely by preference. The site's own non-album images can
+still use `astro:assets` normally.
