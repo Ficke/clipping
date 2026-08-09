@@ -15,8 +15,7 @@ describe('source language policy', () => {
     }
 
     const tracked = result.stdout.toString().trim().split('\n')
-      // Repository-assistant skills are vendored tooling, not application source.
-      .filter((file) => file && !file.startsWith('.claude/') && existsSync(path.join(repoRoot, file)))
+      .filter((file) => file && existsSync(path.join(repoRoot, file)))
       .sort();
     expect(tracked).toEqual([]);
   });

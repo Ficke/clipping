@@ -11,6 +11,8 @@
     "typecheck": "astro check && tsc --noEmit",
     "check:typescript-policy": "bun test scripts/typescript-policy.test.ts",
     "preview": "astro preview",
+    "preview:check": "bun scripts/preview-check.ts",
+    "preview:analytics": "bun scripts/preview-analytics.ts",
     "lambda:build": "bun run lambda:build:buyer && bun run lambda:build:webhook && bun run lambda:build:authorizer",
     "lambda:build:buyer": "bun build lambda/index.ts --target=node --outfile=dist-lambda/buyer/index.mjs --minify",
     "lambda:build:webhook": "bun build lambda/webhook-index.ts --target=node --outfile=dist-lambda/webhook/index.mjs --minify",

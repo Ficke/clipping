@@ -14,11 +14,11 @@ interactive changes get verified here first.
 bun run build
 (bun run preview > /dev/null 2>&1 &)
 timeout 30 bash -c 'until curl -sf http://localhost:4321/ >/dev/null; do sleep 1; done'
-bun .claude/skills/preview-check/drive.mjs            # default: salt-point album
-bun .claude/skills/preview-check/drive.mjs /          # or any other path
+bun run preview:check               # default: salt-point album
+bun run preview:check -- /          # or any other path
 ```
 
-Then **Read the screenshots** in `.claude/skills/preview-check/shots/`
+Then **Read the screenshots** in `artifacts/preview-check/`
 and actually look at them — a blank or top-left-pinned frame means a bug.
 The script also reports browser console errors and asserts the lightbox
 Esc-close works.
@@ -26,9 +26,9 @@ Esc-close works.
 To check the GA4 tag instead of the visuals:
 
 ```sh
-bun .claude/skills/preview-check/analytics-check.mjs /               # any path
-bun .claude/skills/preview-check/analytics-check.mjs / --csp         # under CloudFront's CSP
-bun .claude/skills/preview-check/analytics-check.mjs / --off         # assert it stays silent
+bun run preview:analytics -- /               # any path
+bun run preview:analytics -- / --csp         # under CloudFront's CSP
+bun run preview:analytics -- / --off         # assert it stays silent
 ```
 
 It reports whether gtag.js loaded and whether a `page_view` hit was
@@ -54,6 +54,8 @@ lsof -ti:4321 -sTCP:LISTEN | xargs -r kill
 
 ## Notes
 
+- The typed browser checks live with the rest of the repository tooling in
+  `scripts/`; this skill only documents the pre-push workflow.
 - `playwright-core` is a devDependency and drives the user's installed
   Google Chrome (`channel: 'chrome'`) — nothing to download.
 - Album images must be hydrated (`bun run photos:pull`) or pages will
