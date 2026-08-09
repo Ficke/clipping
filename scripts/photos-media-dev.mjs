@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,6 +9,8 @@ import { spawnSync } from 'node:child_process';
 // In production these are built once in CI and served from S3/CloudFront;
 // locally there is no such bucket, so we build them from the album originals
 // on disk instead. Albums are skipped once their derivatives already exist.
+
+import { readPhotosBlock, splitFrontmatter } from './photo-frontmatter.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
@@ -34,21 +36,24 @@ for (const album of albums) {
   console.log(`[photos:build-media:local] building ${album}...`);
   const temporary = mkdtempSync(path.join(os.tmpdir(), 'photo-media-'));
   const staged = path.join(temporary, 'source');
-  const sourceMetadata = path.join(temporary, 'source-metadata.json');
+  const metadataDirectory = path.join(temporary, 'metadata');
+  const sourceManifest = path.join(temporary, 'source.json');
   const tmpManifest = path.join(temporary, 'photos.json');
   mkdirSync(staged);
+  mkdirSync(metadataDirectory);
   try {
+    writeFileSync(sourceManifest, sourceManifestFor(albumDir, album));
     run([
       path.join(repoRoot, 'scripts', 'photos-sanitize.mjs'),
       '--source', albumDir,
       '--output', staged,
-      '--metadata', sourceMetadata,
-      '--previous-manifest', manifestPath,
+      '--metadata', metadataDirectory,
     ], album);
     run([
       path.join(repoRoot, 'scripts', 'photos-build-media.mjs'),
       '--source', staged,
-      '--source-metadata', sourceMetadata,
+      '--source-manifest', sourceManifest,
+      '--source-metadata', metadataDirectory,
       '--album', album,
       '--output', publicRoot,
       '--manifest', tmpManifest,
@@ -57,6 +62,16 @@ for (const album of albums) {
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
+}
+
+/** Identity comes from frontmatter here too, so a local build never mints one. */
+function sourceManifestFor(albumDir, album) {
+  const indexPath = path.join(albumDir, 'index.md');
+  const { lines } = splitFrontmatter(readFileSync(indexPath, 'utf8'), albumDir);
+  const photos = readPhotosBlock(lines).entries
+    .filter((entry) => !entry.removed)
+    .map((entry) => ({ photoId: entry.photoId, file: entry.file }));
+  return JSON.stringify({ version: 1, album, photos });
 }
 
 function run(args, album) {
