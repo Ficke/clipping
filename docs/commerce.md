@@ -436,9 +436,14 @@ Alarm through the existing SNS topic on:
 - Each active API Gateway stage's `5xx`. This covers the blind spot noted above:
   a handler that catches an exception and returns 500 does not increment the
   Lambda `Errors` metric, but the gateway records the status either way.
-- Lambda errors for Buyer, Webhook, and Authorizer, plus Webhook throttles. A
-  Webhook capacity failure needs distinct operator attention because it delays
-  entitlement and revocation.
+- Webhook errors, and Webhook throttles separately. A failure here strands
+  entitlement and revocation rather than one request, and a capacity problem
+  needs a different fix from a crash.
+
+Three alarms, and the test each had to pass is whether it changes what the
+operator does. Buyer and Authorizer errors do not: both surface as a stage
+`5xx`, which is already alarmed, and the logs name the component immediately.
+They were removed rather than kept for symmetry.
 
 Deliberately not alarmed: Buyer or Authorizer throttles, per-operation DynamoDB
 failures, rejected-event counts, invalid-transition counts, and Checkout
@@ -446,9 +451,7 @@ creation bursts. Reserved-concurrency throttles are intentional backpressure,
 and any resulting availability failure plus every DynamoDB failure that
 exhausts SDK retries already reaches the API `5xx` alarm. At this volume the
 duplicate alarms would cost more than the rest of the request path and tell you
-less than the API alarm and reconciliation do. Five standard-resolution alarms
-remain: the REST stage's `5xx`, Lambda errors for Buyer, Webhook and Authorizer,
-and Webhook throttles.
+less than the API alarm and reconciliation do.
 
 ### Recovery
 

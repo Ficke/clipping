@@ -699,11 +699,13 @@ locals {
   # availability impact is already covered by the API stage 5xx alarms.
   # DynamoDB failures that exhaust SDK retries likewise surface as API 5xx, so
   # per-operation database alarms would duplicate the same incident six times.
+  # An alarm earns its place by changing what the operator does. Buyer and
+  # Authorizer errors do not: both surface as a REST stage 5xx, which is already
+  # alarmed, and the logs name the component in seconds. Only the Webhook gets
+  # its own signals, because a failure there strands entitlement and revocation
+  # rather than a single request, and throttling needs a different fix from a
+  # crash.
   commerce_lambda_alarms = {
-    buyer-errors = {
-      function_name = aws_lambda_function.commerce_buyer.function_name
-      metric_name   = "Errors"
-    }
     webhook-errors = {
       function_name = aws_lambda_function.commerce_webhook.function_name
       metric_name   = "Errors"
@@ -711,10 +713,6 @@ locals {
     webhook-throttles = {
       function_name = aws_lambda_function.commerce_webhook.function_name
       metric_name   = "Throttles"
-    }
-    authorizer-errors = {
-      function_name = aws_lambda_function.commerce_authorizer.function_name
-      metric_name   = "Errors"
     }
   }
 }
