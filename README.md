@@ -144,8 +144,9 @@ private masters and creates immutable, content-addressed derivatives. The fast
 site build reads only committed manifests, so a text edit does not download or
 reprocess the photo archive.
 
-GitHub Actions deploys `main` by assuming an AWS role through OIDC and starting
-the site CodeBuild project. The local pre-push hook blocks direct pushes to
+GitHub Actions deploys `main` by assuming an AWS role through OIDC, archiving
+the merged commit, and starting the site CodeBuild project with that archive's
+tracked `buildspec-site.yml`. The local pre-push hook blocks direct pushes to
 `main`; use a branch and pull request.
 
 ## License

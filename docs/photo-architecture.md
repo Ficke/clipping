@@ -81,7 +81,9 @@ immutable URLs.
 
 The site build runs on every merge to `main`. It reads `index.md` and
 `photos.json`, deploys static output, invalidates mutable CloudFront paths, and
-runs `photos:gc` only after the new pages are available.
+attempts `photos:gc` only after the new pages are available. Cleanup failure is
+reported in the CodeBuild log and retried by the next deploy; it does not turn
+an already-published site update into a failed deployment.
 
 ## Serving
 
