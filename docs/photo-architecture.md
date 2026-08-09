@@ -8,12 +8,40 @@ departs from a conventional Astro site.
 The photographs are not in git. 305 MB sits in `content/albums/`, all of it
 ignored (`.gitignore:13-17`); the repository itself is 37 MB.
 
-That single decision determines most of what follows. Astro's own image
-pipeline — `astro:assets`, `<Picture />`, `getImage()` — resolves and transforms
-sources at site-build time. The site build never has them. So derivative
-generation has to happen somewhere that does, which is why there are two build
+That single decision determines most of what follows: derivative generation has
+to happen somewhere that has the photographs, which is why there are two build
 jobs instead of one, and why a generated file listing the results has to sit
 between them.
+
+It is worth being precise about why Astro's own pipeline is not doing this,
+because the obvious objection is a good one. `astro:assets` is not limited to
+local imports — `<Image />` optimizes **remote** URLs at build time for static
+output, given an authorized `image.domains` or `image.remotePatterns` entry. So
+"the images live in S3" is not by itself a reason.
+
+Three things are:
+
+- **The masters are the product.** Astro fetches remote images over plain HTTPS
+  with no authentication; `image.domains` authorizes which hosts it will
+  process, not how to reach a private one. For Astro to read them,
+  `photos/<photoId>` would have to be publicly fetchable — and those are the
+  full-resolution files people buy.
+- **It would move a per-album cost into every deploy.** Astro's docs warn that
+  remote processing "may increase the build time of your project, especially if
+  you have a large number of images." Today a caption fix is a two-second site
+  build; this would make it a 305 MB download and roughly a thousand
+  transforms, in a CI container that starts clean and caches nothing between
+  runs.
+- **Derivatives would stop being immutable.** They would land in `dist/_astro/`
+  and be re-uploaded on every deploy. Today they sit at content-addressed URLs
+  under `/media/photo-v1/<hash>/` with a one-year `immutable` cache that
+  survives deploys, so a caption change invalidates none of them.
+
+Astro also supports custom image services through `image.service`. The most
+Astro-native form of this architecture would register the existing sharp profile
+as a service rather than running it alongside Astro. That would be tidier, but
+it would not change where the work happens or make a private bucket readable —
+the same two builds would still exist.
 
 Everything else here is either a consequence of that, or a consequence of
 selling some of the photographs.
@@ -185,7 +213,7 @@ orphan the master.
 
 | Convention | What this does instead | Why |
 | --- | --- | --- |
-| Images in `src/assets/`, transformed by `astro:assets` | Originals in S3; a separate CodeBuild job runs sharp against a pinned profile | 305 MB does not belong in git, and the site build never sees the sources |
+| Images in `src/assets/` or authorized remote URLs, transformed by `astro:assets` | Originals in a private S3 bucket; a separate CodeBuild job runs sharp against a pinned profile | Astro's remote fetch cannot authenticate, and the masters are the product being sold. See above |
 | One build | Two: media (per album, on demand) and site (every change) | Only one of them has the photographs |
 | Derived data recomputed each build | `photos.json` committed as a build contract | The site build cannot recompute what it cannot see |
 | Structured data as a content collection | `photos.json` read through `import.meta.glob` | It is a generated artifact, not authored content. A collection would give it a schema, at the cost of treating a build cache as an entity |
@@ -218,5 +246,6 @@ adds a schema without any merging.
 membership list. Supporting reuse means a photograph record independent of any
 album, which is not worth it at eight albums. Nothing here blocks it later.
 
-**Astro's image service for album photos.** Not available while the sources are
-absent at build time. The site's own non-album images can still use it.
+**Astro's image service for album photos.** Ruled out by the reasons in the
+opening section, not by a missing feature. The site's own non-album images can
+still use it.
