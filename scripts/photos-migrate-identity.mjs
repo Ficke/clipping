@@ -96,8 +96,13 @@ async function migrateObjects(albumDirectory) {
     const source = `${bucket}/albums/${storyId}/${photo.file}`;
     const target = masterKey(photo.photoId);
 
-    console.log(`${dryRun ? 'Would copy' : 'Copying'} ${source} -> ${target}`);
-    if (!dryRun) {
+    const alreadyThere = spawnSync('aws', [
+      's3api', 'head-object', '--bucket', bucket, '--key', target,
+    ], { encoding: 'utf8' }).status === 0;
+    console.log(alreadyThere
+      ? `Master already present, skipping copy: ${target}`
+      : `${dryRun ? 'Would copy' : 'Copying'} ${source} -> ${target}`);
+    if (!dryRun && !alreadyThere) {
       // REPLACE, not COPY: the master carries its own content type, download
       // filename, and provenance, none of which the album object has.
       aws([
@@ -118,6 +123,7 @@ async function migrateObjects(albumDirectory) {
     }
     const sidecar = {
       version: 1,
+      photoId: photo.photoId,
       file: photo.file,
       shot: await shotMetadata(local),
       archive: await archiveMetadata(exiftool, local),
