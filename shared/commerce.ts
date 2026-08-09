@@ -1,5 +1,3 @@
-/** Runtime-neutral catalog and money contracts shared by the site and commerce. */
-
 export const CURRENCY = 'usd';
 
 export function formatPrice(cents: number): string {

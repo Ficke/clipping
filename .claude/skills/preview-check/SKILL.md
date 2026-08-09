@@ -1,6 +1,8 @@
 ---
 name: preview-check
-description: Build the site, serve it locally, and drive it in headless Chrome with screenshots — verify visual/interactive changes BEFORE pushing (every push deploys to production).
+description: >-
+  Build and drive the site in headless Chrome before pushing visual or
+  interactive changes to production.
 ---
 
 # Preview-check: verify changes locally before pushing
@@ -10,12 +12,18 @@ interactive changes get verified here first.
 
 ## Steps
 
+Build and start the production preview in one terminal:
+
 ```sh
 bun run build
-(bun run preview > /dev/null 2>&1 &)
-timeout 30 bash -c 'until curl -sf http://localhost:4321/ >/dev/null; do sleep 1; done'
-bun run preview:check               # default: salt-point album
-bun run preview:check -- /          # or any other path
+bun run preview
+```
+
+In another terminal, drive the default album or a specific route:
+
+```sh
+bun run preview:check
+bun run preview:check -- /
 ```
 
 Then **Read the screenshots** in `artifacts/preview-check/`
@@ -44,13 +52,10 @@ Collect endpoints are also stubbed with a 204 as a second layer. Stubbing
 rather than aborting matters: an aborted hit makes gtag attempt a
 `www.google.com` fallback that looks like a CSP bug but is not one.
 
-`--csp` replays the policy from `infra/main.tf`; keep the two in sync.
+`--csp` replays the policy from `infra/main.tf`. A contract test fails if the
+two copies drift.
 
-When done:
-
-```sh
-lsof -ti:4321 -sTCP:LISTEN | xargs -r kill
-```
+When done, stop the preview server with Ctrl-C in its terminal.
 
 ## Notes
 

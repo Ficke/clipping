@@ -1,5 +1,3 @@
-/** Publish album masters and immutable media from a thin typed CLI. */
-
 import { mkdtempSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';

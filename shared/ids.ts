@@ -1,5 +1,3 @@
-/** Runtime-neutral identity primitives shared by the site, Lambdas, and CLIs. */
-
 const PHOTO_ID = /^photo_[a-f0-9]{24}$/;
 const ORDER_ID = /^ord_[a-f0-9]{32}$/;
 const CHECKOUT_SESSION_ID = /^cs_(test|live)_[A-Za-z0-9_]+$/;
@@ -7,9 +5,11 @@ const CHECKOUT_SESSION_ID = /^cs_(test|live)_[A-Za-z0-9_]+$/;
 const PHOTO_ID_BYTES = 12;
 const ORDER_ID_BYTES = 16;
 
-/** Named aliases establish the shared vocabulary without forcing a flag-day
- * conversion of every persisted string. Boundary parsers can introduce
- * nominal types once each serialized contract is migrated. */
+/**
+ * These aliases establish domain vocabulary while serialized IDs remain
+ * strings. Boundary validators, rather than compile-time branding, enforce
+ * their external representation.
+ */
 export type PhotoId = string;
 export type OrderId = string;
 export type CheckoutSessionId = string;

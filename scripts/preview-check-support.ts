@@ -6,6 +6,10 @@ import { chromium } from 'playwright-core';
 export const DEFAULT_PREVIEW_URL = 'http://127.0.0.1:4321';
 export const PREVIEW_ARTIFACTS_DIRECTORY = path.resolve(import.meta.dir, '..', 'artifacts', 'preview-check');
 
+/**
+ * Replay the production policy locally; the contract test prevents drift from
+ * Terraform.
+ */
 export const PRODUCTION_CSP = [
   "default-src 'none'",
   "script-src 'self' https://*.googletagmanager.com",

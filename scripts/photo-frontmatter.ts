@@ -13,16 +13,17 @@ export type FrontmatterPhoto = Omit<AlbumPhoto, 'removed' | 'deleted'> & {
   deleted?: string;
 };
 
-/** Shared, deliberately small parser for the `photos:` subset of album YAML.
- * Astro remains the final schema validator; these helpers only preserve and
- * update the fields owned by the photo CLIs. */
-
 export function splitFrontmatter(contents: string, album = 'album'): { lines: string[]; body: string } {
   const match = contents.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
   if (!match) throw new Error(`${album}/index.md has no frontmatter`);
   return { lines: match[1].split('\n'), body: match[2] };
 }
 
+/**
+ * Parse only the album fields owned by photo commands. Astro remains the final
+ * schema validator, so this preservation-oriented parser tolerates incomplete
+ * entries while editing frontmatter.
+ */
 export function readPhotosBlock(lines: string[]): { entries: FrontmatterPhoto[]; span: [number, number] | null } {
   const start = lines.findIndex((line) => line === 'photos:');
   if (start === -1) return { entries: [], span: null };
@@ -33,8 +34,6 @@ export function readPhotosBlock(lines: string[]): { entries: FrontmatterPhoto[];
   for (const line of lines.slice(start + 1, end)) {
     const item = line.match(/^\s+-\s*file:\s*(.+?)\s*$/);
     if (item) {
-      // The parser intentionally permits incomplete entries; Astro remains the
-      // final validator for authored Markdown.
       entries.push({ file: unquote(item[1]) } as FrontmatterPhoto);
       continue;
     }

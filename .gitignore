@@ -17,7 +17,7 @@ content/albums/**/*.webp
 content/albums/**/*.avif
 
 # Locally-built derivative images (served from S3/CloudFront in production;
-# generated on demand for `bun run dev` by scripts/photos-media-dev.mjs)
+# generated on demand for `bun run dev` by scripts/photos-media-dev.ts)
 public/media/
 
 # Terraform (the .terraform.lock.hcl provider lockfile IS committed)

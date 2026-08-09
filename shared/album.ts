@@ -1,5 +1,3 @@
-/** Runtime-neutral album contracts and lifecycle rules. */
-
 import { z } from 'zod';
 import { isPhotoId, type PhotoId } from './ids';
 
@@ -13,7 +11,10 @@ const priceDollarsSchema = z.number()
   .positive('price must be positive')
   .multipleOf(0.01, 'price must have at most two decimal places');
 
-/** An authored photograph. `priceDollars` is deliberately confined to this boundary. */
+/**
+ * Keep author-facing dollars at the album boundary; commerce uses integer
+ * cents.
+ */
 export const albumPhotoSchema = z.object({
   file: z.string().min(1),
   photoId: z.string().refine(isPhotoId, 'must look like photo_<24 hex characters>'),
@@ -45,7 +46,7 @@ export const albumSchema = z.object({
   draft: z.boolean().default(false),
 });
 
-/** Derive lifecycle from persisted fields rather than allowing contradictory flags. */
+/** Derive lifecycle from persisted fields instead of storing another flag. */
 export function lifecycleOf(photo: Pick<AlbumPhoto, 'removed' | 'deleted'>): AlbumLifecycleState {
   if (photo.deleted) return 'deleted';
   if (photo.removed) return 'removed';

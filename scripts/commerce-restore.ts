@@ -1,5 +1,3 @@
-/** Explicitly restore a revoked order after a won dispute. */
-
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { SSMClient } from '@aws-sdk/client-ssm';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';

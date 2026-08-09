@@ -29,6 +29,30 @@ bun run build
 ```
 
 `typecheck` runs both Astro's template/content checker and strict TypeScript.
+Run `bun run lambda:build` as well after changing `commerce/`, `lambda/`, or
+their shared contracts.
+
+### Production-preview checks
+
+Use the browser checks after changing layout, client-side behavior, analytics,
+or the content security policy:
+
+```sh
+bun run build
+bun run preview
+# In another terminal:
+bun run preview:check
+bun run preview:analytics -- / --csp
+bun run preview:analytics -- / --off
+```
+
+`preview:check` drives the default photography page, exercises its lightbox,
+fails on browser errors, and writes screenshots to `artifacts/preview-check/`.
+Pass another route after `--` when needed. The analytics checks intercept
+collection requests: the first requires one GA4 page view under the production
+CSP, while `--off` proves an ordinary local visit reports nothing. Both commands
+use installed Google Chrome through `playwright-core` and require the preview
+server to be running.
 
 ## Publishing an album
 
@@ -105,7 +129,8 @@ this README:
 - `lambda/` contains the Buyer, Webhook, and origin Authorizer Lambdas. DynamoDB
   stores durable order state; signed download tokens redeem against private S3
   masters.
-- `scripts/` contains the photo and commerce operator commands.
+- `scripts/` contains photo and commerce operator commands, media-build tools,
+  and production-preview checks.
 - `content/albums/` contains authored album Markdown and generated
   `photos.json` manifests. Full-resolution images are ignored by Git.
 - `infra/` contains Terraform for S3, CloudFront, Route 53, CodeBuild, Lambda,

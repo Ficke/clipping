@@ -1,5 +1,3 @@
-/** List an existing photograph in the store, reprice it, or delist it. */
-
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

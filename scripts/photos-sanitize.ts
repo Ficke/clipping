@@ -38,7 +38,6 @@ try {
     const source = path.join(sourceDirectory, file);
     const destination = path.join(outputDirectory, file);
 
-    // Read the archive record from the source, before anything is stripped.
     const archive = await archiveMetadata(exiftool, source);
     const shot = await shotMetadata(source);
     const sidecar = parseMetadataSidecar(

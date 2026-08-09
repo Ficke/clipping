@@ -1,5 +1,3 @@
-/** Mint a fresh durable entitlement after current Stripe reversal checks. */
-
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { SSMClient } from '@aws-sdk/client-ssm';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';

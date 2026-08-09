@@ -44,7 +44,7 @@ export const photoManifestEntrySchema = z.object({
 export const photoManifestSchema = z.object({
   version: z.literal(2),
   profile: mediaProfileSchema,
-  /** Persisted name for storyId in the version 2 format. */
+  /** The version 2 format persists `storyId` under the legacy name `album`. */
   album: z.string().min(1),
   photos: z.array(photoManifestEntrySchema),
 }).superRefine((manifest, context) => {
@@ -59,7 +59,7 @@ export const sourceManifestPhotoSchema = z.object({
 
 export const sourceManifestSchema = z.object({
   version: z.literal(1),
-  /** Persisted name for storyId in the version 1 format. */
+  /** The version 1 format persists `storyId` under the legacy name `album`. */
   album: z.string().min(1),
   photos: z.array(sourceManifestPhotoSchema),
 }).superRefine((manifest, context) => {
@@ -69,7 +69,7 @@ export const sourceManifestSchema = z.object({
 
 export const metadataSidecarSchema = z.object({
   version: z.literal(1),
-  /** Optional only for masters created before permanent photo IDs. */
+  /** Masters created before permanent photo IDs have no `photoId`. */
   photoId: z.string().refine((value) => isPhotoId(value), 'must be a photo ID').optional(),
   file: z.string().min(1),
   shot: shotMetadataSchema.optional(),
