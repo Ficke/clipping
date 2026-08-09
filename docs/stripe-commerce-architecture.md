@@ -40,13 +40,16 @@ set. `catalog: false` stopped meaning anything once the catalog held only
 photographs on sale, so catalog version 3 publishes just those six and presence
 is the offer. `hidden` becomes `removed`, which also drops the photograph from
 the catalog and marks its derivatives obsolete — a hidden photograph used to
-stay publicly fetchable at its content-hashed CloudFront URL indefinitely.
+stay publicly fetchable at its content-hashed CloudFront URL indefinitely. The
+site deploy already runs `photos:gc`, so removal takes effect on the next
+deploy rather than waiting for a separate chore.
 
 The lifecycle is three deliberate steps. `photos:remove` takes a photograph out
 of an album and the store, reversibly, keeping the master so existing downloads
-work. `photos:gc` then stops serving its derivatives. `photos:delete` destroys
-the bytes, is reachable only from `removed`, and leaves the frontmatter entry as
-the record; bucket versioning keeps 90 days of undo. Deleting a file from an
+work. The next site deploy's `photos:gc` stops serving its derivatives, so
+restoring after that needs a rebuild rather than a flag flip. `photos:delete`
+destroys the bytes, is reachable only from `removed`, and leaves the frontmatter
+entry as the record; bucket versioning keeps 90 days of undo. Deleting a file from an
 album folder no longer removes anything — the push refuses and names the
 command.
 

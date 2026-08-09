@@ -307,10 +307,11 @@ Deleting a file from the album folder is not how a photograph leaves an album �
 `photos:push` refuses and points at `photos:remove`, because dropping the entry
 would discard the record and orphan the master.
 
-Removing marks the derivatives obsolete; `photos:gc` then deletes them, which is
-what actually stops the image being served at its CloudFront URL. Restoring
-after that needs a push to rebuild them from the retained master — no re-upload.
-Deleting is recoverable for 90 days through S3 versioning.
+Removing marks the derivatives obsolete, and the next site deploy runs
+`photos:gc`, which deletes them — that is what actually stops the image being
+served at its CloudFront URL. Restoring after that deploy needs a push to
+rebuild them from the retained master; no re-upload of the full-resolution file
+is involved. Deleting is recoverable for 90 days through S3 versioning.
 
 `bun run photos:sales -- <photo-id>` reports every order for one photograph,
 including after it has been removed.
