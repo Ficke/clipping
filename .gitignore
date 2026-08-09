@@ -35,4 +35,7 @@ artifacts/preview-check/
 # No Stripe key should ever be stored here. Local development reads the
 # adamficke-com-commerce-test parameter from SSM, so nothing is written to disk.
 .env
-.env.local
+.env.*
+!.env.example
+!.env.*.example
+.npmrc

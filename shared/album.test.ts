@@ -20,6 +20,11 @@ describe('album contracts', () => {
     expect(albumPhotoSchema.safeParse({ ...photo, deleted: '2026-01-02' }).success).toBe(false);
   });
 
+  test('rejects paths and unsupported formats as photo filenames', () => {
+    expect(albumPhotoSchema.safeParse({ ...photo, file: '../photo.jpg' }).success).toBe(false);
+    expect(albumPhotoSchema.safeParse({ ...photo, file: 'photo.tiff' }).success).toBe(false);
+  });
+
   test('converts authored dollars to durable cents without float leakage', () => {
     expect(priceCentsFromDollars(39.5)).toBe(3950);
     expect(priceDollarsFromCents(3950)).toBe(39.5);

@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { masterKey } from '../src/lib/downloads.ts';
+import { resolvePhotoDestination } from './photo-path';
 import {
   albumIndexes,
   frontmatterValue,
@@ -48,7 +49,12 @@ for (const indexPath of indexes) {
   console.log(`${dryRun ? 'Would pull' : 'Pulling'} ${live.length} photo${live.length === 1 ? '' : 's'} for ${album}`);
   if (!dryRun) mkdirSync(directory, { recursive: true });
   for (const entry of live) {
-    const destination = path.join(directory, entry.file);
+    let destination: string;
+    try {
+      destination = resolvePhotoDestination(directory, entry.file);
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error));
+    }
     if (dryRun) {
       console.log(`  ${masterKey(entry.photoId)} -> ${path.relative(repoRoot, destination)}`);
       continue;
