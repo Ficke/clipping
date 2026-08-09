@@ -14,21 +14,14 @@ import {
   type Order,
   type RevocationAudit,
   type RestorationAudit,
-} from './orders';
+} from '../commerce/orders';
+import {
+  OrderAlreadyExists,
+  OrderNotFound,
+  type OrderRepository,
+} from '../commerce/order-repository';
 
-export interface OrderRepository {
-  create(order: Order): Promise<Order>;
-  get(orderId: string): Promise<Order | undefined>;
-  attachCheckoutSession(orderId: string, sessionId: string, checkoutExpiresAt: number): Promise<Order>;
-  entitle(orderId: string, audit: EntitlementAudit): Promise<Order>;
-  close(orderId: string, reason: CloseReason, sourceEventId?: string): Promise<Order>;
-  revoke(orderId: string, audit: RevocationAudit): Promise<Order>;
-  restore(orderId: string, audit: RestorationAudit): Promise<Order>;
-  scanNonClosed(): Promise<Order[]>;
-}
-
-export class OrderAlreadyExists extends Error {}
-export class OrderNotFound extends Error {}
+export { OrderAlreadyExists, OrderNotFound, type OrderRepository } from '../commerce/order-repository';
 
 type DocumentClient = Pick<DynamoDBDocumentClient, 'send'>;
 type Clock = () => number;

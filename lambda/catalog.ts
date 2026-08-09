@@ -1,5 +1,6 @@
 import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { CATALOG_PATH, catalogItem, type CatalogItem, type DownloadCatalog } from '../src/lib/downloads';
+import { CATALOG_PATH, type DownloadCatalog } from '../shared/commerce';
+export { NotForSale, requireItem } from '../commerce/catalog';
 
 /**
  * Reads the catalog the site build publishes. This is the server-side authority
@@ -39,20 +40,4 @@ export async function loadCatalog(
 /** Reset the module cache between tests. */
 export function forgetCatalog(): void {
   cache = undefined;
-}
-
-export class NotForSale extends Error {}
-
-/**
- * Resolves an opaque photo ID. The catalog holds only photographs currently on
- * sale, so being absent and being unpurchasable are the same condition. The
- * price is still range-checked here: the published file is the authority on the
- * amount, and a malformed one must not reach Stripe.
- */
-export function requireItem(catalog: DownloadCatalog, photoId: string): CatalogItem {
-  const item = catalogItem(catalog, photoId);
-  if (!item || !Number.isInteger(item.priceCents) || item.priceCents <= 0) {
-    throw new NotForSale(`No sale offer for photo ID ${photoId}`);
-  }
-  return item;
 }

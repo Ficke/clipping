@@ -1,5 +1,4 @@
-import { isPhotoId } from '../src/lib/downloads';
-import { generateOrderId, isOrderId } from '../shared/ids';
+import { generateOrderId, isOrderId, isPhotoId } from '../shared/ids';
 
 export { generateOrderId, isOrderId } from '../shared/ids';
 

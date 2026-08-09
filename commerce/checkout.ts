@@ -1,5 +1,5 @@
 import type Stripe from 'stripe';
-import { CURRENCY, formatPrice, type DownloadCatalog } from '../src/lib/downloads';
+import { CURRENCY, formatPrice, type DownloadCatalog } from '../shared/commerce';
 import { requireItem } from './catalog';
 import { INTEGRATION_IDENTIFIER } from './integration';
 import type { OrderRepository } from './order-repository';

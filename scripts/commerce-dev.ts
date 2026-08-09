@@ -5,6 +5,7 @@
  */
 
 import { createServer } from 'node:http';
+import type { Server, ServerResponse } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +13,9 @@ import {
   resolveDevTable,
   TemporaryTableLifecycle,
   validateDevSecrets,
+  type DevSecrets,
 } from './commerce-dev-support.ts';
+import type { FunctionUrlEvent, FunctionUrlResult } from '../lambda/http';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.COMMERCE_PORT ?? process.env.PORT ?? 8787);
@@ -55,7 +58,7 @@ const { SSMClient, GetParameterCommand } = await import('@aws-sdk/client-ssm');
  * the value below is what Parameter Store returned, and the handler still parses
  * and validates it itself.
  */
-let fields;
+let fields: DevSecrets;
 try {
   const stored = await new SSMClient({ maxAttempts: 2 }).send(
     new GetParameterCommand({ Name: secretParam, WithDecryption: true }),
@@ -63,8 +66,9 @@ try {
   fields = JSON.parse(stored.Parameter?.Value ?? '{}');
 } catch (error) {
   /* SSM returns ParameterNotFound with no message body, so lead with the name. */
-  const missing = error.name === 'ParameterNotFound';
-  console.error(`commerce:dev: could not read ${secretParam} — ${missing ? 'no such parameter' : error.message}`);
+  const missing = typeof error === 'object' && error !== null && 'name' in error && error.name === 'ParameterNotFound';
+  const message = error instanceof Error ? error.message : 'unknown error';
+  console.error(`commerce:dev: could not read ${secretParam} — ${missing ? 'no such parameter' : message}`);
   console.error(missing
     ? '             `cd infra && terraform apply` creates it holding {}, then put\n'
       + '             test keys in it — see the README\'s "Selling downloads".'
@@ -86,7 +90,9 @@ try {
   process.exit(1);
 }
 
-SSMClient.prototype.send = async () => ({ Parameter: { Value: JSON.stringify(fields) } });
+Object.assign(SSMClient.prototype, {
+  send: async () => ({ Parameter: { Value: JSON.stringify(fields) } }),
+});
 console.log(`commerce:dev: secrets from ${secretParam}`);
 
 const {
@@ -97,23 +103,24 @@ const {
 } = await import('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient } = await import('@aws-sdk/lib-dynamodb');
 const dynamo = new DynamoDBClient({ maxAttempts: 2 });
-let tableLifecycle;
-let requestedTermination;
-let resolveStopping;
-const stopping = new Promise((resolve) => { resolveStopping = resolve; });
-const stopServer = (termination) => {
+interface Termination { signal?: 'SIGINT' | 'SIGTERM'; error?: Error }
+let tableLifecycle: TemporaryTableLifecycle | undefined;
+let requestedTermination: Termination | undefined;
+let resolveStopping!: (termination: Termination) => void;
+const stopping = new Promise<Termination>((resolve) => { resolveStopping = resolve; });
+const stopServer = (termination: Termination): void => {
   requestedTermination ??= termination;
   resolveStopping(requestedTermination);
 };
 process.once('SIGINT', () => stopServer({ signal: 'SIGINT' }));
 process.once('SIGTERM', () => stopServer({ signal: 'SIGTERM' }));
-let server;
+let server: Server | undefined;
 
 try {
 if (ownsTemporaryTable) {
   tableLifecycle = new TemporaryTableLifecycle({
     tableName: process.env.COMMERCE_TABLE,
-    create: (name) => dynamo.send(new CreateTableCommand({
+    create: async (name) => { await dynamo.send(new CreateTableCommand({
       TableName: name,
       BillingMode: 'PAY_PER_REQUEST',
       AttributeDefinitions: [{ AttributeName: 'orderId', AttributeType: 'S' }],
@@ -122,12 +129,12 @@ if (ownsTemporaryTable) {
         { Key: 'application', Value: 'adamficke-com' },
         { Key: 'purpose', Value: 'local-commerce-acceptance' },
       ],
-    })),
-    waitUntilReady: (name) => waitUntilTableExists(
+    })); },
+    waitUntilReady: async (name) => { await waitUntilTableExists(
       { client: dynamo, maxWaitTime: 60 },
       { TableName: name },
-    ),
-    remove: (name) => dynamo.send(new DeleteTableCommand({ TableName: name })),
+    ); },
+    remove: async (name) => { await dynamo.send(new DeleteTableCommand({ TableName: name })); },
   });
   await tableLifecycle.start();
   console.log(`commerce:dev: temporary table ${process.env.COMMERCE_TABLE}`);
@@ -143,7 +150,7 @@ if (ownsTemporaryTable) {
 const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
 const localCatalog = path.join(repoRoot, 'dist', 'downloads-catalog.json');
 const realSend = S3Client.prototype.send;
-S3Client.prototype.send = function send(command, ...rest) {
+Object.assign(S3Client.prototype, { send(command: unknown, ...rest: unknown[]) {
   if (command instanceof GetObjectCommand && command.input.Key === 'downloads-catalog.json') {
     if (!existsSync(localCatalog)) {
       throw new Error(`commerce:dev: ${localCatalog} is missing — run \`bun run build\` first`);
@@ -151,8 +158,8 @@ S3Client.prototype.send = function send(command, ...rest) {
     const body = readFileSync(localCatalog, 'utf8');
     return Promise.resolve({ Body: { transformToString: async () => body } });
   }
-  return realSend.call(this, command, ...rest);
-};
+  return Reflect.apply(realSend, this, [command, ...rest]);
+} });
 
 const { handler } = await import('../lambda/index.ts');
 const { handleWebhook } = await import('../lambda/webhook.ts');
@@ -165,7 +172,7 @@ const webhookOrders = new DynamoOrderRepository(
   DynamoDBDocumentClient.from(dynamo),
 );
 
-const MIME = {
+const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -187,11 +194,12 @@ const MIME = {
  * link just works. Mirrors the viewer-request function in infra/main.tf:
  * a trailing slash or an extensionless path resolves to index.html.
  */
-function serveStatic(url, response) {
+function serveStatic(url: URL, response: ServerResponse): void {
   let pathname = decodeURIComponent(url.pathname);
   if (pathname === '/downloads-catalog.json') {
     response.writeHead(404, { 'cache-control': 'no-store' });
-    return response.end('Not found.');
+    response.end('Not found.');
+    return;
   }
   if (pathname.endsWith('/')) pathname += 'index.html';
   else if (!path.extname(pathname)) pathname += '/index.html';
@@ -205,37 +213,45 @@ function serveStatic(url, response) {
       ? readFileSync(notFound)
       : 'Not found — run `bun run build` first.';
     response.writeHead(404, { 'content-type': MIME['.html'] });
-    return response.end(body);
+    response.end(body);
+    return;
   }
 
   response.writeHead(200, { 'content-type': MIME[path.extname(file)] ?? 'application/octet-stream' });
   response.end(readFileSync(file));
 }
 
-server = createServer((request, response) => {
-  const chunks = [];
+const originHeaderName = process.env.ORIGIN_VERIFY_HEADER_NAME!;
+const originHeaderValues = process.env.ORIGIN_VERIFY_HEADER_VALUES!.split(',');
+
+const activeServer = server = createServer((request, response) => {
+  const chunks: Buffer[] = [];
   request.on('data', (chunk) => chunks.push(chunk));
   request.on('end', async () => {
-    const url = new URL(request.url, `http://localhost:${PORT}`);
+    const url = new URL(request.url ?? '/', `http://localhost:${PORT}`);
     const body = Buffer.concat(chunks);
 
     if (!url.pathname.startsWith('/api/')) return serveStatic(url, response);
 
-    const lambdaEvent = {
+    const requestHeaders: Record<string, string | undefined> = {};
+    for (const [name, value] of Object.entries(request.headers)) {
+      requestHeaders[name] = Array.isArray(value) ? value.join(',') : value;
+    }
+    const lambdaEvent: FunctionUrlEvent = {
       rawPath: url.pathname,
       rawQueryString: url.searchParams.toString(),
       headers: {
-        ...request.headers,
-        [process.env.ORIGIN_VERIFY_HEADER_NAME]: process.env.ORIGIN_VERIFY_HEADER_VALUES.split(',')[0],
+        ...requestHeaders,
+        [originHeaderName]: originHeaderValues[0],
       },
-      requestContext: { http: { method: request.method } },
+      requestContext: { http: { method: request.method ?? 'GET' } },
       body: body.length ? body.toString('utf8') : undefined,
       isBase64Encoded: false,
     };
     const invocation = url.pathname.replace(/\/$/, '') === '/api/stripe-webhook'
       ? handleWebhook(lambdaEvent, {
-          originHeaderName: process.env.ORIGIN_VERIFY_HEADER_NAME,
-          originHeaderValues: process.env.ORIGIN_VERIFY_HEADER_VALUES.split(','),
+          originHeaderName,
+          originHeaderValues,
           orders: webhookOrders,
           loadSecrets: async () => ({
             stripeReadApiKey: fields.stripeApiKey,
@@ -244,9 +260,9 @@ server = createServer((request, response) => {
           stripeFor: () => webhookStripe,
         })
       : handler(lambdaEvent);
-    const result = await invocation.catch((error) => {
+    const result: FunctionUrlResult = await invocation.catch((error) => {
       console.error(`commerce:dev: request failed (${error instanceof Error ? error.name : 'UnknownError'})`);
-      return { statusCode: 500, body: JSON.stringify({ error: 'Local commerce request failed.' }) };
+      return { statusCode: 500, body: JSON.stringify({ error: 'Local commerce request failed.' }) } satisfies FunctionUrlResult;
     });
 
     console.log(`${request.method} ${url.pathname} -> ${result.statusCode}`);
@@ -255,11 +271,11 @@ server = createServer((request, response) => {
   });
 });
 
-await new Promise((resolve, reject) => {
-  const startupError = (error) => reject(error);
-  server.once('error', startupError);
-  server.listen(PORT, () => {
-    server.off('error', startupError);
+await new Promise<void>((resolve, reject) => {
+  const startupError = (error: Error) => reject(error);
+  activeServer.once('error', startupError);
+  activeServer.listen(PORT, () => {
+    activeServer.off('error', startupError);
     resolve();
   });
 });
@@ -270,14 +286,15 @@ if (!existsSync(path.join(repoRoot, 'dist', 'index.html'))) {
 if (!process.env.STRIPE_WEBHOOK_SECRET) {
   console.log('  webhook:   set STRIPE_WEBHOOK_SECRET from `stripe listen` before testing events');
 }
-server.once('error', (error) => stopServer({ error }));
+activeServer.once('error', (error) => stopServer({ error }));
 const termination = await stopping;
 if (termination.error) throw termination.error;
 } catch (error) {
   console.error(`commerce:dev: stopped after ${error instanceof Error ? error.name : 'UnknownError'}`);
   process.exitCode = 1;
 } finally {
-  if (server?.listening) await new Promise((resolve) => server.close(resolve));
+  const closingServer = server;
+  if (closingServer?.listening) await new Promise<void>((resolve) => closingServer.close(() => resolve()));
   if (tableLifecycle) {
     try {
       await tableLifecycle.stop();

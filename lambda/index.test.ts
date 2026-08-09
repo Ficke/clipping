@@ -6,7 +6,7 @@ import type { Env, Secrets } from './config';
 import { handleBuyer, type BuyerRuntime } from './index';
 import type { FunctionUrlEvent, HttpApiEvent, RestApiEvent } from './http';
 import type { OrderRepository } from './order-repository';
-import type { Order } from './orders';
+import type { Order } from '../commerce/orders';
 
 const PHOTO_ID = 'photo_1234567890abcdef12345678';
 const ORIGIN = 'local-origin-secret';

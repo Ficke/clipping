@@ -6,9 +6,16 @@
 
 import { isPhotoId } from '../../shared/ids';
 
-export { generatePhotoId, isPhotoId, type PhotoId } from '../../shared/ids';
+export {
+  CATALOG_PATH,
+  CURRENCY,
+  catalogItem,
+  formatPrice,
+  type CatalogItem,
+  type DownloadCatalog,
+} from '../../shared/commerce';
 
-export const CURRENCY = 'usd';
+export { generatePhotoId, isPhotoId, type PhotoId } from '../../shared/ids';
 
 export interface LicenseTier {
   id: string;
@@ -62,12 +69,6 @@ export function licenseTier(id: string): LicenseTier | undefined {
   return TIERS_BY_ID.get(id);
 }
 
-/** `$40`, or `$39.50` when the cents are not round. */
-export function formatPrice(cents: number): string {
-  const dollars = cents / 100;
-  return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`;
-}
-
 export const SUPPORTED_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'avif'] as const;
 
 /** Return the stable master key that a re-export overwrites in place. */
@@ -111,36 +112,4 @@ export function downloadFilename(photoId: string, extension: string): string {
  */
 export function slugForStoryId(storyId: string): string {
   return storyId.replace(/^\d{4}-\d{2}-/, '');
-}
-
-/** Catalog presence is the offer; photographs not on sale are omitted. */
-export interface CatalogItem {
-  photoId: string;
-  storyId: string;
-  file: string;
-  albumTitle: string;
-  /** Human label for this photo within the album. */
-  label: string;
-  /** Public derivative used to confirm visually what the buyer purchased. */
-  previewSrc: string;
-  priceCents: number;
-  width: number;
-  height: number;
-}
-
-/**
- * The server-side authority on price, so checkout never trusts the query
- * string. Published with the site rather than bundled into the Lambda, which
- * makes putting an album on sale a content deploy instead of a Lambda deploy.
- */
-export interface DownloadCatalog {
-  version: 3;
-  generated: string;
-  items: CatalogItem[];
-}
-
-export const CATALOG_PATH = 'downloads-catalog.json';
-
-export function catalogItem(catalog: DownloadCatalog, photoId: string): CatalogItem | undefined {
-  return catalog.items.find((item) => item.photoId === photoId);
 }

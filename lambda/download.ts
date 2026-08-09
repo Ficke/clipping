@@ -1,7 +1,7 @@
 import { GetObjectCommand, HeadObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { masterKey } from '../src/lib/downloads';
-import { readToken } from './tokens';
+import { readToken } from '../commerce/tokens';
 
 /**
  * Exchange an entitlement token for the file.

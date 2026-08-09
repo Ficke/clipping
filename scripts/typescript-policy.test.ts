@@ -6,12 +6,7 @@ import path from 'node:path';
  * Temporary migration allowlist. Every conversion should remove an entry;
  * adding a new authored JavaScript file must fail CI.
  */
-const LEGACY_JAVASCRIPT = [
-  'scripts/commerce-dev.mjs',
-  'scripts/commerce-link.mjs',
-  'scripts/commerce-reconcile.mjs',
-  'scripts/commerce-restore.mjs',
-] as const;
+const LEGACY_JAVASCRIPT = [] as const;
 
 describe('source language policy', () => {
   test('authored JavaScript is limited to the shrinking migration allowlist', () => {

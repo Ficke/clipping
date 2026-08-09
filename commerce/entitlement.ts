@@ -1,5 +1,5 @@
 import type Stripe from 'stripe';
-import { CURRENCY } from '../src/lib/downloads';
+import { CURRENCY } from '../shared/commerce';
 import { INTEGRATION_IDENTIFIER } from './integration';
 import { OrderNotFound, type OrderRepository } from './order-repository';
 import type { EntitlementAudit, Order, RestorationAudit } from './orders';
