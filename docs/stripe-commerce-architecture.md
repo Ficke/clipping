@@ -1,8 +1,30 @@
 # Stripe commerce architecture migration
 
-Status: in-progress pre-launch migration. Infrastructure Gates A-D and the six
-sellable fulfillment assets are deployed and verified; the storefront cutover
-remains pending.
+Status: pre-launch. Infrastructure Gates A-D, the six sellable fulfillment
+assets, and the POST storefront are deployed; the production webhook endpoint is
+registered. The live purchase drill has not run, so no order has reached
+`entitled` in production.
+
+## Revision 13 — 2026-08-08
+
+The migration is single-path. CloudFront serves `/api/*` from REST API
+`w98yd824p3` at `/commerce`, and both retained rollback rails are gone: the
+legacy Function URL runtime with its role, log group, alarm, and origin access
+control, and HTTP API `ugmazzudce` with its integrations, routes, stage, log
+group, permissions, and 5xx alarm.
+
+Keeping the HTTP API was not buying a faster rollback. Its default endpoint had
+been disabled since Gate C — every path returned an identical `Not Found`, and
+it emitted no request metrics in seven days — so restoring it meant flipping
+`commerce_rest_cutover_enabled` and `commerce_http_api_dormant`, applying, and
+waiting for CloudFront to propagate. Recreating it from a reverted commit costs
+the same propagation plus seconds of apply, and the origin has to be rewritten
+either way because the API id changes. Both variables and the CloudFront origin
+ternary are removed with it.
+
+`GET /api/checkout` is also gone from the Buyer and from routing. A
+state-changing GET is prefetchable and cross-site triggerable, because
+CloudFront attaches the origin-verification header to any browser request.
 
 ## Revision 12 — 2026-08-08
 
