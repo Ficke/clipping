@@ -75,13 +75,13 @@ let sourceBundle;
 try {
   for (const { albumDirectory, images, storyId, photoIds } of preparedAlbums) {
     const album = storyId;
-    const { directory: stagedDirectory, metadataDirectory } = stageAlbum(album, albumDirectory);
-    const sourceManifestPath = writeSourceManifest(album, images, photoIds);
+    const sourceManifestPath = writeSourceManifest(album, photoIds);
+    const { directory: stagedDirectory, metadataDirectory } = stageAlbum(album, albumDirectory, sourceManifestPath);
 
-    console.log(`\n${dryRun ? 'Previewing' : 'Publishing'} ${images.length} master${images.length === 1 ? '' : 's'} for ${album}`);
+    console.log(`\n${dryRun ? 'Previewing' : 'Publishing'} ${photoIds.size} master${photoIds.size === 1 ? '' : 's'} for ${album}`);
     // Nothing here deletes. A photograph leaves an album through photos:remove,
     // and its bytes go only through photos:delete.
-    await publishMasters(stagedDirectory, metadataDirectory, album, images, photoIds);
+    await publishMasters(stagedDirectory, metadataDirectory, album, photoIds);
 
     const manifestArgs = [
       's3', 'cp', sourceManifestPath, `${manifestRoot}/${album}/source.json`,
@@ -112,16 +112,14 @@ try {
  * in place, so an existing object whose bytes differ is a replacement the
  * operator has to confirm — every issued download link starts serving it.
  */
-async function publishMasters(stagedDirectory, metadataDirectory, album, images, photoIds) {
+async function publishMasters(stagedDirectory, metadataDirectory, album, photoIds) {
   if (dryRun) {
-    console.log(`Would publish ${images.length} master${images.length === 1 ? '' : 's'} and their metadata sidecars`);
+    console.log(`Would publish ${photoIds.size} master${photoIds.size === 1 ? '' : 's'} and their metadata sidecars`);
     return;
   }
 
   const counts = { uploaded: 0, replaced: 0, reused: 0 };
-  for (const file of images) {
-    const photoId = photoIds.get(file);
-    if (!photoId) fail(`${file} has no photoId in index.md`);
+  for (const [file, photoId] of photoIds) {
     const stagedFile = path.join(stagedDirectory, file);
     const call = {
       bucket: originalsBucket,
@@ -169,14 +167,14 @@ async function confirmReplacement(file, photoId, stagedFile) {
 }
 
 /** What CodeBuild reads to learn which masters an album is built from. */
-function writeSourceManifest(album, images, photoIds) {
+function writeSourceManifest(album, photoIds) {
   const manifestPath = path.join(stagingRoot, `${album}-source.json`);
-  const photos = images.map((file) => ({ photoId: photoIds.get(file), file }));
+  const photos = [...photoIds].map(([file, photoId]) => ({ photoId, file }));
   writeFileSync(manifestPath, `${JSON.stringify({ version: 1, album, photos }, null, 2)}\n`);
   return manifestPath;
 }
 
-function stageAlbum(album, albumDirectory) {
+function stageAlbum(album, albumDirectory, sourceManifestPath) {
   const directory = path.join(stagingRoot, album);
   const metadataDirectory = path.join(stagingRoot, `${album}-metadata`);
   mkdirSync(directory, { recursive: true });
@@ -187,6 +185,7 @@ function stageAlbum(album, albumDirectory) {
     '--source', albumDirectory,
     '--output', directory,
     '--metadata', metadataDirectory,
+    '--source-manifest', sourceManifestPath,
   ]);
   return { directory, metadataDirectory };
 }

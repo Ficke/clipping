@@ -64,17 +64,34 @@ export function captureDate(value) {
   return value.toISOString().slice(0, 10);
 }
 
+const skippedTags = /^(SourceFile|errors|warnings|Directory|File[A-Z])/;
+const binaryTags = /(ThumbnailImage|PreviewImage|JpgFromRaw|OtherImage)$/;
+
 /**
  * Everything the file carries, for the archive sidecar — including GPS, which
  * is why sidecars live under their own S3 prefix and never enter git. Binary
  * payloads are dropped: they are large, and a JSON dump cannot round-trip them.
+ *
+ * exiftool-vendored returns timestamps as ExifDateTime rather than Date, so
+ * they have to be serialized explicitly. Dropping every non-Date object, which
+ * is the obvious filter, silently loses DateTimeOriginal — the one tag most
+ * worth archiving.
  */
 export async function archiveMetadata(exiftool, file) {
   const tags = await exiftool.read(file);
-  const kept = Object.entries(tags).filter(([key, value]) => {
-    if (key === 'SourceFile' || key === 'errors' || key === 'warnings') return false;
-    if (key.startsWith('Directory') || key.startsWith('File')) return false;
-    return typeof value !== 'object' || value instanceof Date || Array.isArray(value);
-  });
+  const kept = Object.entries(tags)
+    .filter(([key]) => !skippedTags.test(key) && !binaryTags.test(key))
+    .map(([key, value]) => [key, serializeTag(value)])
+    .filter(([, value]) => value !== undefined);
   return Object.fromEntries(kept.sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function serializeTag(value) {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(serializeTag);
+  if (typeof value.toISOString === 'function') return value.toISOString();
+  if (ArrayBuffer.isView(value)) return undefined;
+  // ExifDate and ExifTime carry no toISOString; their toString is the tag value.
+  if (value.constructor !== Object) return String(value);
+  return value;
 }

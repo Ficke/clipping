@@ -48,6 +48,7 @@ for (const album of albums) {
       '--source', albumDir,
       '--output', staged,
       '--metadata', metadataDirectory,
+      '--source-manifest', sourceManifest,
     ], album);
     run([
       path.join(repoRoot, 'scripts', 'photos-build-media.mjs'),

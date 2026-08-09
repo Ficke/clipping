@@ -49,15 +49,29 @@ export function publishedAt(album: Album): Date {
   return album.data.published ?? album.data.date;
 }
 
-/** All non-draft albums, most recently published first. */
+/**
+ * All non-draft albums, most recently published first.
+ *
+ * This is the only place a photo ID can be checked across every album, and it
+ * has to be: two albums claiming one ID would have the second push overwrite
+ * the first album's only master.
+ */
 export async function getAlbums(): Promise<Album[]> {
   const albums = await getCollection('albums', ({ data }) => !data.draft);
   const storyIds = new Set<string>();
+  const photoIds = new Map<string, string>();
   for (const album of albums) {
     if (storyIds.has(album.data.storyId)) {
       throw new Error(`Duplicate storyId: ${album.data.storyId}`);
     }
     storyIds.add(album.data.storyId);
+    for (const photo of album.data.photos) {
+      const owner = photoIds.get(photo.photoId);
+      if (owner) {
+        throw new Error(`Photo ID ${photo.photoId} is claimed by both ${owner} and ${album.data.storyId}`);
+      }
+      photoIds.set(photo.photoId, album.data.storyId);
+    }
   }
   return albums.sort((a, b) => publishedAt(b).valueOf() - publishedAt(a).valueOf());
 }
@@ -88,16 +102,11 @@ function imagesIn(album: Album): AlbumPhoto[] {
   const duplicates = listed.filter((photoId, index) => listed.indexOf(photoId) !== index);
   const unknown = listed.filter((photoId) => !byId.has(photoId));
   const missing = manifestIds.filter((photoId) => !listed.includes(photoId));
-  // `cover` still names a photo by filename, so live filenames must be unique.
-  const files = live.map((photo) => photo.file);
-  const duplicateFiles = files.filter((file, index) => files.indexOf(file) !== index);
-
-  if (duplicates.length || unknown.length || missing.length || duplicateFiles.length) {
+  if (duplicates.length || unknown.length || missing.length) {
     const problems = [
       duplicates.length && `duplicates: ${[...new Set(duplicates)].join(', ')}`,
       unknown.length && `not in photos.json: ${unknown.join(', ')}`,
       missing.length && `absent from photos: ${missing.join(', ')}`,
-      duplicateFiles.length && `duplicate filenames: ${[...new Set(duplicateFiles)].join(', ')}`,
     ].filter(Boolean);
     throw new Error(`Album ${album.id}: photos does not match photos.json (${problems.join('; ')}). Rerun photos:push.`);
   }
@@ -117,9 +126,9 @@ export function coverOf(album: Album): PhotoManifestEntry {
   const photos = imagesIn(album);
   if (!photos.length) throw new Error(`Album ${album.id} has no photos left`);
   if (!album.data.cover) return photos[0]!.image;
-  const hit = photos.find(({ file }) => file === album.data.cover);
+  const hit = photos.find(({ photoId }) => photoId === album.data.cover);
   if (!hit) {
-    throw new Error(`Album ${album.id}: cover "${album.data.cover}" matches no image in the folder`);
+    throw new Error(`Album ${album.id}: cover "${album.data.cover}" matches no photograph in the album`);
   }
   return hit.image;
 }
@@ -128,7 +137,7 @@ export function coverOf(album: Album): PhotoManifestEntry {
 export function coverAltOf(album: Album): string {
   const photos = imagesIn(album);
   const hit = album.data.cover
-    ? photos.find(({ file }) => file === album.data.cover)
+    ? photos.find(({ photoId }) => photoId === album.data.cover)
     : photos[0];
   return hit?.alt ?? hit?.caption ?? `Cover photograph for ${album.data.title}`;
 }

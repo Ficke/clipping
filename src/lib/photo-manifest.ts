@@ -39,12 +39,10 @@ export interface PhotoManifestEntry {
 }
 
 export interface PhotoManifest {
-  version: 1;
+  version: 2;
   profile: string;
   album: string;
   photos: PhotoManifestEntry[];
-  /** Superseded derivative trees retained until the updated site is live. */
-  obsoleteMedia?: { profile: string; sourceHash: string }[];
 }
 
 export function srcset(variants: PhotoVariant[]): string {

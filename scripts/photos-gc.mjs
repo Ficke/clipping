@@ -12,8 +12,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { masterKey } from '../src/lib/downloads.ts';
-import { readPhotosBlock, splitFrontmatter } from './photo-frontmatter.mjs';
-import { loadManifests, mediaPrefix, validHash, validProfile } from './photo-media.mjs';
+import { albumIndexes, readPhotosBlock, splitFrontmatter } from './photo-frontmatter.mjs';
+import { livePrefixes, loadManifests, orphanedTrees } from './photo-media.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
@@ -25,34 +25,24 @@ const originalsBucket = process.env.ORIGINALS_BUCKET;
 
 if (albumsAt !== -1 && !args[albumsAt + 1]) fail('--albums requires a directory');
 if (!existsSync(albumsRoot)) fail(`Album directory does not exist: ${albumsRoot}`);
-if (!mediaBucket && !dryRun) fail('MEDIA_BUCKET is required unless --dry-run is set');
+if (!mediaBucket) fail('MEDIA_BUCKET is required: cleanup compares the bucket against the manifests');
 
 const manifests = loadManifests(albumsRoot);
+const live = livePrefixes(manifests);
 
-const live = new Set();
-const obsolete = new Map();
-for (const manifest of manifests) {
-  for (const photo of manifest.photos ?? []) {
-    if (validHash(photo.sourceHash)) live.add(identity(manifest.profile, photo.sourceHash));
-  }
-  for (const entry of manifest.obsoleteMedia ?? []) {
-    if (validProfile(entry.profile) && validHash(entry.sourceHash)) {
-      obsolete.set(identity(entry.profile, entry.sourceHash), entry);
-    }
-  }
-}
+// Comparing the bucket against the manifests only works when the manifests are
+// actually loaded. A fresh clone with none of them would make every tree look
+// orphaned, so refuse rather than delete the whole media bucket.
+if (!live.size) fail('no committed manifest references any media; refusing to compare');
 
-const removable = [...obsolete]
-  .filter(([key]) => !live.has(key))
-  .map(([, entry]) => entry)
-  .sort((left, right) => identity(left.profile, left.sourceHash).localeCompare(identity(right.profile, right.sourceHash)));
+const keys = listKeys(mediaBucket, 'media/');
+const orphans = orphanedTrees(manifests, keys);
 
-if (!removable.length) {
-  console.log('Photo media cleanup: nothing obsolete');
+if (!orphans.length) {
+  console.log(`Photo media cleanup: nothing obsolete (${live.size} trees in use)`);
 } else {
-  console.log(`Photo media cleanup: ${dryRun ? 'would remove' : 'removing'} ${removable.length} derivative tree${removable.length === 1 ? '' : 's'}`);
-  for (const entry of removable) {
-    const prefix = mediaPrefix(entry.profile, entry.sourceHash);
+  console.log(`Photo media cleanup: ${dryRun ? 'would remove' : 'removing'} ${orphans.length} derivative tree${orphans.length === 1 ? '' : 's'}`);
+  for (const prefix of orphans) {
     console.log(`  ${prefix}`);
     if (!dryRun) run('aws', ['s3', 'rm', `s3://${mediaBucket}/${prefix}`, '--recursive', '--only-show-errors']);
   }
@@ -68,32 +58,29 @@ reportOrphanedMasters();
 function reportOrphanedMasters() {
   if (!originalsBucket) return;
   const known = new Set();
-  for (const indexPath of readdirSync(albumsRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => path.join(albumsRoot, entry.name, 'index.md'))
-    .filter((indexPath) => existsSync(indexPath))) {
+  for (const indexPath of albumIndexes(albumsRoot)) {
     const { lines } = splitFrontmatter(readFileSync(indexPath, 'utf8'), path.dirname(indexPath));
     for (const entry of readPhotosBlock(lines).entries) {
       if (entry.photoId && !entry.deleted) known.add(masterKey(entry.photoId));
     }
   }
 
-  const listed = runCapture('aws', [
-    's3api', 'list-objects-v2', '--bucket', originalsBucket, '--prefix', 'photos/',
-    '--query', 'Contents[].Key', '--output', 'json',
-  ]);
-  const orphans = (JSON.parse(listed || '[]') ?? []).filter((key) => !known.has(key));
-  if (!orphans.length) {
+  const orphaned = listKeys(originalsBucket, 'photos/').filter((key) => !known.has(key));
+  if (!orphaned.length) {
     console.log('Masters: every object in photos/ is referenced by an album');
     return;
   }
-  console.log(`Masters: ${orphans.length} object${orphans.length === 1 ? '' : 's'} in photos/ referenced by no album`);
-  for (const key of orphans) console.log(`  ${key}`);
+  console.log(`Masters: ${orphaned.length} object${orphaned.length === 1 ? '' : 's'} in photos/ referenced by no album`);
+  for (const key of orphaned) console.log(`  ${key}`);
   console.log('  nothing was deleted. Check the album frontmatter before removing any of these.');
 }
 
-function identity(profile, sourceHash) {
-  return `${profile}:${sourceHash}`;
+function listKeys(bucket, prefix) {
+  const listed = runCapture('aws', [
+    's3api', 'list-objects-v2', '--bucket', bucket, '--prefix', prefix,
+    '--query', 'Contents[].Key', '--output', 'json',
+  ]);
+  return JSON.parse(listed || '[]') ?? [];
 }
 
 function run(command, commandArgs) {

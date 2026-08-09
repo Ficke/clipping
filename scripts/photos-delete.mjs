@@ -8,6 +8,10 @@
  * Any download link for it stops working, deliberately. Orders that reference
  * it are reported rather than blocking: the order keeps its own snapshot of
  * what was bought. Bucket versioning keeps the bytes recoverable for 90 days.
+ *
+ * Only the master and its metadata are removed here. Derivatives went
+ * unreferenced the moment the photograph was removed from its album, so
+ * `photos:gc` collects them on the next deploy.
  */
 
 import { writeFileSync } from 'node:fs';
@@ -17,12 +21,10 @@ import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { masterKey, metadataKey } from '../src/lib/downloads.ts';
 import { locatePhoto, replacePhotosBlock, today } from './photo-frontmatter.mjs';
-import { derivativePrefixes, loadManifests } from './photo-media.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
 const originalsBucket = process.env.ORIGINALS_BUCKET ?? 'adamficke-com-originals';
-const mediaBucket = process.env.MEDIA_BUCKET ?? 'adamficke-com-media';
 const ordersTable = process.env.COMMERCE_TABLE ?? 'adamficke-com-commerce-orders';
 
 const args = process.argv.slice(2).filter((arg) => arg !== '--');
@@ -52,13 +54,12 @@ if (!photo.removed) {
 }
 if (photo.deleted) fail(`${photo.file} was already deleted on ${photo.deleted}`);
 
-const prefixes = derivativePrefixes(loadManifests(albumsRoot), photo.photoId);
 const orders = countOrders(photo.photoId);
 
 console.log(`${photo.file} (${photo.photoId}), removed ${photo.removed}`);
 console.log(`  master     s3://${originalsBucket}/${masterKey(photo.photoId)}`);
 console.log(`  metadata   s3://${originalsBucket}/${metadataKey(photo.photoId)}`);
-console.log(`  media      ${prefixes.length} derivative tree${prefixes.length === 1 ? '' : 's'}`);
+console.log('  media      already unreferenced; photos:gc removes it on the next deploy');
 if (orders > 0) {
   console.log(`  ${orders} order${orders === 1 ? '' : 's'} reference this photograph; their download links will stop working`);
 }
@@ -66,24 +67,20 @@ console.log('  recoverable for 90 days through bucket versioning');
 
 if (!dryRun && !assumeYes) await confirm(photo.file);
 
-remove(originalsBucket, masterKey(photo.photoId));
-remove(originalsBucket, metadataKey(photo.photoId));
-for (const prefix of prefixes) removeTree(mediaBucket, prefix);
-
+// Record the intent before acting on it. If the delete then fails partway, the
+// tombstone is already committed and photos:gc reports whatever survived; the
+// reverse order loses the record of a photograph whose bytes are already gone.
 photo.deleted = today();
 console.log(`${dryRun ? 'Would update' : 'Updated'} ${path.relative(repoRoot, indexPath)}`);
 if (!dryRun) writeFileSync(indexPath, replacePhotosBlock(contents, entries, path.dirname(indexPath)));
+
+remove(originalsBucket, masterKey(photo.photoId));
+remove(originalsBucket, metadataKey(photo.photoId));
 
 function remove(bucket, key) {
   console.log(`${dryRun ? 'Would delete' : 'Deleting'} s3://${bucket}/${key}`);
   if (dryRun) return;
   aws(['s3api', 'delete-object', '--bucket', bucket, '--key', key]);
-}
-
-function removeTree(bucket, prefix) {
-  console.log(`${dryRun ? 'Would delete' : 'Deleting'} s3://${bucket}/${prefix}`);
-  if (dryRun) return;
-  aws(['s3', 'rm', `s3://${bucket}/${prefix}`, '--recursive', '--only-show-errors']);
 }
 
 /** Informational only — deletion is the operator's call, not the table's. */

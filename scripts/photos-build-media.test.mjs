@@ -60,7 +60,7 @@ describe('media manifest builder', () => {
 
     expect(result.status).toBe(0);
     const parsed = JSON.parse(readFileSync(manifest, 'utf8'));
-    expect(parsed).toMatchObject({ version: 1, profile: 'photo-v1', album: '2026-08-test' });
+    expect(parsed).toMatchObject({ version: 2, profile: 'photo-v1', album: '2026-08-test' });
     expect(parsed.photos).toHaveLength(1);
     expect(parsed.photos[0]).toMatchObject({
       photoId: PHOTO_ID, file: 'DSCF10.jpg', width: 2400, height: 1600,
@@ -102,10 +102,10 @@ describe('media manifest builder', () => {
 
     expect(updated.photos.map((photo) => photo.file)).toEqual(['one.jpg']);
     expect(updated.photos[0].sourceHash).not.toBe(initialHash);
-    expect(updated.obsoleteMedia).toEqual([
-      { profile: 'photo-v1', photoId: ONE_ID, sourceHash: initial.photos[0].sourceHash },
-      { profile: 'photo-v1', photoId: TWO_ID, sourceHash: initial.photos[1].sourceHash },
-    ].sort((left, right) => left.sourceHash.localeCompare(right.sourceHash)));
+    /* The manifest records only what is in use. Superseded and departed trees
+       are found by comparing the bucket against it, not by a ledger inside it. */
+    expect(updated).not.toHaveProperty('obsoleteMedia');
+    expect(updated.photos[0]).not.toHaveProperty('previousHashes');
   });
 
   test('reuses actual dimensions from the published manifest', async () => {

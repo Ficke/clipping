@@ -1,6 +1,6 @@
 /** Build lossless, metadata-minimized fulfillment files for one album. */
 
-import { copyFileSync, mkdirSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { exiftool } from 'exiftool-vendored';
 import { archiveMetadata, fulfillmentMetadataRetain, shotMetadata } from './photo-metadata.mjs';
@@ -10,13 +10,18 @@ const args = parseArgs(process.argv.slice(2));
 const sourceDirectory = path.resolve(args.source);
 const outputDirectory = path.resolve(args.output);
 const metadataDirectory = path.resolve(args.metadata);
+const photoIds = args.sourceManifest ? loadPhotoIds(args.sourceManifest) : new Map();
 
 mkdirSync(outputDirectory, { recursive: true });
 mkdirSync(metadataDirectory, { recursive: true });
 
+// The source manifest, when given, is the album's published set. A removed
+// photograph's file stays on disk, and staging it would put it back in the
+// build.
 const files = readdirSync(sourceDirectory, { withFileTypes: true })
   .filter((entry) => entry.isFile() && supportedExtensions.has(path.extname(entry.name).toLowerCase()))
   .map((entry) => entry.name)
+  .filter((file) => !args.sourceManifest || photoIds.has(file))
   .sort((left, right) => left.localeCompare(right, 'en', { numeric: true, sensitivity: 'base' }));
 
 try {
@@ -29,7 +34,7 @@ try {
     const shot = await shotMetadata(source);
     writeFileSync(
       path.join(metadataDirectory, `${file}.json`),
-      `${JSON.stringify({ version: 1, file, shot, archive }, null, 2)}\n`,
+      `${JSON.stringify({ version: 1, photoId: photoIds.get(file), file, shot, archive }, null, 2)}\n`,
     );
 
     copyFileSync(source, destination);
@@ -50,8 +55,8 @@ function parseArgs(values) {
   const parsed = {};
   for (let index = 0; index < values.length; index++) {
     const value = values[index];
-    if (['--source', '--output', '--metadata'].includes(value)) {
-      parsed[value.slice(2)] = values[++index];
+    if (['--source', '--output', '--metadata', '--source-manifest'].includes(value)) {
+      parsed[toCamel(value.slice(2))] = values[++index];
     }
     else fail(`Unknown argument: ${value}`);
   }
@@ -59,6 +64,15 @@ function parseArgs(values) {
     if (!parsed[field]) fail(`--${field} is required`);
   }
   return parsed;
+}
+
+function toCamel(value) {
+  return value.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+}
+
+function loadPhotoIds(input) {
+  const manifest = JSON.parse(readFileSync(path.resolve(input), 'utf8'));
+  return new Map(manifest.photos.map((photo) => [photo.file, photo.photoId]));
 }
 
 function fail(message) {

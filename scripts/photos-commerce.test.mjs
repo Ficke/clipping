@@ -141,6 +141,22 @@ describe('photo commerce commands', () => {
     expect(readFileSync(index, 'utf8')).toBe(before);
   });
 
+  /* Two albums claiming one ID would have the second push overwrite the first
+     album's only master, and nothing downstream would say so. */
+  test('the build refuses two albums that claim the same photo ID', () => {
+    const first = fixture();
+    const second = fixture();
+    const contents = readFileSync(second.index, 'utf8').replace(OTHER_ID, PHOTO_ID);
+    writeFileSync(second.index, contents);
+
+    const result = spawnSync('bun', ['run', 'build'], { cwd: repoRoot, encoding: 'utf8' });
+
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain(PHOTO_ID);
+    expect(`${result.stdout}${result.stderr}`).toContain('claimed by both');
+    expect(first.name).not.toBe(second.name);
+  }, 60_000);
+
   test('dry runs and invalid prices never mutate content', () => {
     const { name, index } = fixture();
     const before = readFileSync(index, 'utf8');

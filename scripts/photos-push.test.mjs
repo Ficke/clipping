@@ -415,6 +415,62 @@ exit 0
     expect(manifest.photos.map((photo) => photo.file)).toEqual(['a.jpg', 'c.jpg']);
   });
 
+  /* photos:remove leaves the file on disk, so the next push has to skip the
+     photograph rather than treat a present file as intent to publish. */
+  test('publishes from frontmatter, not the folder, after a removal', async () => {
+    const repoRoot = path.resolve(import.meta.dir, '..');
+    const album = path.join(repoRoot, 'content', 'albums', `2099-01-afterremove-test-${process.pid}`);
+    const temporary = mkdtempSync(path.join(os.tmpdir(), 'photos-push-test-'));
+    const bin = path.join(temporary, 'bin');
+    const log = path.join(temporary, 'aws-args');
+    temporaryAlbums.push(album);
+    temporaryDirectories.push(temporary);
+    mkdirSync(album);
+    mkdirSync(bin);
+    for (const file of ['a.jpg', 'b.jpg']) {
+      await sharp({ create: { width: 20, height: 10, channels: 3, background: '#123456' } })
+        .jpeg().toFile(path.join(album, file));
+    }
+    writeFileSync(path.join(album, 'index.md'), [
+      '---',
+      'storyId: "afterremove-test"',
+      'title: "After Remove"',
+      'date: 2099-01-01',
+      'location: "Nowhere"',
+      'photos:',
+      '  - file: a.jpg',
+      `    photoId: ${PHOTO_ID}`,
+      '  - file: b.jpg',
+      `    photoId: ${OTHER_ID}`,
+      '    removed: 2099-01-02',
+      '---',
+      '',
+    ].join('\n'));
+    const fakeAws = path.join(bin, 'aws');
+    writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3api head-object" ]; then echo "An error occurred (404): Not Found" >&2; exit 1; fi
+printf '%s ' "$@" >> ${JSON.stringify(log)}
+printf '\n' >> ${JSON.stringify(log)}
+if [ "$1 $2" = "s3 cp" ]; then
+  case "$3" in
+    s3://*manifests*) echo "An error occurred (404)" >&2; exit 1 ;;
+  esac
+fi
+exit 0
+`);
+    chmodSync(fakeAws, 0o755);
+
+    const result = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local', '--yes',
+    ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Publishing 1 master');
+    const awsCalls = readFileSync(log, 'utf8');
+    expect(awsCalls).toContain(`photos/${PHOTO_ID}`);
+    expect(awsCalls).not.toContain(`photos/${OTHER_ID}`);
+  });
+
   test('refuses a storyId that would escape the archive prefix', async () => {
     const repoRoot = path.resolve(import.meta.dir, '..');
     const album = path.join(repoRoot, 'content', 'albums', `2099-01-badid-test-${process.pid}`);

@@ -53,7 +53,6 @@ const previousVariants = variantsFrom(previousManifest);
 const previousShot = new Map((previousManifest?.photos ?? [])
   .filter((photo) => photo.shot)
   .map((photo) => [photo.file, photo.shot]));
-
 for (const file of files) {
   const sourcePath = path.join(sourceDirectory, file);
   const sourceHash = createHash('sha256').update(readFileSync(sourcePath)).digest('hex');
@@ -115,25 +114,11 @@ for (const file of files) {
   console.log(`${file}: ${definitions.length} variants (${generatedCount} generated total)`);
 }
 
-const currentMedia = new Set(photos.map((photo) => mediaIdentity(photoProfile.version, photo.sourceHash)));
-// Carries photoId so a later delete can find every tree a photograph ever had,
-// not just the one its current bytes produced.
-const obsoleteMedia = obsoleteMediaFrom(previousManifest)
-  .concat((previousManifest?.photos ?? []).map((photo) => ({
-    profile: previousManifest?.profile ?? photoProfile.version,
-    photoId: photo.photoId,
-    sourceHash: photo.sourceHash,
-  })))
-  .filter((entry) => validMediaEntry(entry) && !currentMedia.has(mediaIdentity(entry.profile, entry.sourceHash)))
-  .filter((entry, index, entries) => entries.findIndex((candidate) =>
-    candidate.profile === entry.profile && candidate.sourceHash === entry.sourceHash) === index)
-  .sort((left, right) => mediaIdentity(left.profile, left.sourceHash).localeCompare(mediaIdentity(right.profile, right.sourceHash)));
 const manifest = {
-  version: 1,
+  version: 2,
   profile: photoProfile.version,
   album,
   photos,
-  ...(obsoleteMedia.length && { obsoleteMedia }),
 };
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
@@ -200,20 +185,6 @@ function variantsFrom(manifest) {
     }
   }
   return variants;
-}
-
-function obsoleteMediaFrom(manifest) {
-  return Array.isArray(manifest?.obsoleteMedia) ? manifest.obsoleteMedia : [];
-}
-
-function validMediaEntry(entry) {
-  return entry && /^[a-z0-9][a-z0-9-]*$/.test(entry.profile)
-    && /^photo_[a-f0-9]{24}$/.test(entry.photoId ?? '')
-    && /^[a-f0-9]{64}$/.test(entry.sourceHash);
-}
-
-function mediaIdentity(profile, sourceHash) {
-  return `${profile}:${sourceHash}`;
 }
 
 async function remoteVariantDimensions(key) {
