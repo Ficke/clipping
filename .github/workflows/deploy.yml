@@ -40,7 +40,7 @@ jobs:
             --names adamficke-com-site \
             --query 'projects[0].source.buildspec' \
             --output text > live-buildspec-site.yml
-          diff --unified=3 buildspec-site.yml live-buildspec-site.yml
+          bun scripts/codebuild-buildspec.ts buildspec-site.yml live-buildspec-site.yml
 
       - name: Build and deploy in AWS CodeBuild
         run: |
