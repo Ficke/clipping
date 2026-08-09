@@ -10,7 +10,7 @@ import {
   type EntitlementAudit,
   type Order,
   type RevocationAudit,
-} from './orders';
+} from '../commerce/orders';
 import { applyStripeEvent, handleWebhook, verifyEvent } from './webhook';
 
 const CURRENT = 'whsec_current_test';

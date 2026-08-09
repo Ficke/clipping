@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { PhotoUnavailable, resolveDownload } from './download';
-import { InvalidToken, mintToken, type Entitlement } from './tokens';
+import { InvalidToken, mintToken, type Entitlement } from '../commerce/tokens';
 
 const KEY = 'download-token-key';
 const BUCKET = 'originals-test';

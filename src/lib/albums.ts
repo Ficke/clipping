@@ -1,10 +1,12 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
+import { parsePhotoManifest } from '../../shared/media';
+import { priceCentsFromDollars } from '../../shared/album';
 import { slugForStoryId } from './downloads';
 import type { PhotoManifest, PhotoManifestEntry } from './photo-manifest';
 
 export type Album = CollectionEntry<'albums'>;
 
-const manifests = import.meta.glob<PhotoManifest>(
+const manifestInputs = import.meta.glob<unknown>(
   '/content/albums/*/photos.json',
   { eager: true, import: 'default' }
 );
@@ -15,7 +17,8 @@ const manifests = import.meta.glob<PhotoManifest>(
  * part of an album's identity.
  */
 const manifestsByStoryId = new Map<string, PhotoManifest>();
-for (const [file, manifest] of Object.entries(manifests)) {
+for (const [file, input] of Object.entries(manifestInputs)) {
+  const manifest = parsePhotoManifest(input, file);
   const existing = manifestsByStoryId.get(manifest.album);
   if (existing) throw new Error(`Two manifests claim storyId ${manifest.album}: ${file}`);
   manifestsByStoryId.set(manifest.album, manifest);
@@ -27,7 +30,7 @@ export interface AlbumPhoto {
   image: PhotoManifestEntry;
   caption: string | undefined;
   alt: string | undefined;
-  /** Set means offered as a download. See `downloads.ts`. */
+  /** A defined value offers the photo as a download. See `downloads.ts`. */
   priceCents: number | undefined;
 }
 
@@ -117,11 +120,11 @@ function imagesIn(album: Album): AlbumPhoto[] {
     image: byId.get(photo.photoId)!,
     caption: photo.caption?.trim() || undefined,
     alt: photo.alt?.trim() || undefined,
-    priceCents: photo.price === undefined ? undefined : Math.round(photo.price * 100),
+    priceCents: photo.priceDollars === undefined ? undefined : priceCentsFromDollars(photo.priceDollars),
   }));
 }
 
-/** Card and social image: explicit `cover`, otherwise the first photo. */
+/** Return the explicit cover, or the first live photo by default. */
 export function coverOf(album: Album): PhotoManifestEntry {
   const photos = imagesIn(album);
   if (!photos.length) throw new Error(`Album ${album.id} has no photos left`);
@@ -133,7 +136,7 @@ export function coverOf(album: Album): PhotoManifestEntry {
   return hit.image;
 }
 
-/** Alt text for the cover, falling back to its caption then a generic label. */
+/** Return cover alt text, then its caption, then a generic label. */
 export function coverAltOf(album: Album): string {
   const photos = imagesIn(album);
   const hit = album.data.cover
@@ -142,7 +145,6 @@ export function coverAltOf(album: Album): string {
   return hit?.alt ?? hit?.caption ?? `Cover photograph for ${album.data.title}`;
 }
 
-/** Live photos in frontmatter order. */
 export async function photosOf(album: Album): Promise<AlbumPhoto[]> {
   return imagesIn(album);
 }

@@ -26,5 +26,5 @@ phases:
           aws cloudfront wait invalidation-completed \
             --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
             --id "$INVALIDATION_ID"
-          MEDIA_BUCKET="$MEDIA_BUCKET" bun scripts/photos-gc.mjs
+          MEDIA_BUCKET="$MEDIA_BUCKET" bun scripts/photos-gc.ts
         fi

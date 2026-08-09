@@ -4,22 +4,33 @@
  * `albums.ts`; anything needing a secret belongs in the Lambda.
  */
 
-export const CURRENCY = 'usd';
+import { isPhotoId } from '../../shared/ids';
+
+export {
+  CATALOG_PATH,
+  CURRENCY,
+  catalogItem,
+  formatPrice,
+  type CatalogItem,
+  type DownloadCatalog,
+} from '../../shared/commerce';
+
+export { generatePhotoId, isPhotoId, type PhotoId } from '../../shared/ids';
 
 export interface LicenseTier {
   id: string;
-  /** Shown in Checkout as the line-item name, after the photo title. */
+  /** This appears in Checkout after the photo title. */
   name: string;
-  /** Short tag beside the price. The full grant lives in the lists below. */
+  /** This short tag appears beside the price; the lists below define the grant. */
   summary: string;
-  /** The grant itself. The photographs are otherwise all rights reserved — see NOTICE. */
+  /** These are the granted uses; all other rights are reserved under NOTICE. */
   grants: readonly string[];
   restrictions: readonly string[];
 }
 
 export const COPYRIGHT_LINE = 'Copyright remains with Adam Ficke.';
 
-/** Derived, not written twice, so the page and the receipt cannot disagree. */
+/** Derive the terms so the page and receipt cannot disagree. */
 export function licenseTerms(tier: LicenseTier): string {
   return `You may ${tier.grants.join(', ')}. `
     + `You may not ${tier.restrictions.join(', ')}. `
@@ -30,8 +41,9 @@ export function licenseTerms(tier: LicenseTier): string {
  * Most permissive last. Adding a tier here puts it on every photo already for
  * sale — the catalog emits one entry per photo per tier.
  */
-/** The one Stripe Product currently sold. Add another product here only when
- * the rights—not the photograph—differ. */
+/**
+ * Define one Stripe Product per rights package, not per photograph.
+ */
 export const DOWNLOAD_PRODUCTS: readonly LicenseTier[] = [
   {
     id: 'personal',
@@ -57,33 +69,9 @@ export function licenseTier(id: string): LicenseTier | undefined {
   return TIERS_BY_ID.get(id);
 }
 
-/** `$40`, or `$39.50` when the cents are not round. */
-export function formatPrice(cents: number): string {
-  const dollars = cents / 100;
-  return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`;
-}
-
-const PHOTO_ID = /^photo_[a-f0-9]{24}$/;
-const PHOTO_ID_BYTES = 12;
-
 export const SUPPORTED_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'avif'] as const;
 
-/**
- * Opaque, permanent identity for one photograph, minted once and written to
- * album frontmatter. Deliberately *not* derived from the bytes: re-exporting a
- * photograph at a higher resolution has to keep every issued download link
- * pointed at the same photograph.
- */
-export function generatePhotoId(): string {
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(PHOTO_ID_BYTES));
-  return `photo_${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
-}
-
-export function isPhotoId(value: string): boolean {
-  return PHOTO_ID.test(value);
-}
-
-/** The one full-resolution master. Overwritten in place when a photo is re-exported. */
+/** Return the stable master key that a re-export overwrites in place. */
 export function masterKey(photoId: string): string {
   if (!isPhotoId(photoId)) throw new Error('Cannot build a master key from an invalid photo ID');
   return `photos/${photoId}`;
@@ -124,36 +112,4 @@ export function downloadFilename(photoId: string, extension: string): string {
  */
 export function slugForStoryId(storyId: string): string {
   return storyId.replace(/^\d{4}-\d{2}-/, '');
-}
-
-/** Only photographs actually on sale are published, so presence is the offer. */
-export interface CatalogItem {
-  photoId: string;
-  storyId: string;
-  file: string;
-  albumTitle: string;
-  /** Human label for this photo within the album. */
-  label: string;
-  /** Public derivative used to confirm visually what the buyer purchased. */
-  previewSrc: string;
-  priceCents: number;
-  width: number;
-  height: number;
-}
-
-/**
- * The server-side authority on price, so checkout never trusts the query
- * string. Published with the site rather than bundled into the Lambda, which
- * makes putting an album on sale a content deploy instead of a Lambda deploy.
- */
-export interface DownloadCatalog {
-  version: 3;
-  generated: string;
-  items: CatalogItem[];
-}
-
-export const CATALOG_PATH = 'downloads-catalog.json';
-
-export function catalogItem(catalog: DownloadCatalog, photoId: string): CatalogItem | undefined {
-  return catalog.items.find((item) => item.photoId === photoId);
 }

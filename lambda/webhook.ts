@@ -1,6 +1,6 @@
 import type Stripe from 'stripe';
 import type { WebhookSecrets } from './config';
-import { EntitlementUnavailable, ensureEntitlement, validateSession } from './entitlement';
+import { EntitlementUnavailable, ensureEntitlement, validateSession } from '../commerce/entitlement';
 import {
   hasExpectedOrigin,
   header,
@@ -18,7 +18,7 @@ import {
 import { INTEGRATION_IDENTIFIER } from './integration';
 import { errorCategory, hashIdentifier, logOutcome } from './logging';
 import { OrderNotFound, type OrderRepository } from './order-repository';
-import { InvalidOrderTransition } from './orders';
+import { InvalidOrderTransition } from '../commerce/orders';
 
 export const WEBHOOK_EVENT_TYPES = [
   'checkout.session.completed',

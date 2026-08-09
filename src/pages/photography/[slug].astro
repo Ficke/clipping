@@ -22,7 +22,7 @@ const { Content } = await render(album);
 const photos = await photosOf(album);
 const opening = photos[0]!;
 const remaining = photos.slice(1);
-/* The description, not the generated meta fallback, which reads as boilerplate. */
+/* Prefer the authored description because the generated fallback reads as boilerplate. */
 const standfirst = album.data.description?.trim();
 const hasNarrative = Boolean(album.body?.trim());
 const cover = coverOf(album);
@@ -145,14 +145,14 @@ function altFor(index: number): string {
     line-height: 1.02;
   }
 
-  /* rem, not ch: ch resolves per-font, so a shared ch measure would render the
+  /* Use rem, not ch: ch resolves per font, so a shared ch measure would render the
      serif standfirst narrower than the sans .prose below it. */
   .standfirst {
     max-width: 34rem;
     margin-top: clamp(1.1rem, 2.5vw, 1.7rem);
     font-family: 'Source Serif 4 Variable', Georgia, serif;
-    /* text-grade optical size + lighter weight keep this from reading as a
-       second headline, since it shares the display family */
+    /* Text-grade optical sizing and a lighter weight keep this from reading as a
+       second headline, since it shares the display family. */
     font-variation-settings: 'opsz' 16;
     font-weight: 400;
     font-size: clamp(1rem, 1.35vw, 1.18rem);
@@ -180,7 +180,7 @@ function altFor(index: number): string {
   .prose :global(h3) {
     margin: 1.8em 0 0.6em;
     font-size: 1.35rem;
-    /* the global h2/h3 opsz is display-grade; step down for this size */
+    /* The global heading optical size is display-grade; step down at this size. */
     font-variation-settings: 'opsz' 24;
   }
 

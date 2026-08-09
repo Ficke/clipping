@@ -78,7 +78,7 @@ export async function buildCatalog(): Promise<DownloadCatalog> {
 export interface AlbumDownloads {
   album: Album;
   slug: string;
-  /* Grouped, not flattened: a flat list repeats the image once per tier. */
+  /* Keep offers grouped so a flat list does not repeat the image per tier. */
   photos: { photo: AlbumPhoto; offers: SellablePhoto[] }[];
 }
 

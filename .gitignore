@@ -17,7 +17,7 @@ content/albums/**/*.webp
 content/albums/**/*.avif
 
 # Locally-built derivative images (served from S3/CloudFront in production;
-# generated on demand for `bun run dev` by scripts/photos-media-dev.mjs)
+# generated on demand for `bun run dev` by scripts/photos-media-dev.ts)
 public/media/
 
 # Terraform (the .terraform.lock.hcl provider lockfile IS committed)
@@ -25,13 +25,14 @@ infra/.terraform/
 infra/*.tfstate*
 infra/tfplan*
 
-# preview-check screenshots
+# Browser-check screenshots (including the legacy Claude-local location).
+artifacts/preview-check/
 .claude/skills/preview-check/shots/
 
-# Per-machine Claude Code permissions, not shared
+# Per-machine Claude Code permissions are not shared.
 .claude/settings.local.json
 
-# Belt and braces: no Stripe key should ever be in a file here. Local dev reads
-# adamficke-com-commerce-test from Secrets Manager, so nothing is written to disk.
+# No Stripe key should ever be stored here. Local development reads the
+# adamficke-com-commerce-test parameter from SSM, so nothing is written to disk.
 .env
 .env.local

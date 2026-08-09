@@ -3,11 +3,11 @@ import { S3Client } from '@aws-sdk/client-s3';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import Stripe from 'stripe';
 import { loadCatalog, NotForSale } from './catalog';
-import { createCheckoutSession } from './checkout';
+import { createCheckoutSession } from '../commerce/checkout';
 import { loadSecrets, readEnv, type Env, type Secrets } from './config';
 import { PhotoUnavailable, resolveDownload } from './download';
-import { EntitlementIntegrityError, EntitlementUnavailable } from './entitlement';
-import { CheckoutReturnExpired, fulfillCheckout } from './fulfill';
+import { EntitlementIntegrityError, EntitlementUnavailable } from '../commerce/entitlement';
+import { CheckoutReturnExpired, fulfillCheckout } from '../commerce/fulfill';
 import {
   hasExpectedOrigin,
   header,
@@ -27,7 +27,7 @@ import {
 import { STRIPE_API_VERSION } from './integration';
 import { errorCategory, hashIdentifier, logOutcome } from './logging';
 import { DynamoOrderRepository, OrderNotFound, type OrderRepository } from './order-repository';
-import { InvalidToken } from './tokens';
+import { InvalidToken } from '../commerce/tokens';
 
 export interface BuyerRuntime {
   env: Env;

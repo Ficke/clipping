@@ -1,19 +1,10 @@
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 
 /**
- * Configuration comes from two places, split by sensitivity.
- *
- * Non-secret wiring (bucket names, the canonical site URL) arrives as Lambda
- * environment variables, where it is visible in the console and in Terraform.
- * Everything that would be damaging to leak lives in one KMS-encrypted SSM
- * `SecureString` parameter, fetched once per execution environment. Stripe keys
- * in particular must never sit in environment variables: they are readable by
- * anything that can describe the function.
- *
- * Parameter Store rather than Secrets Manager: both encrypt with KMS and gate on
- * IAM identically, but Secrets Manager bills $0.40 per secret per month for
- * rotation, replication, and resource policies this uses none of. The payload
- * is well inside the 4 KB standard-tier limit, so this is free.
+ * Read public wiring from Lambda environment variables and sensitive values
+ * from a KMS-encrypted SSM parameter. Stripe keys must not be exposed through
+ * function configuration. Standard-tier Parameter Store fits the small payload
+ * and requires no managed rotation or replication features.
  */
 
 export interface Env {
@@ -197,7 +188,7 @@ function loadParameter<T>(
   return value;
 }
 
-/** Resets the module cache. Tests only. */
+/** Reset the module cache between tests. */
 export function forgetSecrets(): void {
   cached.clear();
 }

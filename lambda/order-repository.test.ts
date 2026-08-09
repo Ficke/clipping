@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { GetCommand, PutCommand, ScanCommand, UpdateCommand, type DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { DynamoOrderRepository, OrderAlreadyExists } from './order-repository';
-import { CLOSED_ORDER_TTL_SECONDS, InvalidOrderTransition, createPendingOrder, type Order } from './orders';
+import { CLOSED_ORDER_TTL_SECONDS, InvalidOrderTransition, createPendingOrder, type Order } from '../commerce/orders';
 
 const ORDER_ID = `ord_${'1'.repeat(32)}`;
 

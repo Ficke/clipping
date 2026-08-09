@@ -1,10 +1,10 @@
 import { GetObjectCommand, HeadObjectCommand, type S3Client } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { masterKey } from '../src/lib/downloads';
-import { readToken } from './tokens';
+import { readToken } from '../commerce/tokens';
 
 /**
- * Exchanging an entitlement token for the file.
+ * Exchange an entitlement token for the file.
  *
  * The originals bucket stays private and is never fronted by CloudFront. A buyer
  * gets a presigned URL minted on the spot, which is the only way bytes leave
@@ -19,7 +19,7 @@ import { readToken } from './tokens';
 
 const PRESIGN_SECONDS = 900;
 
-/** The master is gone, which only a deliberate `photos:delete` can cause. */
+/** Report a missing master caused by a deliberate `photos:delete`. */
 export class PhotoUnavailable extends Error {}
 
 export interface DownloadDeps {
@@ -36,7 +36,7 @@ export async function resolveDownload(
   const entitlement = readToken(token, downloadTokenKey, now);
   const key = masterKey(entitlement.photoId);
 
-  // Say so, rather than redirecting the buyer to a presigned URL that 404s.
+  // Report the deletion instead of redirecting to a presigned URL that 404s.
   try {
     await s3.send(new HeadObjectCommand({ Bucket: originalsBucket, Key: key }));
   } catch (error) {

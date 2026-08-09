@@ -4,31 +4,34 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "predev": "rm -rf .astro && bun scripts/photos-media-dev.mjs",
+    "predev": "rm -rf .astro && bun scripts/photos-media-dev.ts",
     "dev": "astro dev",
     "build": "astro build",
     "test": "bun test",
-    "typecheck": "astro sync && tsc --noEmit",
+    "typecheck": "astro check && tsc --noEmit",
+    "check:typescript-policy": "bun test scripts/typescript-policy.test.ts",
     "preview": "astro preview",
+    "preview:check": "bun scripts/preview-check.ts",
+    "preview:analytics": "bun scripts/preview-analytics.ts",
     "lambda:build": "bun run lambda:build:buyer && bun run lambda:build:webhook && bun run lambda:build:authorizer",
     "lambda:build:buyer": "bun build lambda/index.ts --target=node --outfile=dist-lambda/buyer/index.mjs --minify",
     "lambda:build:webhook": "bun build lambda/webhook-index.ts --target=node --outfile=dist-lambda/webhook/index.mjs --minify",
     "lambda:build:authorizer": "bun build lambda/authorizer.ts --target=node --outfile=dist-lambda/authorizer/index.mjs --minify",
-    "commerce:dev": "bun scripts/commerce-dev.mjs",
-    "commerce:link": "bun scripts/commerce-link.mjs",
-    "commerce:reconcile": "bun scripts/commerce-reconcile.mjs",
-    "commerce:restore": "bun scripts/commerce-restore.mjs",
-    "photos:push": "bun scripts/photos-push.mjs",
-    "photos:remove": "bun scripts/photos-remove.mjs",
-    "photos:restore": "bun scripts/photos-remove.mjs --restore",
-    "photos:delete": "bun scripts/photos-delete.mjs",
-    "photos:sales": "bun scripts/photos-sales.mjs",
-    "photos:store": "bun scripts/photos-store.mjs",
-    "photos:gc": "bun scripts/photos-gc.mjs",
-    "photos:build-media": "bun scripts/photos-build-media.mjs",
-    "photos:build-media:local": "bun scripts/photos-media-dev.mjs",
-    "photos:pull": "bun scripts/photos-pull.mjs",
-    "photos:fetch-sources": "bun scripts/photos-fetch-sources.mjs"
+    "commerce:dev": "bun scripts/commerce-dev.ts",
+    "commerce:link": "bun scripts/commerce-link.ts",
+    "commerce:reconcile": "bun scripts/commerce-reconcile.ts",
+    "commerce:restore": "bun scripts/commerce-restore.ts",
+    "photos:push": "bun scripts/photos-push.ts",
+    "photos:remove": "bun scripts/photos-remove.ts",
+    "photos:restore": "bun scripts/photos-remove.ts --restore",
+    "photos:delete": "bun scripts/photos-delete.ts",
+    "photos:sales": "bun scripts/photos-sales.ts",
+    "photos:store": "bun scripts/photos-store.ts",
+    "photos:gc": "bun scripts/photos-gc.ts",
+    "photos:build-media": "bun scripts/photos-build-media.ts",
+    "photos:build-media:local": "bun scripts/photos-media-dev.ts",
+    "photos:pull": "bun scripts/photos-pull.ts",
+    "photos:fetch-sources": "bun scripts/photos-fetch-sources.ts"
   },
   "dependencies": {
     "@astrojs/rss": "^4.0.19",
@@ -44,10 +47,13 @@
     "exifr": "^7.1.3",
     "exiftool-vendored": "37.0.0",
     "sharp": "^0.35.3",
-    "stripe": "22.4.0"
+    "stripe": "22.4.0",
+    "zod": "4.4.3"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.10",
     "@types/bun": "^1.3.14",
-    "playwright-core": "^1.61.1"
+    "playwright-core": "^1.61.1",
+    "typescript": "6.0.2"
   }
 }
