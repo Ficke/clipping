@@ -26,5 +26,7 @@ phases:
           aws cloudfront wait invalidation-completed \
             --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
             --id "$INVALIDATION_ID"
-          MEDIA_BUCKET="$MEDIA_BUCKET" bun scripts/photos-gc.ts
+          if ! MEDIA_BUCKET="$MEDIA_BUCKET" bun scripts/photos-gc.ts; then
+            echo "WARNING: site deployed, but obsolete media cleanup failed" >&2
+          fi
         fi
