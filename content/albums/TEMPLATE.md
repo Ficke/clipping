@@ -1,7 +1,8 @@
-# Album fields
+# Album frontmatter
 
-`photos:push` creates `index.md`; this file documents the result. It is not
-published because the content collection loads only `*/index.md`.
+When you publish a new album, `photos:push` creates its `index.md`. The example
+below shows every supported field. This template is only a reference and does
+not appear on the site.
 
 ```markdown
 ---
@@ -30,35 +31,41 @@ photos:
     deleted: 2026-09-08
 ---
 
-Optional album prose appears after the opening photograph.
+Optional album prose goes here.
 ```
 
-## Conventions
+## Album fields
 
-- `storyId` is the permanent album identity. It keys storage, the manifest, and
-  the public URL. Do not change it after the first push.
-- `title` and `location` are display text. `date` is when the photographs were
-  made; `published` controls site and feed ordering.
-- `photos` is the display order. `photos:push` adds new files while preserving
-  photo IDs, captions, alt text, prices, lifecycle dates, and hand-set order.
-- `photoId` is the permanent identity for one photograph. It names the private
-  master and connects the photo to orders. Let `photos:push` create it.
-- `caption` is optional visible context. `alt` should describe what the image
-  communicates to someone who cannot see it; do not repeat camera settings.
-- `price` is an optional USD amount. Its presence puts a live photograph on
-  sale. Use `photos:store` to list, reprice, or delist a photo.
-- `cover` is an optional photo ID for the home-page card and social preview. It
-  defaults to the first live photo.
-- `description` overrides the generated search and social description.
-- `draft: true` keeps the album unpublished. Remove the field when it is ready.
-- `removed` and `deleted` are dated lifecycle records owned by `photos:remove`,
-  `photos:restore`, and `photos:delete`. Do not edit them by hand.
+`storyId` is the album's permanent identity and determines its public URL. Let
+`photos:push` create it, then leave it unchanged. The album folder can be renamed
+without affecting the URL.
 
-The album directory is a working label and may be renamed. Filenames may also
-change without changing photo identity. Do not delete a local file to remove a
-photograph: `photos:push` will stop rather than discard its record. Use
-`photos:remove` first, and use `photos:delete` only when the retained master
-should also be destroyed.
+`title` and `location` are shown on the site. `date` records when the photos were
+made. `published` controls where the album appears on the home page and in the
+feed. If `published` is omitted, the site uses `date` instead.
 
-`photos.json` is a generated build contract. Commit it with `index.md`, but do
-not edit it manually.
+`cover` is the permanent photo ID used for the home page and social preview. If
+you omit it, the first live photo becomes the cover. `description` provides
+custom text for search results and social previews. Set `draft: true` while an
+album is not ready to appear on the site, then remove it or set it to `false`
+when the album is ready.
+
+Any Markdown after the frontmatter appears as the album's introductory prose.
+
+## Photo fields
+
+Each entry in `photos` begins with its local filename and permanent `photoId`.
+Let `photos:push` assign the ID. You can rename or reorder the files later
+without changing it.
+
+`caption` is optional text shown with the image. Use `alt` to describe what the
+image communicates to someone who cannot see it. A `price` in US dollars puts a
+live photo in the store. Use `bun run photos:store` when you need to add, change,
+or remove a price.
+
+The `removed` and `deleted` dates record the photo's lifecycle. The
+`photos:remove`, `photos:restore`, and `photos:delete` commands manage them. Do
+not edit these dates yourself.
+
+The generated `photos.json` belongs with `index.md` in the album folder. Commit
+both files, but only edit `index.md`.

@@ -71,7 +71,7 @@ try {
   console.error(`commerce:dev: could not read ${secretParam} — ${missing ? 'no such parameter' : message}`);
   console.error(missing
     ? '             `cd infra && terraform apply` creates it holding {}, then put\n'
-      + '             test keys in it — see the README\'s "Selling downloads".'
+      + '             test keys in it — see docs/commerce-operations.md.'
     : '             Check your AWS session: `aws login`.');
   process.exit(1);
 }

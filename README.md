@@ -1,14 +1,14 @@
 # adamficke.com
 
-Photography portfolio and full-resolution download store. Astro builds a static
-site; AWS serves it from private S3 buckets through CloudFront. Stripe-hosted
-Checkout and three small Lambdas handle purchases without a long-running server
-or public admin interface.
+This repository contains the code and photo essays for
+[adamficke.com](https://adamficke.com), a photography portfolio where visitors
+can buy full-resolution downloads. The site is built with Astro and hosted on
+AWS. Purchases go through Stripe Checkout, with a small set of Lambda functions
+handling orders and download links.
 
-## Local development
+## Getting started
 
-Requirements: [Bun](https://bun.sh/) and Git. Album and infrastructure work also
-requires authenticated AWS access.
+You will need [Bun](https://bun.sh/) and Git. Clone the repository, then run:
 
 ```sh
 bun install
@@ -16,11 +16,12 @@ git config core.hooksPath .githooks
 bun run dev
 ```
 
-A fresh clone can build from the committed photo manifests. Run `bun run
-photos:pull` only when you need local copies of existing masters. These are the
-sanitized files stored in S3, not the original camera exports.
+Astro will print the address of the local site. Everything needed to build it is
+already in the repository, including manifests for the published photos. AWS
+access is only needed for publishing photos, testing purchases, or changing the
+infrastructure.
 
-Before opening a pull request, run:
+Before opening a pull request, check your work with:
 
 ```sh
 bun test
@@ -28,129 +29,109 @@ bun run typecheck
 bun run build
 ```
 
-`typecheck` runs both Astro's template/content checker and strict TypeScript.
-Run `bun run lambda:build` as well after changing `commerce/`, `lambda/`, or
-their shared contracts.
+If you changed anything in `commerce/` or `lambda/`, also run:
 
-### Production-preview checks
+```sh
+bun run lambda:build
+```
 
-Use the browser checks after changing layout, client-side behavior, analytics,
-or the content security policy:
+CI runs the same checks and validates the Terraform configuration.
+
+## Previewing a production build
+
+The development server is usually enough while you work. Use the production
+preview after changing a layout, browser behavior, analytics, or the content
+security policy.
 
 ```sh
 bun run build
 bun run preview
-# In another terminal:
+```
+
+Leave the preview server running and open a second terminal for the browser
+checks:
+
+```sh
 bun run preview:check
 bun run preview:analytics -- / --csp
 bun run preview:analytics -- / --off
 ```
 
-`preview:check` drives the default photography page, exercises its lightbox,
-fails on browser errors, and writes screenshots to `artifacts/preview-check/`.
-Pass another route after `--` when needed. The analytics checks intercept
-collection requests: the first requires one GA4 page view under the production
-CSP, while `--off` proves an ordinary local visit reports nothing. Both commands
-use installed Google Chrome through `playwright-core` and require the preview
-server to be running.
+By default, `preview:check` opens `/photography/salt-point/`, scrolls through
+the album, tests the lightbox, and saves screenshots to
+`artifacts/preview-check/`. You can give it any route on the site. For example,
+after changing the About page, run:
+
+```sh
+bun run preview:check -- /about/
+```
+
+Pages without a gallery are still checked for browser errors. The two analytics
+commands confirm that the production content security policy allows one page
+view and that ordinary local visits send no analytics. These checks use Chrome
+and expect the preview server to be running.
 
 ## Publishing an album
 
-1. Put exported images in a new directory under `content/albums/`. A
-   `YYYY-MM-name` directory keeps albums easy to scan, but the directory name is
-   not part of the album's identity.
-2. Preview the upload, then publish the media:
+Create a folder under `content/albums/` and add your exported images. A folder
+name such as `2026-08-lost-coast` makes albums easy to find, but it does not
+become the album's permanent ID.
 
-   ```sh
-   bun run photos:push -- content/albums/2026-08-lost-coast --dry-run
-   bun run photos:push -- content/albums/2026-08-lost-coast
-   ```
-
-   The first real push asks for the title, permanent story ID, dates, location,
-   cover, and optional sale prices. It also mints permanent photo IDs, strips
-   private metadata from the uploaded masters, archives that metadata separately,
-   and generates the public derivatives.
-3. Edit the generated `index.md` to add captions, alt text, or album prose. See
-   [the album template](content/albums/TEMPLATE.md) for the supported fields.
-4. Run the checks above, commit `index.md` and `photos.json`, and open a pull
-   request. Merging to `main` deploys the site.
-
-For an existing album, start with `bun run photos:pull`, make the changes, and
-run the same push sequence. Do not remove a photograph by deleting its local
-file; use the lifecycle commands below so its identity and purchase history are
-preserved.
-
-`storyId` and each `photoId` are permanent. Titles, filenames, folder names,
-captions, alt text, cover choice, and photo order can change safely.
-
-## Store and photo lifecycle
-
-A `price` on a photo's frontmatter entry puts it on sale. Use the photo ID shown
-in the store URL, or an album plus filename:
+Start with a dry run:
 
 ```sh
-bun run photos:store -- photo_1234567890abcdef12345678 --price 40
-bun run photos:store -- photo_1234567890abcdef12345678 --delist
-bun run photos:store -- olympics DSCF7588.jpg --price 55
+bun run photos:push -- content/albums/2026-08-lost-coast --dry-run
 ```
 
-Store changes require a normal site build and deploy, but no media or Lambda
-deploy. The photo lifecycle is deliberately separate:
+When the preview looks right, publish the album:
 
 ```sh
-bun run photos:remove -- olympics DSCF7588.jpg
-bun run photos:restore -- olympics DSCF7588.jpg
-bun run photos:delete -- olympics DSCF7588.jpg
+bun run photos:push -- content/albums/2026-08-lost-coast
 ```
 
-- `remove` takes a photo out of the album and store but retains its master, so
-  existing buyers keep access. It is reversible.
-- `restore` returns a removed photo to the album; run `photos:push` afterward to
-  rebuild derivatives if garbage collection has removed them.
-- `delete` destroys the master and metadata after an explicit confirmation. It
-  is allowed only after removal; S3 versioning provides a 90-day recovery window.
+The command asks for the album details, assigns permanent IDs to new photos,
+uploads private masters, and builds the public image sizes. It also creates
+`index.md` and `photos.json` in the album folder. Edit `index.md` to add captions,
+alternative text, or introductory prose. The [album frontmatter
+reference](content/albums/TEMPLATE.md) explains the available fields.
 
-Run `bun run photos:sales -- <photo-id>` before a permanent deletion to inspect
-orders for that photograph.
+Commit both files when the album is ready. Merging the pull request to `main`
+deploys the site.
 
-The commerce design and operational procedures are intentionally kept out of
-this README:
+To update an existing album, first download its current masters:
 
-- [Commerce architecture](docs/commerce.md)
-- [Commerce operations and recovery](docs/commerce-operations.md)
-- [Photo storage and publishing architecture](docs/photo-architecture.md)
+```sh
+bun run photos:pull -- <album>
+```
 
-## Architecture
+Do not remove a published photo by deleting its local file. Use `photos:remove`
+so the photo keeps its identity and existing purchases continue to work. See
+[Photo publishing](docs/photo-architecture.md) for removal, restoration, and
+permanent deletion.
 
-- `src/` contains the Astro site and browser code. The output is static HTML,
-  CSS, and JavaScript.
-- `shared/` contains runtime-neutral TypeScript primitives used by the site,
-  Lambdas, and operator commands.
-- `lambda/` contains the Buyer, Webhook, and origin Authorizer Lambdas. DynamoDB
-  stores durable order state; signed download tokens redeem against private S3
-  masters.
-- `scripts/` contains photo and commerce operator commands, media-build tools,
-  and production-preview checks.
-- `content/albums/` contains authored album Markdown and generated
-  `photos.json` manifests. Full-resolution images are ignored by Git.
-- `infra/` contains Terraform for S3, CloudFront, Route 53, CodeBuild, Lambda,
-  API Gateway, DynamoDB, logging, and alarms.
+## Where things live
 
-The source-language and dependency rules are documented in
-[Code architecture](docs/code-architecture.md).
+- `src/` contains the Astro pages, components, and browser code.
+- `content/albums/` contains the album writing and generated photo manifests.
+- `scripts/` contains commands for publishing photos, operating the store, and
+  checking production builds.
+- `commerce/` contains the payment and fulfillment rules.
+- `lambda/` contains the AWS handlers.
+- `infra/` contains the Terraform configuration.
 
-Photo media and site publishing are separate pipelines. A media build reads
-private masters and creates immutable, content-addressed derivatives. The fast
-site build reads only committed manifests, so a text edit does not download or
-reprocess the photo archive.
+More detail is available in the subsystem guides:
 
-GitHub Actions deploys `main` by assuming an AWS role through OIDC, archiving
-the merged commit, and starting the site CodeBuild project with that archive's
-tracked `buildspec-site.yml`. The local pre-push hook blocks direct pushes to
-`main`; use a branch and pull request.
+- [Code structure](docs/code-architecture.md)
+- [Photo publishing](docs/photo-architecture.md)
+- [Store design](docs/commerce.md)
+- [Store operations](docs/commerce-operations.md)
+
+When a change is merged to `main`, GitHub Actions packages that exact commit and
+sends it to CodeBuild. CodeBuild uses the `buildspec-site.yml` from the same
+commit, so the deployment steps always match the code being deployed. A local
+pre-push hook blocks direct pushes to `main`. Open a pull request instead.
 
 ## License
 
-The code is MIT licensed; see [LICENSE](LICENSE). The photographs remain all
-rights reserved under [NOTICE](NOTICE), including copies in Git history and
-generated derivatives.
+The code is available under the [MIT License](LICENSE). The photographs are all
+rights reserved under [NOTICE](NOTICE).
