@@ -236,13 +236,12 @@ resource "aws_lambda_function" "commerce_buyer" {
 
   environment {
     variables = {
-      COMMERCE_SECRET_PARAM              = aws_ssm_parameter.commerce.name
-      COMMERCE_TABLE                     = aws_dynamodb_table.commerce_orders.name
-      COMMERCE_ALLOW_LEGACY_GET_CHECKOUT = tostring(var.commerce_allow_legacy_get_checkout)
-      ORIGINALS_BUCKET                   = aws_s3_bucket.originals.bucket
-      SITE_BUCKET                        = aws_s3_bucket.site.bucket
-      SITE_URL                           = "https://${var.domain_name}"
-      ORIGIN_VERIFY_HEADER_NAME          = var.commerce_origin_verify_header_name
+      COMMERCE_SECRET_PARAM     = aws_ssm_parameter.commerce.name
+      COMMERCE_TABLE            = aws_dynamodb_table.commerce_orders.name
+      ORIGINALS_BUCKET          = aws_s3_bucket.originals.bucket
+      SITE_BUCKET               = aws_s3_bucket.site.bucket
+      SITE_URL                  = "https://${var.domain_name}"
+      ORIGIN_VERIFY_HEADER_NAME = var.commerce_origin_verify_header_name
       # Not a secret store: this only distinguishes CloudFront from direct
       # execute-api callers, and the REST authorizer is the actual gate. Stripe
       # keys stay in SSM for the reason config.ts gives.
@@ -424,11 +423,8 @@ resource "aws_apigatewayv2_integration" "commerce_webhook" {
 locals {
   commerce_buyer_routes = {
     checkout_post = "POST /api/checkout"
-    # Temporary compatibility route. Remove after the POST storefront has
-    # propagated and passed the controlled purchase check.
-    checkout_get = "GET /api/checkout"
-    fulfill      = "GET /api/fulfill"
-    download     = "GET /api/download"
+    fulfill       = "GET /api/fulfill"
+    download      = "GET /api/download"
   }
 }
 
@@ -611,15 +607,6 @@ locals {
     checkout_post = {
       resource = "checkout"
       method   = "POST"
-      target   = "buyer"
-      rate     = 2
-      burst    = 5
-    }
-    # Temporary compatibility route. Remove after the POST storefront has
-    # propagated and passed the controlled purchase check.
-    checkout_get = {
-      resource = "checkout"
-      method   = "GET"
       target   = "buyer"
       rate     = 2
       burst    = 5

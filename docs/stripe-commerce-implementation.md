@@ -67,7 +67,7 @@ immutable fulfillment object was uploaded or backfilled.
 - Webhook secret: `stripeReadApiKey`, `stripeWebhookSecret`, and optional
   `stripeWebhookSecretPrevious`.
 - Buyer environment: `COMMERCE_SECRET_PARAM`, `COMMERCE_TABLE`,
-  `COMMERCE_ALLOW_LEGACY_GET_CHECKOUT`, `ORIGINALS_BUCKET`, `SITE_BUCKET`,
+  `ORIGINALS_BUCKET`, `SITE_BUCKET`,
   `SITE_URL`, `ORIGIN_VERIFY_HEADER_NAME`, and `ORIGIN_VERIFY_HEADER_VALUES`.
 - Webhook environment: `COMMERCE_WEBHOOK_SECRET_PARAM`, `COMMERCE_TABLE`, and
   both origin-verification variables.
@@ -114,13 +114,20 @@ immutable fulfillment object was uploaded or backfilled.
   already raised the applied quota to 1000. The applied 5/3/2 reservations leave
   990 unreserved. Do not generate a replacement origin value, save a plan to
   persistent storage, or recompute a plan during apply.
-- Next session order: publish and review this branch; merge it through the
-  main-only release workflow; monitor the M6 CodeBuild deployment; verify the
-  propagated POST storefront and browser checkout; then disable legacy GET
-  checkout and prepare production webhook registration/live drill separately.
-- Known compatibility rails: keep enriched catalog v2, legacy GET checkout, the
-  dormant HTTP API configuration, and the legacy Function URL runtime until
-  their documented M6/M7 gates.
+- Complete: POST storefront deployed and propagated; legacy GET checkout
+  disabled then removed from both APIs and from the Buyer; the legacy Function
+  URL runtime, its role, log group, alarm, and origin access control deleted at
+  the M7 gate; the production webhook endpoint registered against live mode with
+  both secrets stored.
+- Outstanding: the live purchase drill has never run, so no order has reached
+  `entitled` in production and the download, token, and revocation paths are
+  unexercised outside the sandbox. The commerce alarm topic also needs a
+  confirmed subscriber; its Gate A email subscription expired unconfirmed, so
+  all seven alarms currently publish to nobody.
+- Remaining compatibility rails: enriched catalog v2, and the dormant HTTP API
+  configuration. Both APIs share the Buyer, so rollback is two variable flips
+  (`commerce_rest_cutover_enabled`, `commerce_http_api_dormant`) plus CloudFront
+  propagation. Retire the HTTP API once the drill has passed.
 
 ## Verification evidence
 

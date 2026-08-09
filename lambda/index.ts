@@ -85,14 +85,8 @@ export async function handleBuyer(
 
   try {
     if (path === '/api/checkout') {
-      const photoId = verb === 'POST'
-        ? checkoutPhotoId(event)
-        : verb === 'GET' && deps.env.allowLegacyGetCheckout
-          ? legacyCheckoutPhotoId(event)
-          : undefined;
-      if (verb !== 'POST' && !(verb === 'GET' && deps.env.allowLegacyGetCheckout)) {
-        return methodNotAllowed(deps.env.allowLegacyGetCheckout ? 'GET, POST' : 'POST');
-      }
+      if (verb !== 'POST') return methodNotAllowed('POST');
+      const photoId = checkoutPhotoId(event);
       if (!photoId) return problem(400, 'Checkout form is invalid.');
       const secrets = await deps.loadSecrets();
       const catalog = await loadCatalog(deps.env.siteBucket, deps.s3);
@@ -188,16 +182,6 @@ function checkoutPhotoId(event: FunctionUrlEvent): string | undefined {
   if (contentType !== 'application/x-www-form-urlencoded') return undefined;
   if (rawBodyBytes(event).length > 1024) return undefined;
   const fields = [...new URLSearchParams(rawBody(event)).entries()];
-  if (fields.length !== 1 || fields[0]?.[0] !== 'photo_id' || !fields[0][1]) return undefined;
-  return fields[0][1];
-}
-
-/**
- * Temporary M5 compatibility for the already-deployed GET storefront. Disable
- * after the POST storefront has propagated, then remove with the route in M7.
- */
-function legacyCheckoutPhotoId(event: FunctionUrlEvent): string | undefined {
-  const fields = [...query(event).entries()];
   if (fields.length !== 1 || fields[0]?.[0] !== 'photo_id' || !fields[0][1]) return undefined;
   return fields[0][1];
 }
