@@ -28,8 +28,8 @@ export async function loadCatalog(
   if (!body) throw new Error(`Download catalog ${CATALOG_PATH} is empty`);
 
   const catalog = JSON.parse(body) as DownloadCatalog;
-  if (catalog.version !== 2 || !Array.isArray(catalog.items)) {
-    throw new Error(`Download catalog ${CATALOG_PATH} is not a version 2 catalog`);
+  if (catalog.version !== 3 || !Array.isArray(catalog.items)) {
+    throw new Error(`Download catalog ${CATALOG_PATH} is not a version 3 catalog`);
   }
 
   cache = { at: now, catalog };
@@ -44,16 +44,15 @@ export function forgetCatalog(): void {
 export class NotForSale extends Error {}
 
 /**
- * Resolves an opaque photo ID and requires its current sale flag. The catalog
- * retains delisted photos so paid sessions can still resolve their originals.
+ * Resolves an opaque photo ID. The catalog holds only photographs currently on
+ * sale, so being absent and being unpurchasable are the same condition. The
+ * price is still range-checked here: the published file is the authority on the
+ * amount, and a malformed one must not reach Stripe.
  */
-export function requireItem(
-  catalog: DownloadCatalog,
-  photoId: string,
-): CatalogItem & { forSale: true; priceCents: number; assetRef: string } {
+export function requireItem(catalog: DownloadCatalog, photoId: string): CatalogItem {
   const item = catalogItem(catalog, photoId);
-  if (!item?.forSale || !item.assetRef || !Number.isInteger(item.priceCents) || item.priceCents! <= 0) {
+  if (!item || !Number.isInteger(item.priceCents) || item.priceCents <= 0) {
     throw new NotForSale(`No sale offer for photo ID ${photoId}`);
   }
-  return item as CatalogItem & { forSale: true; priceCents: number; assetRef: string };
+  return item;
 }

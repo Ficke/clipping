@@ -7,6 +7,8 @@ import sharp from 'sharp';
 
 const temporaryDirectories = [];
 const temporaryAlbums = [];
+const PHOTO_ID = 'photo_aaaaaaaaaaaaaaaaaaaaaaaa';
+const OTHER_ID = 'photo_bbbbbbbbbbbbbbbbbbbbbbbb';
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
@@ -42,8 +44,10 @@ describe('photos push', () => {
     expect(result.stdout).toContain('Would rename DSCF1.JPG -> DSCF1.jpg');
     expect(result.stdout).toContain('Would build immutable media');
     const awsCalls = readFileSync(log, 'utf8');
-    expect(awsCalls).toContain('--delete --checksum-algorithm SHA256 --dryrun');
-    expect(awsCalls).toContain('source-metadata.json');
+    expect(awsCalls).toContain('source.json');
+    expect(awsCalls).toContain('--dryrun');
+    // Nothing a push does may delete: removal is its own deliberate command.
+    expect(awsCalls).not.toContain('--delete');
     expect(result.stdout).not.toContain('Starting adamficke-com-media');
     expect(existsSync(path.join(album, 'index.md'))).toBe(false);
     expect(existsSync(path.join(album, 'DSCF1.JPG'))).toBe(true);
@@ -70,6 +74,7 @@ describe('photos push', () => {
       'location: "Nowhere"',
       'photos:',
       '  - file: photo.jpg',
+      `    photoId: ${PHOTO_ID}`,
       '---',
       '',
     ].join('\n'));
@@ -108,7 +113,8 @@ fi
     expect(result.stdout).toContain('Waiting for fake-build-id');
     expect(readFileSync(polls, 'utf8')).toBe('2');
     expect(readFileSync(log, 'utf8')).not.toContain('codebuild wait');
-    expect(readFileSync(log, 'utf8')).toContain('albums/publish-test');
+    expect(readFileSync(log, 'utf8')).toContain(`photos/${PHOTO_ID}`);
+    expect(readFileSync(log, 'utf8')).toContain('manifests/publish-test/source.json');
     expect(existsSync(path.join(album, 'photos.json'))).toBe(true);
   });
 
@@ -168,6 +174,7 @@ exit 0
       'location: "Nowhere"',
       'photos:',
       '  - file: photo.jpg',
+      `    photoId: ${PHOTO_ID}`,
       '---',
       '',
     ].join('\n'));
@@ -221,6 +228,7 @@ exit 0
       'location: "Nowhere"',
       'photos:',
       '  - file: existing.jpg',
+      `    photoId: ${PHOTO_ID}`,
       '---',
       '',
     ].join('\n'));
@@ -248,8 +256,8 @@ exit 0
     expect(result.status).toBe(0);
     expect(result.stdout).toContain('Store settings for 1 new photo');
     const rewritten = readFileSync(path.join(album, 'index.md'), 'utf8');
-    expect(rewritten).toContain('  - file: new.jpg\n    forSale: true\n    price: 55');
-    expect(rewritten).not.toContain('  - file: existing.jpg\n    forSale');
+    expect(rewritten).toMatch(/ {2}- file: new\.jpg\n {4}photoId: photo_[a-f0-9]{24}\n {4}price: 55/);
+    expect(rewritten).not.toContain('  - file: existing.jpg\n    price');
   });
 
   test('keeps per-photo sale settings across a push', async () => {
@@ -275,9 +283,10 @@ exit 0
       'location: "Nowhere"',
       'photos:',
       '  - file: a.jpg',
+      `    photoId: ${PHOTO_ID}`,
       '  - file: b.jpg',
+      `    photoId: ${OTHER_ID}`,
       '    caption: "Kept."',
-      '    forSale: true',
       '    price: 55',
       '---',
       '',
@@ -300,14 +309,14 @@ exit 0
 
     expect(result.status).toBe(0);
     const rewritten = readFileSync(path.join(album, 'index.md'), 'utf8');
-    expect(rewritten).toContain('  - file: a.jpg\n');
-    expect(rewritten).toContain('  - file: b.jpg\n    caption: "Kept."\n    forSale: true\n    price: 55');
+    expect(rewritten).toContain(`  - file: a.jpg\n    photoId: ${PHOTO_ID}`);
+    expect(rewritten).toContain(`  - file: b.jpg\n    photoId: ${OTHER_ID}\n    caption: "Kept."\n    price: 55`);
     // Non-interactive pushes safely default new files to not for sale.
-    expect(rewritten).toContain('  - file: c.jpg\n');
-    expect(rewritten).not.toContain('  - file: c.jpg\n    forSale');
+    expect(rewritten).toMatch(/ {2}- file: c\.jpg\n {4}photoId: photo_[a-f0-9]{24}\n/);
+    expect(rewritten).not.toContain('  - file: c.jpg\n    photoId: photo_aaaa');
   });
 
-  test('reconciles the photos list against the folder, keeping captions', async () => {
+  test('refuses to push when a photograph vanished from the folder', async () => {
     const repoRoot = path.resolve(import.meta.dir, '..');
     const album = path.join(repoRoot, 'content', 'albums', `2099-01-reconcile-test-${process.pid}`);
     const temporary = mkdtempSync(path.join(os.tmpdir(), 'photos-push-test-'));
@@ -316,11 +325,11 @@ exit 0
     temporaryDirectories.push(temporary);
     mkdirSync(album);
     mkdirSync(bin);
-    for (const file of ['a.jpg', 'b.jpg', 'c.jpg']) {
+    for (const file of ['a.jpg', 'b.jpg']) {
       await sharp({ create: { width: 20, height: 10, channels: 3, background: '#123456' } })
         .jpeg().toFile(path.join(album, file));
     }
-    // b.jpg is the cover and gone from disk; c.jpg is new.
+    // Deleting a file used to drop its entry and its archived bytes silently.
     rmSync(path.join(album, 'b.jpg'));
     writeFileSync(path.join(album, 'index.md'), [
       '---',
@@ -328,12 +337,12 @@ exit 0
       'title: "Reconcile Test"',
       'date: 2099-01-01',
       'location: "Nowhere"',
-      'cover: b.jpg',
       'photos:',
       '  - file: a.jpg',
+      `    photoId: ${PHOTO_ID}`,
       '    caption: "Kept."',
       '  - file: b.jpg',
-      '    caption: "Dropped."',
+      `    photoId: ${OTHER_ID}`,
       '---',
       '',
     ].join('\n'));
@@ -345,12 +354,121 @@ exit 0
       path.join(import.meta.dir, 'photos-push.mjs'), album, '--dry-run',
     ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('removing 1: b.jpg');
-    expect(result.stdout).toContain('adding 1: c.jpg');
-    expect(result.stdout).toContain('cover: b.jpg -> a.jpg');
-    // --dry-run must not touch the file.
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('b.jpg is missing from the album folder');
+    expect(result.stderr).toContain('photos:remove');
     expect(readFileSync(path.join(album, 'index.md'), 'utf8')).toContain('  - file: b.jpg');
+  });
+
+  test('keeps removed photographs listed and adds new files around them', async () => {
+    const repoRoot = path.resolve(import.meta.dir, '..');
+    const album = path.join(repoRoot, 'content', 'albums', `2099-01-removed-test-${process.pid}`);
+    const temporary = mkdtempSync(path.join(os.tmpdir(), 'photos-push-test-'));
+    const bin = path.join(temporary, 'bin');
+    temporaryAlbums.push(album);
+    temporaryDirectories.push(temporary);
+    mkdirSync(album);
+    mkdirSync(bin);
+    for (const file of ['a.jpg', 'c.jpg']) {
+      await sharp({ create: { width: 20, height: 10, channels: 3, background: '#123456' } })
+        .jpeg().toFile(path.join(album, file));
+    }
+    // b.jpg was removed, so its file is gone but its record must survive, and
+    // it must not come back as a new photo with a fresh ID.
+    writeFileSync(path.join(album, 'index.md'), [
+      '---',
+      'storyId: "removed-test"',
+      'title: "Removed Test"',
+      'date: 2099-01-01',
+      'location: "Nowhere"',
+      'photos:',
+      '  - file: a.jpg',
+      `    photoId: ${PHOTO_ID}`,
+      '  - file: b.jpg',
+      `    photoId: ${OTHER_ID}`,
+      '    removed: 2099-01-02',
+      '---',
+      '',
+    ].join('\n'));
+    const fakeAws = path.join(bin, 'aws');
+    writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3api head-object" ]; then echo "An error occurred (404): Not Found" >&2; exit 1; fi
+if [ "$1 $2" = "s3 cp" ]; then
+  case "$3" in
+    s3://*manifests*) echo "An error occurred (404)" >&2; exit 1 ;;
+  esac
+fi
+exit 0
+`);
+    chmodSync(fakeAws, 0o755);
+
+    const result = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local', '--yes',
+    ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
+
+    expect(result.status).toBe(0);
+    const rewritten = readFileSync(path.join(album, 'index.md'), 'utf8');
+    expect(rewritten).toContain(`  - file: b.jpg\n    photoId: ${OTHER_ID}\n    removed: 2099-01-02`);
+    expect(rewritten).toMatch(/ {2}- file: c\.jpg\n {4}photoId: photo_[a-f0-9]{24}/);
+    // The removed photograph is not rebuilt, so it stays out of the manifest.
+    const manifest = JSON.parse(readFileSync(path.join(album, 'photos.json'), 'utf8'));
+    expect(manifest.photos.map((photo) => photo.file)).toEqual(['a.jpg', 'c.jpg']);
+  });
+
+  /* photos:remove leaves the file on disk, so the next push has to skip the
+     photograph rather than treat a present file as intent to publish. */
+  test('publishes from frontmatter, not the folder, after a removal', async () => {
+    const repoRoot = path.resolve(import.meta.dir, '..');
+    const album = path.join(repoRoot, 'content', 'albums', `2099-01-afterremove-test-${process.pid}`);
+    const temporary = mkdtempSync(path.join(os.tmpdir(), 'photos-push-test-'));
+    const bin = path.join(temporary, 'bin');
+    const log = path.join(temporary, 'aws-args');
+    temporaryAlbums.push(album);
+    temporaryDirectories.push(temporary);
+    mkdirSync(album);
+    mkdirSync(bin);
+    for (const file of ['a.jpg', 'b.jpg']) {
+      await sharp({ create: { width: 20, height: 10, channels: 3, background: '#123456' } })
+        .jpeg().toFile(path.join(album, file));
+    }
+    writeFileSync(path.join(album, 'index.md'), [
+      '---',
+      'storyId: "afterremove-test"',
+      'title: "After Remove"',
+      'date: 2099-01-01',
+      'location: "Nowhere"',
+      'photos:',
+      '  - file: a.jpg',
+      `    photoId: ${PHOTO_ID}`,
+      '  - file: b.jpg',
+      `    photoId: ${OTHER_ID}`,
+      '    removed: 2099-01-02',
+      '---',
+      '',
+    ].join('\n'));
+    const fakeAws = path.join(bin, 'aws');
+    writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3api head-object" ]; then echo "An error occurred (404): Not Found" >&2; exit 1; fi
+printf '%s ' "$@" >> ${JSON.stringify(log)}
+printf '\n' >> ${JSON.stringify(log)}
+if [ "$1 $2" = "s3 cp" ]; then
+  case "$3" in
+    s3://*manifests*) echo "An error occurred (404)" >&2; exit 1 ;;
+  esac
+fi
+exit 0
+`);
+    chmodSync(fakeAws, 0o755);
+
+    const result = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local', '--yes',
+    ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Publishing 1 master');
+    const awsCalls = readFileSync(log, 'utf8');
+    expect(awsCalls).toContain(`photos/${PHOTO_ID}`);
+    expect(awsCalls).not.toContain(`photos/${OTHER_ID}`);
   });
 
   test('refuses a storyId that would escape the archive prefix', async () => {
@@ -374,6 +492,7 @@ exit 0
       'location: "Nowhere"',
       'photos:',
       '  - file: a.jpg',
+      `    photoId: ${PHOTO_ID}`,
       '---',
       '',
     ].join('\n'));

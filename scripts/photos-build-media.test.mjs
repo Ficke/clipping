@@ -15,6 +15,9 @@ import { spawnSync } from 'node:child_process';
 import sharp from 'sharp';
 
 const temporaryDirectories = [];
+const PHOTO_ID = 'photo_1234567890abcdef12345678';
+const ONE_ID = 'photo_aaaaaaaaaaaaaaaaaaaaaaaa';
+const TWO_ID = 'photo_bbbbbbbbbbbbbbbbbbbbbbbb';
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
@@ -28,16 +31,20 @@ describe('media manifest builder', () => {
     temporaryDirectories.push(directory);
     const source = path.join(directory, 'album');
     const manifest = path.join(directory, 'photos.json');
-    const sourceMetadata = path.join(directory, 'source-metadata.json');
+    const sourceManifest = path.join(directory, 'source.json');
+    const metadataDirectory = path.join(directory, 'metadata');
     const output = path.join(directory, 'output');
     await sharp({
       create: { width: 2400, height: 1600, channels: 3, background: '#765432' },
     }).jpeg().toFile(path.join(directory, 'source.jpg'));
     mkdirSync(source);
     copyFileSync(path.join(directory, 'source.jpg'), path.join(source, 'DSCF10.jpg'));
-    writeFileSync(sourceMetadata, JSON.stringify({
+    mkdirSync(metadataDirectory);
+    writeFileSync(sourceManifest, sourceManifestFor({ 'DSCF10.jpg': PHOTO_ID }));
+    writeFileSync(path.join(metadataDirectory, 'DSCF10.jpg.json'), JSON.stringify({
       version: 1,
-      photos: { 'DSCF10.jpg': 'X-T5 · 50mm · f/5.6 · 1/500s · ISO 125' },
+      file: 'DSCF10.jpg',
+      shot: { camera: 'X-T5', focalLength: 50, aperture: 5.6, shutter: 0.002, iso: 125 },
     }));
 
     const result = spawnSync('bun', [
@@ -46,16 +53,21 @@ describe('media manifest builder', () => {
       '--album', '2026-08-test',
       '--manifest', manifest,
       '--output', output,
-      '--source-metadata', sourceMetadata,
+      '--source-manifest', sourceManifest,
+      '--source-metadata', metadataDirectory,
       '--no-upload',
     ], { encoding: 'utf8' });
 
     expect(result.status).toBe(0);
     const parsed = JSON.parse(readFileSync(manifest, 'utf8'));
-    expect(parsed).toMatchObject({ version: 1, profile: 'photo-v1', album: '2026-08-test' });
+    expect(parsed).toMatchObject({ version: 2, profile: 'photo-v1', album: '2026-08-test' });
     expect(parsed.photos).toHaveLength(1);
-    expect(parsed.photos[0]).toMatchObject({ file: 'DSCF10.jpg', width: 2400, height: 1600 });
-    expect(parsed.photos[0].exif).toBe('X-T5 · 50mm · f/5.6 · 1/500s · ISO 125');
+    expect(parsed.photos[0]).toMatchObject({
+      photoId: PHOTO_ID, file: 'DSCF10.jpg', width: 2400, height: 1600,
+    });
+    expect(parsed.photos[0].shot).toEqual({
+      camera: 'X-T5', focalLength: 50, aperture: 5.6, shutter: 0.002, iso: 125,
+    });
     expect(parsed.photos[0].variants.responsive.avif).toHaveLength(4);
     expect(parsed.photos[0].variants.lightbox.src).toMatch(/^\/media\/photo-v1\//);
     expect(parsed.photos[0].variants.social.width).toBe(1200);
@@ -90,10 +102,10 @@ describe('media manifest builder', () => {
 
     expect(updated.photos.map((photo) => photo.file)).toEqual(['one.jpg']);
     expect(updated.photos[0].sourceHash).not.toBe(initialHash);
-    expect(updated.obsoleteMedia).toEqual([
-      { profile: 'photo-v1', sourceHash: initial.photos[0].sourceHash },
-      { profile: 'photo-v1', sourceHash: initial.photos[1].sourceHash },
-    ].sort((left, right) => left.sourceHash.localeCompare(right.sourceHash)));
+    /* The manifest records only what is in use. Superseded and departed trees
+       are found by comparing the bucket against it, not by a ledger inside it. */
+    expect(updated).not.toHaveProperty('obsoleteMedia');
+    expect(updated.photos[0]).not.toHaveProperty('previousHashes');
   });
 
   test('reuses actual dimensions from the published manifest', async () => {
@@ -106,8 +118,10 @@ describe('media manifest builder', () => {
     const reusedOutput = path.join(directory, 'reused-output');
     const bin = path.join(directory, 'bin');
     const keys = path.join(directory, 'keys.json');
+    const sourceManifest = path.join(directory, 'source.json');
     mkdirSync(source);
     mkdirSync(bin);
+    writeFileSync(sourceManifest, sourceManifestFor({ 'photo.jpg': PHOTO_ID }));
     await sharp({ create: { width: 2000, height: 1333, channels: 3, background: '#abcdef' } })
       .jpeg().toFile(path.join(source, 'photo.jpg'));
 
@@ -117,6 +131,7 @@ describe('media manifest builder', () => {
       '--album', '2026-08-test',
       '--manifest', initialManifest,
       '--output', initialOutput,
+      '--source-manifest', sourceManifest,
       '--no-upload',
     ], { encoding: 'utf8' });
     expect(initial.status).toBe(0);
@@ -140,6 +155,7 @@ fi
       '--album', '2026-08-test',
       '--manifest', reusedManifest,
       '--output', reusedOutput,
+      '--source-manifest', sourceManifest,
     ], {
       encoding: 'utf8',
       env: {
@@ -158,15 +174,23 @@ fi
 });
 
 function buildManifest(source, manifest, previousManifest) {
+  const sourceManifest = path.join(path.dirname(manifest), 'build-source.json');
+  writeFileSync(sourceManifest, sourceManifestFor({ 'one.jpg': ONE_ID, 'two.jpg': TWO_ID }));
   const result = spawnSync('bun', [
     path.join(import.meta.dir, 'photos-build-media.mjs'),
     '--source', source,
     '--album', '2026-08-test',
     '--manifest', manifest,
+    '--source-manifest', sourceManifest,
     '--manifest-only',
     ...(previousManifest ? ['--previous-manifest', previousManifest] : []),
   ], { encoding: 'utf8' });
   expect(result.status).toBe(0);
+}
+
+function sourceManifestFor(idsByFile) {
+  const photos = Object.entries(idsByFile).map(([file, photoId]) => ({ photoId, file }));
+  return JSON.stringify({ version: 1, album: '2026-08-test', photos });
 }
 
 function filesBelow(directory) {

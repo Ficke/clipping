@@ -7,18 +7,15 @@ import type { OrderRepository } from './order-repository';
 import type { Order } from './orders';
 
 const PHOTO_ID = 'photo_1234567890abcdef12345678';
-const ASSET_REF = `${'ab'.repeat(32)}.jpg`;
 
-function catalog(forSale = true): DownloadCatalog {
+function catalog(): DownloadCatalog {
   return {
-    version: 2,
+    version: 3,
     generated: '2026-08-02T00:00:00Z',
     items: [{
       photoId: PHOTO_ID,
-      assetRef: ASSET_REF,
       storyId: 'lost-coast',
       file: 'DSCF1.jpg',
-      forSale,
       priceCents: 4_000,
       albumTitle: 'Lost Coast',
       label: 'Fog',
@@ -71,7 +68,7 @@ describe('durable checkout', () => {
     });
     expect(h.sequence).toEqual(['order', 'stripe']);
     expect(h.created[0]).toMatchObject({
-      state: 'pending', photoId: PHOTO_ID, assetRef: ASSET_REF, expectedAmount: 4_000,
+      state: 'pending', photoId: PHOTO_ID, expectedAmount: 4_000,
     });
     expect(result.order).toMatchObject({ stripeSessionId: 'cs_test_1', checkoutExpiresAt: 2_000 });
   });
@@ -104,8 +101,10 @@ describe('durable checkout', () => {
     expect(h.params()).not.toHaveProperty('automatic_tax');
   });
 
-  test('rejects a delisted or asset-less photo before any durable or Stripe call', async () => {
-    for (const candidate of [catalog(false), { ...catalog(), items: [{ ...catalog().items[0]!, assetRef: undefined }] }]) {
+  test('rejects a delisted or unpriced photo before any durable or Stripe call', async () => {
+    const delisted = { ...catalog(), items: [] };
+    const unpriced = { ...catalog(), items: [{ ...catalog().items[0]!, priceCents: 0 }] };
+    for (const candidate of [delisted, unpriced]) {
       const h = harness();
       await expect(createCheckoutSession(PHOTO_ID, {
         stripe: h.stripe,

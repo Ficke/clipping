@@ -22,7 +22,7 @@ describe('fulfillment metadata sanitizer', () => {
     const outputDirectory = path.join(directory, 'output');
     const source = path.join(sourceDirectory, 'photo.jpg');
     const output = path.join(outputDirectory, 'photo.jpg');
-    const metadata = path.join(directory, 'source-metadata.json');
+    const metadataDirectory = path.join(directory, 'metadata');
     mkdirSync(sourceDirectory);
 
     await sharp({ create: { width: 40, height: 30, channels: 3, background: '#d04080' } })
@@ -49,7 +49,7 @@ describe('fulfillment metadata sanitizer', () => {
         path.join(import.meta.dir, 'photos-sanitize.mjs'),
         '--source', sourceDirectory,
         '--output', outputDirectory,
-        '--metadata', metadata,
+        '--metadata', metadataDirectory,
       ], { encoding: 'utf8' });
 
       expect(result.status).toBe(0);
@@ -66,29 +66,30 @@ describe('fulfillment metadata sanitizer', () => {
       const afterPixels = await sharp(output).raw().toBuffer();
       expect(afterPixels.equals(beforePixels)).toBe(true);
 
-      const sidecar = JSON.parse(readFileSync(metadata, 'utf8'));
-      expect(sidecar).toEqual({
-        version: 1,
-        photos: { 'photo.jpg': 'X-T5 · 50mm · f/5.6 · 1/500s · ISO 125' },
+      const sidecar = JSON.parse(readFileSync(path.join(metadataDirectory, 'photo.jpg.json'), 'utf8'));
+      expect(sidecar.shot).toEqual({
+        camera: 'X-T5', focalLength: 50, aperture: 5.6, shutter: 0.002, iso: 125,
       });
 
-      // A fresh clone may pull the already-sanitized archive. Preserve the
-      // approved gallery line from its committed manifest on the next push.
+      // What the master must not keep, the archive record must.
+      expect(sidecar.archive.GPSLatitude).toBeCloseTo(37.75, 4);
+      expect(sidecar.archive.UserComment).toBe('private workflow note');
+
+      // A fresh clone pulls already-sanitized masters. Re-sanitizing one has no
+      // metadata to find, which is why the push refuses to overwrite a sidecar
+      // that came back empty.
       const secondOutput = path.join(directory, 'second-output');
-      const secondMetadata = path.join(directory, 'second-source-metadata.json');
-      const previousManifest = path.join(directory, 'photos.json');
-      writeFileSync(previousManifest, JSON.stringify({
-        photos: [{ file: 'photo.jpg', exif: sidecar.photos['photo.jpg'] }],
-      }));
+      const secondMetadata = path.join(directory, 'second-metadata');
       const second = spawnSync('bun', [
         path.join(import.meta.dir, 'photos-sanitize.mjs'),
         '--source', outputDirectory,
         '--output', secondOutput,
         '--metadata', secondMetadata,
-        '--previous-manifest', previousManifest,
       ], { encoding: 'utf8' });
       expect(second.status).toBe(0);
-      expect(JSON.parse(readFileSync(secondMetadata, 'utf8'))).toEqual(sidecar);
+      const rescanned = JSON.parse(readFileSync(path.join(secondMetadata, 'photo.jpg.json'), 'utf8'));
+      expect(rescanned.shot).toBeUndefined();
+      expect(rescanned.archive.GPSLatitude).toBeUndefined();
     } finally {
       await exiftool.end();
     }

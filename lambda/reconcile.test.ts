@@ -12,7 +12,6 @@ function pending(): Order {
     ...createPendingOrder({
       livemode: false,
       photoId: 'photo_1234567890abcdef12345678',
-      assetRef: `${'ab'.repeat(32)}.jpg`,
       expectedAmount: 4_000,
       albumTitle: 'Lost Coast',
       label: 'Fog',

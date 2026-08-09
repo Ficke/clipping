@@ -1,9 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "profile": "photo-v1",
   "album": "2025-10-salt-point",
   "photos": [
     {
+      "photoId": "photo_7741d5b83483c941b305ba55",
       "file": "01-DSCF7000.jpg",
       "sourceHash": "7741d5b83483c941b305ba55e3001117b64cfba83facba51fd71edb8e10276f4",
       "width": 2500,
@@ -90,6 +91,7 @@
       }
     },
     {
+      "photoId": "photo_501cbb0c2afc3b6312071973",
       "file": "02-DSCF6929.jpg",
       "sourceHash": "501cbb0c2afc3b63120719734fc76a667adf6a98ca713901dae00abdf66f3a0e",
       "width": 2500,
@@ -176,6 +178,7 @@
       }
     },
     {
+      "photoId": "photo_5dcfadbadedc8e9c857591cb",
       "file": "03-DSCF6902.jpg",
       "sourceHash": "5dcfadbadedc8e9c857591cb5359b83fa4a471229e5c6ac4b86f3bab14a0d755",
       "width": 2500,
@@ -262,6 +265,7 @@
       }
     },
     {
+      "photoId": "photo_2e2b33296093fa80a9b0edc4",
       "file": "04-DSCF6994.jpg",
       "sourceHash": "2e2b33296093fa80a9b0edc471900511674283c5f79ac8a95573c8edfc61d99e",
       "width": 2500,
@@ -348,6 +352,7 @@
       }
     },
     {
+      "photoId": "photo_d0e51ca2ee191a738fa10e77",
       "file": "05-DSCF6996.jpg",
       "sourceHash": "d0e51ca2ee191a738fa10e7747017b1495da1864a3a71f64ae42410f72b257f8",
       "width": 1741,
@@ -434,6 +439,7 @@
       }
     },
     {
+      "photoId": "photo_56a6c2d237a516dd0c36f21b",
       "file": "06-DSCF6882.jpg",
       "sourceHash": "56a6c2d237a516dd0c36f21beb0acd524b4f9b71acaa25300b2c0fe074f9e8d4",
       "width": 2500,
@@ -520,6 +526,7 @@
       }
     },
     {
+      "photoId": "photo_0d33a93d7d02d75aa8c1aac2",
       "file": "07-wave_small.jpg",
       "sourceHash": "0d33a93d7d02d75aa8c1aac29594d940b08902d327b895a0366d0a21ca50ad9d",
       "width": 2500,

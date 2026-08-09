@@ -1,8 +1,6 @@
-import { allPhotosOf, getAlbums, slugOf, type Album, type AlbumPhoto } from './albums';
+import { getAlbums, photosOf, slugOf, type Album, type AlbumPhoto } from './albums';
 import {
   DOWNLOAD_PRODUCTS,
-  assetRefFor,
-  photoIdFor,
   type CatalogItem,
   type DownloadCatalog,
   type LicenseTier,
@@ -18,22 +16,17 @@ export interface SellablePhoto {
 }
 
 export function offersFor(photo: AlbumPhoto, fallbackLabel: string): SellablePhoto[] {
-  if (!photo.forSale || photo.priceCents === undefined) return [];
+  if (photo.priceCents === undefined) return [];
   const priceCents = photo.priceCents;
   return DOWNLOAD_PRODUCTS.map((tier) => ({
     photo,
     tier,
     priceCents,
-    photoId: photoIdFor(photo.image.sourceHash),
+    photoId: photo.photoId,
     fallbackLabel,
   }));
 }
 
-/**
- * Counted over `allPhotosOf`, so the storefront and the catalog agree. Indexing
- * the public subset instead would number a photo differently in the button and
- * in the order record.
- */
 function positionLabel(album: Album, index: number, total: number): string {
   return `${album.data.title}, photograph ${index + 1} of ${total}`;
 }
@@ -44,28 +37,29 @@ function labelFor(album: Album, photo: AlbumPhoto, index: number, total: number)
     ?? positionLabel(album, index, total);
 }
 
-/** A photo not flagged for sale cannot be bought, whatever ID a request carries. */
+/**
+ * Only photographs actually on sale are published, so a request for anything
+ * else finds nothing rather than finding an entry it has to be refused.
+ */
 export async function buildCatalog(): Promise<DownloadCatalog> {
   const albums = await getAlbums();
   const items: CatalogItem[] = [];
 
   for (const album of albums) {
-    const photos = await allPhotosOf(album);
+    const photos = await photosOf(album);
     for (const [index, photo] of photos.entries()) {
-      if (!photo.inCatalog) continue;
+      if (photo.priceCents === undefined) continue;
       const preview = photo.image.variants.responsive.webp
         .find((variant) => variant.width >= 1080)
         ?? photo.image.variants.lightbox;
       items.push({
-        photoId: photoIdFor(photo.image.sourceHash),
-        assetRef: assetRefFor(photo.image.sourceHash, photo.file),
+        photoId: photo.photoId,
         storyId: album.data.storyId,
         file: photo.file,
-        forSale: photo.forSale,
         albumTitle: album.data.title,
         label: labelFor(album, photo, index, photos.length),
         previewSrc: preview.src,
-        ...(photo.priceCents !== undefined && { priceCents: photo.priceCents }),
+        priceCents: photo.priceCents,
         width: photo.image.width,
         height: photo.image.height,
       });
@@ -78,7 +72,7 @@ export async function buildCatalog(): Promise<DownloadCatalog> {
     seen.add(item.photoId);
   }
 
-  return { version: 2, generated: new Date().toISOString(), items };
+  return { version: 3, generated: new Date().toISOString(), items };
 }
 
 export interface AlbumDownloads {
@@ -93,11 +87,11 @@ export async function albumsWithDownloads(): Promise<AlbumDownloads[]> {
   const albums = await getAlbums();
   const results: AlbumDownloads[] = [];
   for (const album of albums) {
-    const all = await allPhotosOf(album);
+    const all = await photosOf(album);
     const photos = all
       .map((photo, index) => ({
         photo,
-        offers: photo.hidden ? [] : offersFor(photo, positionLabel(album, index, all.length)),
+        offers: offersFor(photo, positionLabel(album, index, all.length)),
       }))
       .filter(({ offers }) => offers.length > 0);
     if (photos.length) results.push({ album, slug: slugOf(album), photos });

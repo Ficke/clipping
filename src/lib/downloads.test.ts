@@ -1,15 +1,16 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  assetRefFor,
   catalogItem,
+  contentTypeFor,
+  downloadFilename,
   formatPrice,
+  generatePhotoId,
+  isPhotoId,
   licenseTerms,
   licenseTier,
-  isPhotoId,
-  fulfillmentKey,
-  isAssetRef,
-  originalKey,
-  photoIdFor,
+  masterKey,
+  metadataKey,
+  normalizeExtension,
   type DownloadCatalog,
 } from './downloads';
 
@@ -46,52 +47,67 @@ describe('prices', () => {
 });
 
 describe('photo IDs', () => {
-  test('derives one opaque ID from a source hash', () => {
-    const id = photoIdFor('ab'.repeat(32));
-    expect(id).toBe('photo_abababababababababababab');
-    expect(isPhotoId(id)).toBe(true);
-    expect(id).not.toContain('lost-coast');
+  test('mints opaque IDs that do not collide', () => {
+    const ids = new Set(Array.from({ length: 500 }, generatePhotoId));
+
+    expect(ids.size).toBe(500);
+    for (const id of ids) expect(isPhotoId(id)).toBe(true);
   });
 
-  test('rejects anything other than a full SHA-256 source hash', () => {
-    expect(() => photoIdFor('lost-coast/DSCF1250.jpg')).toThrow(/invalid source hash/);
+  /* Identity must not track the bytes: re-exporting a photograph at a higher
+     resolution has to keep every already-issued download link working. */
+  test('minting is independent of any file content', () => {
+    expect(generatePhotoId()).not.toBe(generatePhotoId());
     expect(isPhotoId('photo_not-a-hash')).toBe(false);
-  });
-
-  test('the private catalog—not the ID—determines the S3 path', () => {
-    expect(originalKey({ storyId: 'lost-coast', file: 'DSCF1250.jpg' }))
-      .toBe('albums/lost-coast/DSCF1250.jpg');
+    expect(isPhotoId(`photo_${'A'.repeat(24)}`)).toBe(false);
   });
 });
 
-describe('immutable fulfillment assets', () => {
-  test('derives a content-addressed reference with a normalized extension', () => {
-    const hash = 'ab'.repeat(32);
-    const assetRef = assetRefFor(hash, 'DSCF1250.JPEG');
+describe('object keys', () => {
+  const photoId = 'photo_1234567890abcdef12345678';
 
-    expect(assetRef).toBe(`${hash}.jpeg`);
-    expect(isAssetRef(assetRef)).toBe(true);
-    expect(fulfillmentKey(assetRef)).toBe(`fulfillment/${hash}.jpeg`);
+  test('the ID alone names the master, so redemption needs no lookup', () => {
+    expect(masterKey(photoId)).toBe(`photos/${photoId}`);
   });
 
-  test('rejects invalid hashes, unsupported formats, and malformed references', () => {
-    expect(() => assetRefFor('short', 'photo.jpg')).toThrow(/invalid source hash/);
-    expect(() => assetRefFor('ab'.repeat(32), 'photo.tiff')).toThrow(/unsupported file extension/);
-    expect(() => fulfillmentKey('../photo.jpg')).toThrow(/invalid asset reference/);
-    expect(isAssetRef(`${'A'.repeat(64)}.jpg`)).toBe(false);
+  /* Sidecars carry GPS, and the buyer Lambda is granted only `photos/*`. */
+  test('metadata lives under a prefix the buyer Lambda cannot reach', () => {
+    expect(metadataKey(photoId)).toBe(`metadata/${photoId}.json`);
+    expect(metadataKey(photoId)).not.toStartWith('photos/');
+  });
+
+  test('refuses to build a key from anything that is not a photo ID', () => {
+    expect(() => masterKey('../etc/passwd')).toThrow(/invalid photo ID/);
+    expect(() => metadataKey('../etc/passwd')).toThrow(/invalid photo ID/);
+  });
+});
+
+describe('stored download response', () => {
+  test('normalizes the extension and maps it to a content type', () => {
+    expect(normalizeExtension('DSCF1250.JPEG')).toBe('jpeg');
+    expect(contentTypeFor('jpeg')).toBe('image/jpeg');
+    expect(contentTypeFor('webp')).toBe('image/webp');
+    expect(() => normalizeExtension('photo.tiff')).toThrow(/Unsupported file extension/);
+  });
+
+  test('names the file by opaque ID, never by album or original filename', () => {
+    const name = downloadFilename('photo_3bb6020b3147d062d1f528ce', 'jpg');
+
+    expect(name).toBe('adam-ficke-photo_3bb6020b3147d062d1f528ce.jpg');
+    expect(name).not.toContain('Olympics');
+    expect(name).not.toContain('DSCF7640');
   });
 });
 
 describe('catalog lookup', () => {
   const catalog: DownloadCatalog = {
-    version: 2,
+    version: 3,
     generated: '2026-07-29T00:00:00.000Z',
     items: [
       {
         photoId: 'photo_1234567890abcdef12345678',
         storyId: 'lost-coast',
         file: 'DSCF1250.jpg',
-        forSale: true,
         albumTitle: 'Lost Coast',
         label: 'Fog coming over Punta Gorda.',
         previewSrc: '/media/photo-lost-coast.webp',

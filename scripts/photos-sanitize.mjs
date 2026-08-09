@@ -1,32 +1,41 @@
 /** Build lossless, metadata-minimized fulfillment files for one album. */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { exiftool } from 'exiftool-vendored';
-import { exifSummary, fulfillmentMetadataRetain } from './photo-metadata.mjs';
+import { archiveMetadata, fulfillmentMetadataRetain, shotMetadata } from './photo-metadata.mjs';
 
 const supportedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
 const args = parseArgs(process.argv.slice(2));
 const sourceDirectory = path.resolve(args.source);
 const outputDirectory = path.resolve(args.output);
-const metadataPath = path.resolve(args.metadata);
-const previousSummaries = loadPreviousSummaries(args.previousManifest);
+const metadataDirectory = path.resolve(args.metadata);
+const photoIds = args.sourceManifest ? loadPhotoIds(args.sourceManifest) : new Map();
 
 mkdirSync(outputDirectory, { recursive: true });
-mkdirSync(path.dirname(metadataPath), { recursive: true });
+mkdirSync(metadataDirectory, { recursive: true });
 
+// The source manifest, when given, is the album's published set. A removed
+// photograph's file stays on disk, and staging it would put it back in the
+// build.
 const files = readdirSync(sourceDirectory, { withFileTypes: true })
   .filter((entry) => entry.isFile() && supportedExtensions.has(path.extname(entry.name).toLowerCase()))
   .map((entry) => entry.name)
+  .filter((file) => !args.sourceManifest || photoIds.has(file))
   .sort((left, right) => left.localeCompare(right, 'en', { numeric: true, sensitivity: 'base' }));
 
-const summaries = {};
 try {
   await Promise.all(files.map(async (file) => {
     const source = path.join(sourceDirectory, file);
     const destination = path.join(outputDirectory, file);
-    const summary = await exifSummary(source) ?? previousSummaries.get(file);
-    if (summary) summaries[file] = summary;
+
+    // Read the archive record from the source, before anything is stripped.
+    const archive = await archiveMetadata(exiftool, source);
+    const shot = await shotMetadata(source);
+    writeFileSync(
+      path.join(metadataDirectory, `${file}.json`),
+      `${JSON.stringify({ version: 1, photoId: photoIds.get(file), file, shot, archive }, null, 2)}\n`,
+    );
 
     copyFileSync(source, destination);
     await exiftool.deleteAllTags(destination, { retain: fulfillmentMetadataRetain });
@@ -42,13 +51,11 @@ try {
   await exiftool.end();
 }
 
-writeFileSync(metadataPath, `${JSON.stringify({ version: 1, photos: summaries }, null, 2)}\n`);
-
 function parseArgs(values) {
   const parsed = {};
   for (let index = 0; index < values.length; index++) {
     const value = values[index];
-    if (['--source', '--output', '--metadata', '--previous-manifest'].includes(value)) {
+    if (['--source', '--output', '--metadata', '--source-manifest'].includes(value)) {
       parsed[toCamel(value.slice(2))] = values[++index];
     }
     else fail(`Unknown argument: ${value}`);
@@ -63,17 +70,9 @@ function toCamel(value) {
   return value.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
-function loadPreviousSummaries(input) {
-  if (!input || !existsSync(input)) return new Map();
-  let manifest;
-  try {
-    manifest = JSON.parse(readFileSync(input, 'utf8'));
-  } catch (error) {
-    fail(`Could not read previous manifest: ${error.message}`);
-  }
-  return new Map((manifest.photos ?? [])
-    .filter((photo) => typeof photo.file === 'string' && typeof photo.exif === 'string')
-    .map((photo) => [photo.file, photo.exif]));
+function loadPhotoIds(input) {
+  const manifest = JSON.parse(readFileSync(path.resolve(input), 'utf8'));
+  return new Map(manifest.photos.map((photo) => [photo.file, photo.photoId]));
 }
 
 function fail(message) {

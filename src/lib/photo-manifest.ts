@@ -4,12 +4,29 @@ export interface PhotoVariant {
   src: string;
 }
 
+/** How the photograph was made. Kept as fields, not a rendered string, so the
+ * site can format or filter on them independently. */
+export interface ShotMetadata {
+  camera?: string;
+  lens?: string;
+  /** Millimeters. */
+  focalLength?: number;
+  /** The f-number itself, so `2` means f/2. */
+  aperture?: number;
+  /** Exposure time in seconds. */
+  shutter?: number;
+  iso?: number;
+  /** Capture date as YYYY-MM-DD, in the camera's own wall clock. */
+  capturedAt?: string;
+}
+
 export interface PhotoManifestEntry {
+  photoId: string;
   file: string;
   sourceHash: string;
   width: number;
   height: number;
-  exif?: string;
+  shot?: ShotMetadata;
   variants: {
     responsive: {
       avif: PhotoVariant[];
@@ -22,16 +39,31 @@ export interface PhotoManifestEntry {
 }
 
 export interface PhotoManifest {
-  version: 1;
+  version: 2;
   profile: string;
   album: string;
   photos: PhotoManifestEntry[];
-  /** Superseded derivative trees retained until the updated site is live. */
-  obsoleteMedia?: { profile: string; sourceHash: string }[];
 }
 
 export function srcset(variants: PhotoVariant[]): string {
   return variants.map((variant) => `${variant.src} ${variant.width}w`).join(', ');
+}
+
+/** `X-T4 · 35mm · f/2 · 1/500s · ISO 400`, omitting whatever the file lacks. */
+export function formatShot(shot: ShotMetadata | undefined): string | undefined {
+  if (!shot) return undefined;
+  const parts = [
+    shot.camera,
+    shot.focalLength !== undefined && `${Math.round(shot.focalLength)}mm`,
+    shot.aperture !== undefined && `f/${shot.aperture}`,
+    shot.shutter !== undefined && formatShutter(shot.shutter),
+    shot.iso !== undefined && `ISO ${shot.iso}`,
+  ].filter((part): part is string => Boolean(part));
+  return parts.length ? parts.join(' · ') : undefined;
+}
+
+function formatShutter(seconds: number): string {
+  return seconds >= 1 ? `${seconds}s` : `1/${Math.round(1 / seconds)}s`;
 }
 
 /**

@@ -1,9 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "profile": "photo-v1",
   "album": "2024-06-crissy-field",
   "photos": [
     {
+      "photoId": "photo_73019606ee9614aa8213da37",
       "file": "01-DSCF0162.jpg",
       "sourceHash": "73019606ee9614aa8213da37dd985a5de80eb2c73f6073967931dd6158c412c5",
       "width": 2000,

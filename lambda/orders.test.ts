@@ -19,7 +19,6 @@ function pending(now = 100): Order {
   return createPendingOrder({
     livemode: false,
     photoId: 'photo_1234567890abcdef12345678',
-    assetRef: `${HASH}.jpg`,
     expectedAmount: 4_000,
     albumTitle: 'Lost Coast',
     label: 'Fog over Punta Gorda',
@@ -38,7 +37,6 @@ describe('order model', () => {
       state: 'pending',
       livemode: false,
       photoId: 'photo_1234567890abcdef12345678',
-      assetRef: `${HASH}.jpg`,
       expectedAmount: 4_000,
       albumTitle: 'Lost Coast',
       label: 'Fog over Punta Gorda',
@@ -48,15 +46,12 @@ describe('order model', () => {
     });
   });
 
-  test('rejects malformed immutable identifiers and amounts', () => {
+  test('rejects malformed identifiers and amounts', () => {
     expect(() => createPendingOrder({
       ...pending(),
-      assetRef: 'albums/lost-coast/file.jpg',
-    }, 100, ORDER_ID)).toThrow(/Asset reference/);
-    expect(() => createPendingOrder({
-      ...pending(),
-      assetRef: `${HASH}.gif`,
-    }, 100, ORDER_ID)).toThrow(/Asset reference/);
+      photoId: 'photos/lost-coast/file.jpg',
+    }, 100, ORDER_ID)).toThrow(/Photo ID/);
+    expect(() => createPendingOrder({ ...pending() }, 100, 'ord_short')).toThrow(/Order ID/);
     expect(() => createPendingOrder({
       ...pending(),
       expectedAmount: 0,

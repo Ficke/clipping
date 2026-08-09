@@ -1,7 +1,6 @@
 ---
 import type { AlbumPhoto } from '../lib/albums';
-import { photoIdFor } from '../lib/downloads';
-import { lightboxSrcset } from '../lib/photo-manifest';
+import { formatShot, lightboxSrcset } from '../lib/photo-manifest';
 import PhotoPicture from './PhotoPicture.astro';
 
 interface Props {
@@ -23,7 +22,7 @@ const {
 } = Astro.props;
 const orientation = photo.image.height > photo.image.width ? 'portrait' : 'landscape';
 const captionId = `photo-caption-${index + 1}`;
-const photoId = photoIdFor(photo.image.sourceHash);
+const shot = formatShot(photo.image.shot);
 ---
 
 <figure class:list={['story-photo', orientation, 'rise']}>
@@ -31,7 +30,7 @@ const photoId = photoIdFor(photo.image.sourceHash);
     href={photo.image.variants.lightbox.src}
     class="zoom"
     data-lightbox
-    data-photo-id={photoId}
+    data-photo-id={photo.photoId}
     data-alt={alt}
     data-caption={photo.caption}
     data-srcset={lightboxSrcset(photo.image)}
@@ -50,13 +49,13 @@ const photoId = photoIdFor(photo.image.sourceHash);
     />
   </a>
   {
-    (photo.caption || photo.exif) && (
+    (photo.caption || shot) && (
       <figcaption>
         {photo.caption && <p id={captionId} class="caption">{photo.caption}</p>}
-        {photo.exif && (
+        {shot && (
           <details class="photo-details">
             <summary>Photo details</summary>
-            <p>{photo.exif}</p>
+            <p>{shot}</p>
           </details>
         )}
       </figcaption>

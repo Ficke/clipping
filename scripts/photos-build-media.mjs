@@ -3,7 +3,6 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import sharp from 'sharp';
-import { exifSummary } from './photo-metadata.mjs';
 import {
   derivativeDefinitions,
   derivativeKey,
@@ -21,8 +20,8 @@ const sourceDirectory = path.resolve(sourceInput);
 const album = args.album ?? process.env.ALBUM_ID ?? path.basename(sourceDirectory);
 const outputDirectory = path.resolve(args.output ?? process.env.PHOTO_OUTPUT_DIR ?? '/tmp/photo-media');
 const manifestPath = path.resolve(args.manifest ?? process.env.PHOTO_MANIFEST_PATH ?? '/tmp/photos.json');
-const sourceMetadataPath = args.sourceMetadata ?? process.env.PHOTO_SOURCE_METADATA_PATH;
-const sourceMetadata = loadSourceMetadata(sourceMetadataPath);
+const sourceManifest = loadSourceManifest(args.sourceManifest ?? process.env.PHOTO_SOURCE_MANIFEST_PATH);
+const sidecarDirectory = args.sourceMetadata ?? process.env.PHOTO_SOURCE_METADATA_PATH;
 const mediaBucket = process.env.MEDIA_BUCKET;
 const manifestBucket = process.env.MANIFEST_BUCKET;
 const noUpload = args.noUpload;
@@ -49,7 +48,11 @@ let generatedCount = 0;
 let reusedCount = 0;
 const previousManifest = loadPreviousManifest(args.previousManifest);
 const previousVariants = variantsFrom(previousManifest);
-
+// Same reason the push guards the sidecar: a rebuild from sanitized sources
+// must not silently drop the gallery's shot line.
+const previousShot = new Map((previousManifest?.photos ?? [])
+  .filter((photo) => photo.shot)
+  .map((photo) => [photo.file, photo.shot]));
 for (const file of files) {
   const sourcePath = path.join(sourceDirectory, file);
   const sourceHash = createHash('sha256').update(readFileSync(sourcePath)).digest('hex');
@@ -98,33 +101,24 @@ for (const file of files) {
     variants.sort((left, right) => left.width - right.width);
   }
 
+  const shot = readSidecarShot(file) ?? previousShot.get(file);
   photos.push({
+    photoId: requirePhotoId(file),
     file,
     sourceHash,
     width: dimensions.width,
     height: dimensions.height,
-    exif: sourceMetadata.get(file) ?? await exifSummary(sourcePath),
+    ...(shot && { shot }),
     variants: { responsive, lightbox, social },
   });
   console.log(`${file}: ${definitions.length} variants (${generatedCount} generated total)`);
 }
 
-const currentMedia = new Set(photos.map((photo) => mediaIdentity(photoProfile.version, photo.sourceHash)));
-const obsoleteMedia = obsoleteMediaFrom(previousManifest)
-  .concat((previousManifest?.photos ?? []).map((photo) => ({
-    profile: previousManifest?.profile ?? photoProfile.version,
-    sourceHash: photo.sourceHash,
-  })))
-  .filter((entry) => validMediaEntry(entry) && !currentMedia.has(mediaIdentity(entry.profile, entry.sourceHash)))
-  .filter((entry, index, entries) => entries.findIndex((candidate) =>
-    candidate.profile === entry.profile && candidate.sourceHash === entry.sourceHash) === index)
-  .sort((left, right) => mediaIdentity(left.profile, left.sourceHash).localeCompare(mediaIdentity(right.profile, right.sourceHash)));
 const manifest = {
-  version: 1,
+  version: 2,
   profile: photoProfile.version,
   album,
   photos,
-  ...(obsoleteMedia.length && { obsoleteMedia }),
 };
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
@@ -193,19 +187,6 @@ function variantsFrom(manifest) {
   return variants;
 }
 
-function obsoleteMediaFrom(manifest) {
-  return Array.isArray(manifest?.obsoleteMedia) ? manifest.obsoleteMedia : [];
-}
-
-function validMediaEntry(entry) {
-  return entry && /^[a-z0-9][a-z0-9-]*$/.test(entry.profile)
-    && /^[a-f0-9]{64}$/.test(entry.sourceHash);
-}
-
-function mediaIdentity(profile, sourceHash) {
-  return `${profile}:${sourceHash}`;
-}
-
 async function remoteVariantDimensions(key) {
   const destination = path.join(outputDirectory, '.existing', path.basename(key));
   mkdirSync(path.dirname(destination), { recursive: true });
@@ -222,7 +203,7 @@ function parseArgs(values) {
     const value = values[index];
     if (value === '--no-upload') parsed.noUpload = true;
     else if (value === '--manifest-only') parsed.manifestOnly = true;
-    else if (['--source', '--album', '--output', '--manifest', '--source-metadata', '--previous-manifest'].includes(value)) parsed[toCamel(value.slice(2))] = values[++index];
+    else if (['--source', '--album', '--output', '--manifest', '--source-manifest', '--source-metadata', '--previous-manifest'].includes(value)) parsed[toCamel(value.slice(2))] = values[++index];
     else fail(`Unknown argument: ${value}`);
   }
   if (parsed.manifestOnly) parsed.noUpload = true;
@@ -233,20 +214,38 @@ function toCamel(value) {
   return value.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
 }
 
-function loadSourceMetadata(input) {
-  if (!input) return new Map();
-  const metadataPath = path.resolve(input);
-  if (!existsSync(metadataPath)) fail(`Source metadata does not exist: ${metadataPath}`);
+/** Identity is authored in album frontmatter, never derived here. */
+function loadSourceManifest(input) {
+  if (!input) fail('A source manifest is required through --source-manifest or PHOTO_SOURCE_MANIFEST_PATH');
+  const manifestPath = path.resolve(input);
+  if (!existsSync(manifestPath)) fail(`Source manifest does not exist: ${manifestPath}`);
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync(metadataPath, 'utf8'));
+    parsed = JSON.parse(readFileSync(manifestPath, 'utf8'));
   } catch (error) {
-    fail(`Could not read source metadata: ${error.message}`);
+    fail(`Could not read source manifest: ${error.message}`);
   }
-  if (parsed.version !== 1 || !parsed.photos || typeof parsed.photos !== 'object') {
-    fail(`Source metadata must be a version 1 photo map: ${metadataPath}`);
+  if (parsed.version !== 1 || !Array.isArray(parsed.photos)) {
+    fail(`Source manifest must be a version 1 photo list: ${manifestPath}`);
   }
-  return new Map(Object.entries(parsed.photos).filter(([, summary]) => typeof summary === 'string'));
+  return new Map(parsed.photos.map((photo) => [photo.file, photo.photoId]));
+}
+
+function requirePhotoId(file) {
+  const photoId = sourceManifest.get(file);
+  if (!photoId) fail(`${file} has no photo ID in the source manifest. Rerun photos:push.`);
+  return photoId;
+}
+
+function readSidecarShot(file) {
+  if (!sidecarDirectory) return undefined;
+  const sidecar = path.join(path.resolve(sidecarDirectory), `${file}.json`);
+  if (!existsSync(sidecar)) return undefined;
+  try {
+    return JSON.parse(readFileSync(sidecar, 'utf8')).shot;
+  } catch (error) {
+    fail(`Could not read metadata sidecar for ${file}: ${error.message}`);
+  }
 }
 
 function orientedDimensions(metadata) {

@@ -1,14 +1,23 @@
 {
-  "version": 1,
+  "version": 2,
   "profile": "photo-v1",
   "album": "2026-07-olympics",
   "photos": [
     {
+      "photoId": "photo_1102a3b7d1e5554314cc5f91",
       "file": "DSCF7556.jpg",
       "sourceHash": "1102a3b7d1e5554314cc5f914e7c10c642d871253c7f21e029e1168c6cffe0fb",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 70mm · f/8 · 1/1000s · ISO 400",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "XF70-300mmF4-5.6 R LM OIS WR",
+        "focalLength": 70,
+        "aperture": 8,
+        "shutter": 0.001,
+        "iso": 400,
+        "capturedAt": "2026-07-06"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -91,11 +100,20 @@
       }
     },
     {
+      "photoId": "photo_696dd39c0b50a1453ca7b565",
       "file": "DSCF7581.jpg",
       "sourceHash": "696dd39c0b50a1453ca7b56523931beeed75c78d68b42dcb4d224e903486057c",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 36mm · f/8 · 1/250s · ISO 125",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 35.9,
+        "aperture": 8,
+        "shutter": 0.004,
+        "iso": 125,
+        "capturedAt": "2026-07-06"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -178,11 +196,20 @@
       }
     },
     {
+      "photoId": "photo_bb1108baee72b93593c43b02",
       "file": "DSCF7588.jpg",
       "sourceHash": "bb1108baee72b93593c43b02f136f56117de9d560ad864595c78aea6e95a8397",
       "width": 5505,
       "height": 3669,
-      "exif": "X-T5 · 50mm · f/5.6 · 1/500s · ISO 125",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 50,
+        "aperture": 5.6,
+        "shutter": 0.002,
+        "iso": 125,
+        "capturedAt": "2026-07-06"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -265,11 +292,20 @@
       }
     },
     {
+      "photoId": "photo_38a69e0fc42d82f00e9374a3",
       "file": "DSCF7590.jpg",
       "sourceHash": "38a69e0fc42d82f00e9374a34c2744cf06ac80274d101dbda8bc6d3ccd8a5aa0",
       "width": 6401,
       "height": 4267,
-      "exif": "X-T5 · 20mm · f/8 · 1/250s · ISO 125",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 20.4,
+        "aperture": 8,
+        "shutter": 0.004,
+        "iso": 125,
+        "capturedAt": "2026-07-06"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -352,11 +388,20 @@
       }
     },
     {
+      "photoId": "photo_5a840aedba87e27e01e7acec",
       "file": "DSCF7609.jpg",
       "sourceHash": "5a840aedba87e27e01e7aceced538239ced5dc51b8d59036e75424099f36f44b",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 70mm · f/8 · 1/1000s · ISO 800",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "XF70-300mmF4-5.6 R LM OIS WR",
+        "focalLength": 70,
+        "aperture": 8,
+        "shutter": 0.001,
+        "iso": 800,
+        "capturedAt": "2026-07-06"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -439,11 +484,20 @@
       }
     },
     {
+      "photoId": "photo_6e45e8d56ad5c0c3010b9cfa",
       "file": "DSCF7616.jpg",
       "sourceHash": "6e45e8d56ad5c0c3010b9cfa967b548bfb266ea2777eca427465855327c36e15",
       "width": 4347,
       "height": 6520,
-      "exif": "X-T5 · 70mm · f/5.6 · 1/500s · ISO 125",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "XF70-300mmF4-5.6 R LM OIS WR",
+        "focalLength": 70,
+        "aperture": 5.6,
+        "shutter": 0.002,
+        "iso": 125,
+        "capturedAt": "2026-07-06"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -526,11 +580,20 @@
       }
     },
     {
+      "photoId": "photo_7ca4cbc033a2c23295f24717",
       "file": "DSCF7640.jpg",
       "sourceHash": "7ca4cbc033a2c23295f247175a806a4cf9c4e933d628da6104c517c8076ccaa3",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 28mm · f/8 · 1/250s · ISO 160",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 28.3,
+        "aperture": 8,
+        "shutter": 0.004,
+        "iso": 160,
+        "capturedAt": "2026-07-06"
+      },
       "variants": {
         "responsive": {
           "avif": [

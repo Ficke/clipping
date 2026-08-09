@@ -1,9 +1,10 @@
 {
-  "version": 1,
+  "version": 2,
   "profile": "photo-v1",
   "album": "2025-08-tuolumne",
   "photos": [
     {
+      "photoId": "photo_2edcbfc50d97c7a83b466cbd",
       "file": "01-DSCF6608.jpg",
       "sourceHash": "2edcbfc50d97c7a83b466cbd204f20a67cdc0df869205be1f57f7fce13d677dd",
       "width": 2000,
@@ -90,6 +91,7 @@
       }
     },
     {
+      "photoId": "photo_f3bff05c675332489106763b",
       "file": "02-DSCF6580.jpg",
       "sourceHash": "f3bff05c675332489106763babce02a6df8b9b55a0b1712de64766bfe60f9417",
       "width": 2000,
@@ -176,6 +178,7 @@
       }
     },
     {
+      "photoId": "photo_e55512bd971cf6f203f82dcd",
       "file": "03-DSCF6640.jpg",
       "sourceHash": "e55512bd971cf6f203f82dcd1252d01c23d2f198656b7de21ff9411240691391",
       "width": 2000,
@@ -262,6 +265,7 @@
       }
     },
     {
+      "photoId": "photo_109a716a671d677a7c729f54",
       "file": "04-DSCF6720.jpg",
       "sourceHash": "109a716a671d677a7c729f544ca90401c0d781541387cb6ad0706c4b5ca71364",
       "width": 1334,
@@ -333,6 +337,7 @@
       }
     },
     {
+      "photoId": "photo_33ed5b3471f2c6b67b3ff658",
       "file": "05-DSCF6797.jpg",
       "sourceHash": "33ed5b3471f2c6b67b3ff658705701730c7ae958950f559657b1b3a30112ed2c",
       "width": 1333,
@@ -404,6 +409,7 @@
       }
     },
     {
+      "photoId": "photo_47b7b81d3b27fbecdc207ce9",
       "file": "06-DSCF6852.jpg",
       "sourceHash": "47b7b81d3b27fbecdc207ce9066a1dc8f666e49384772400ff80636df9347b0c",
       "width": 2000,
@@ -490,6 +496,7 @@
       }
     },
     {
+      "photoId": "photo_02e949cd49685ffd667ba5c9",
       "file": "07-DSCF6841.jpg",
       "sourceHash": "02e949cd49685ffd667ba5c99541cba8df9ad0744c83e1841ea8d89e24eeafb5",
       "width": 2000,
@@ -576,6 +583,7 @@
       }
     },
     {
+      "photoId": "photo_36d3838f20905ad610c2e00d",
       "file": "08-DSCF6634_DxO-1.jpg",
       "sourceHash": "36d3838f20905ad610c2e00d4d2e33c2832844ded684c153e887d946a12666fd",
       "width": 2000,
@@ -662,6 +670,7 @@
       }
     },
     {
+      "photoId": "photo_34c48167e03c8b65101a8d75",
       "file": "09-DSCF6853.jpg",
       "sourceHash": "34c48167e03c8b65101a8d751d62b6cfd362ca877d6b91b2898b28a697da0a71",
       "width": 2000,

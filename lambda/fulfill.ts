@@ -6,7 +6,6 @@ import { DOWNLOAD_WINDOW_SECONDS, mintToken } from './tokens';
 
 export interface PurchasedItem {
   photoId: string;
-  assetRef: string;
   albumTitle: string;
   label: string;
   previewSrc?: string;
@@ -65,14 +64,12 @@ export function fulfillmentForOrder(
     version: 1,
     orderId: order.orderId,
     photoId: order.photoId,
-    assetRef: order.assetRef,
     expiresAt,
   }, downloadTokenKey);
   return {
     status: 'paid',
     item: {
       photoId: order.photoId,
-      assetRef: order.assetRef,
       albumTitle: order.albumTitle,
       label: order.label,
       ...(order.previewSrc ? { previewSrc: order.previewSrc } : {}),

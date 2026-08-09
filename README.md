@@ -77,16 +77,18 @@ changes in `src/content.config.ts`.
    in S3 before writing anything.
 
    It then lowercases image extensions, rejects unsupported photo formats or
-   nested image folders, and writes `index.md`. Before upload it makes a
-   temporary, lossless fulfillment copy of every export: GPS, camera, editing,
-   and descriptive metadata are removed while the embedded color profile and
-   copyright/creator/contact fields are retained. Only that sanitized
-   full-resolution copy is synchronized to S3; the temporary copy is deleted.
+   nested image folders, mints a permanent `photoId` for anything new, and
+   writes `index.md`. Before upload it makes a temporary, lossless copy of every
+   export: GPS, camera, editing, and descriptive metadata are removed while the
+   embedded color profile and copyright/creator/contact fields are retained.
+   That sanitized copy is the one master, uploaded to `photos/<photoId>`.
 
-   The five camera settings shown on album pages are captured before
-   sanitization into a small source-metadata sidecar. A later push from a fresh
-   clone preserves those approved values from the committed `photos.json` even
-   though `photos:pull` returns already-sanitized files.
+   Everything stripped out is archived first, to `metadata/<photoId>.json`. That
+   prefix is outside the buyer Lambda's grant, so a compromised Lambda cannot
+   presign your location data. The camera settings shown on album pages come
+   from it. A push from a fresh clone finds no metadata to read, because
+   `photos:pull` returns already-sanitized masters, so it leaves the archived
+   sidecar alone rather than overwriting it with nothing.
 
    Finally it asks where to generate the image variants:
 
@@ -220,20 +222,20 @@ obsolete by committed manifests and unused by every current album.
 
 ## Selling downloads
 
-The durable v3 commerce source is described below. It is not deployed yet; the
-[implementation ledger](docs/stripe-commerce-implementation.md) separates code,
-test, infrastructure, Stripe, and production state. The target design is in the
-[architecture plan](docs/stripe-commerce-architecture.md), and sandbox/recovery
-procedures are in the [operations runbook](docs/stripe-commerce-operations.md).
+The design is in [commerce.md](docs/commerce.md); the runbooks for anything
+touching live money are in
+[commerce-operations.md](docs/commerce-operations.md).
 
 Photographs can be sold as full-resolution downloads. Payment is Stripe-hosted
 Checkout with Managed Payments: Stripe/Link is merchant of record and handles
 covered sales tax, VAT, GST, fraud, disputes, transaction support, and payment
-emails. The file is the single full-resolution, metadata-minimized fulfillment
-export in the archive bucket, presigned for the buyer. It retains its embedded
-color profile and copyright information, but not GPS, camera, or editing
-metadata. A DynamoDB order snapshots the immutable fulfillment asset before
-Checkout is created; a signed seven-day token carries the issued entitlement.
+emails. The file is the photograph's one full-resolution master in the archive
+bucket, presigned for the buyer. It retains its embedded color profile and
+copyright information, but not GPS, camera, or editing metadata. A DynamoDB
+order records the photo ID before Checkout is created; a signed seven-day token
+carries the issued entitlement. Because the master is the live object,
+re-exporting a photograph at a higher resolution reaches buyers who already
+have a link.
 
 Every photograph shares one generic Stripe Product, **Full-resolution
 photograph download**. Its description carries the personal-license terms, and
@@ -273,37 +275,44 @@ preview without writing. The command writes readable photo-level content:
 ```yaml
 photos:
   - file: DSCF7588.jpg
-    forSale: true
+    photoId: photo_1234567890abcdef12345678
     price: 40
 ```
+
+A price is what puts a photograph on sale; no price means it is not for sale.
 
 The site build converts dollars to integer cents and emits the private catalog,
 which the Lambda treats as authoritative. A store or price change is a content
 deploy; it needs no media upload or Lambda deploy.
 
-Photo removal has deliberately separate scopes:
+A photograph's life has three deliberate steps, each reversible until the last:
 
 ```sh
-bun run photos:store -- photo_1234567890abcdef12345678 --remove
-# Delists, but keeps the public album photo and private fulfillment mapping.
+bun run photos:store -- olympics DSCF7588.jpg --delist
+# Off the store, still in the album.
 
-bun run photos:site -- olympics DSCF7588.jpg --hide
-bun run photos:site -- olympics DSCF7588.jpg --show
-# Reversibly removes/restores the public photo; hiding also delists it.
+bun run photos:remove -- olympics DSCF7588.jpg
+bun run photos:restore -- olympics DSCF7588.jpg
+# Out of the album and the store, or back. The master stays in S3, so anyone
+# who already bought it keeps a working download.
 
-bun run photos:store -- olympics DSCF7588.jpg --purge-catalog
-# Removes future catalog lookup; durable prior orders retain their immutable asset.
-
-bun run photos:store -- olympics DSCF7588.jpg --restore-catalog
-# Restores the private mapping; it does not relist the photo for sale.
+bun run photos:delete -- olympics DSCF7588.jpg
+# Destroys the bytes. Only reachable from a removed photograph, and its
+# frontmatter entry stays behind as the record that it existed.
 ```
 
-Use `photos:site --hide` instead of deleting an original when the goal is only
-to remove it from the website. Physical deletion remains removing the local file
-and running `photos:push`; S3 versioning provides a 90-day recovery window. If
-the deleted file was the explicit cover, `photos:push` selects the first
-remaining visible photo as the new cover. Obsolete public derivatives are
-removed automatically after the updated site is deployed.
+Deleting a file from the album folder is not how a photograph leaves an album —
+`photos:push` refuses and points at `photos:remove`, because dropping the entry
+would discard the record and orphan the master.
+
+Removing marks the derivatives obsolete, and the next site deploy runs
+`photos:gc`, which deletes them — that is what actually stops the image being
+served at its CloudFront URL. Restoring after that deploy needs a push to
+rebuild them from the retained master; no re-upload of the full-resolution file
+is involved. Deleting is recoverable for 90 days through S3 versioning.
+
+`bun run photos:sales -- <photo-id>` reports every order for one photograph,
+including after it has been removed.
 
 Everything for sale appears at `/store/`, grouped by album, and that is the only
 place with a buy button — album pages stay reading pages. The store is linked in
@@ -361,13 +370,10 @@ not on a push to `main`:
 bun run lambda:build
 ```
 
-The first M5 infrastructure revision is deployed. Its correction is a
-three-apply rollout: add and verify the protected REST ingress, approve the
-CloudFront cutover separately, then disable the old public HTTP API endpoint
-only after CloudFront reports `Deployed`. The HTTP API configuration remains a
-dormant rollback rail. Follow the implementation ledger and operations runbook;
-quota changes, each Terraform apply, webhook registration, catalog activation,
-and storefront cutover are separate actions.
+The commerce infrastructure is deployed and the production webhook is
+registered. Terraform applies, webhook registration, and catalog activation
+stay separate, individually reviewed actions — see
+[commerce-operations.md](docs/commerce-operations.md).
 
 **Where keys live.** In SSM Parameter Store as KMS-encrypted `SecureString`
 values, and nowhere else—never in Terraform state, a file, or Lambda environment
@@ -413,7 +419,7 @@ refused.
 
 The catalog alone is intercepted from `dist/downloads-catalog.json`; Stripe,
 DynamoDB, and S3 signing are real sandbox dependencies. Follow the complete
-[local acceptance procedure](docs/stripe-commerce-operations.md#local-sandbox-acceptance)
+[local acceptance procedure](docs/commerce-operations.md#local-sandbox-acceptance)
 for signed webhook forwarding, successful purchase, refund revocation, dispute
 restoration, reissue, and cleanup.
 
@@ -460,14 +466,21 @@ controlled by the normal Dashboard receipt-email toggle.
 
 ## Where the photos live
 
-Full-quality fulfillment exports live in the versioned
-`adamficke-com-originals` bucket at `albums/<storyId>/<file>.jpg`. They are
-losslessly stripped of all metadata except color-space and
-copyright/creator/contact fields before upload; an unsanitized duplicate is not
-stored in AWS. Public derivatives live separately in
-the private `adamficke-com-media` bucket and are served by CloudFront under
-`/media/*`. Git contains `index.md` plus `photos.json`; generated image files
-are never committed.
+Each photograph has exactly one full-quality master in the versioned
+`adamficke-com-originals` bucket at `photos/<photoId>`, losslessly stripped of
+all metadata except color-space and copyright/creator/contact fields. What was
+stripped is archived alongside it at `metadata/<photoId>.json`; no unsanitized
+duplicate of the image itself is stored in AWS.
+
+The key is the photo ID rather than the album and filename, so renaming a file,
+reordering an album, or moving a photograph between albums costs nothing and
+cannot break a paid download. `manifests/<storyId>/photos.json` is what maps an
+album back to its photographs, and each master also carries `album` and `file`
+in its S3 user metadata so a lone object is self-describing.
+
+Public derivatives live separately in the private `adamficke-com-media` bucket
+and are served by CloudFront under `/media/*`. Git contains `index.md` plus
+`photos.json`; generated image files are never committed.
 
 The album-specific media CodeBuild job uses sharp to emit immutable,
 content-addressed derivatives:
@@ -480,8 +493,8 @@ content-addressed derivatives:
 
 sharp auto-orients photos and strips metadata from derivatives, so only the
 selected camera settings stored in the manifest reach the public site. Export
-size is your call: larger fulfillment exports are downscaled, and the site
-serves at most 2000 px wide. Changing
+size is your call: larger exports are downscaled, and the site serves at most
+2000 px wide. Changing
 the global media profile creates a new versioned URL namespace instead of
 mutating published assets.
 

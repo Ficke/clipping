@@ -15,7 +15,6 @@ function order(): Order {
     ...createPendingOrder({
       livemode: false,
       photoId: 'photo_1234567890abcdef12345678',
-      assetRef: `${'ab'.repeat(32)}.jpg`,
       expectedAmount: 4_000,
       albumTitle: 'Stored title',
       label: 'Stored label',
@@ -75,7 +74,6 @@ describe('durable fulfillment', () => {
       version: 1,
       orderId: ORDER_ID,
       photoId: 'photo_1234567890abcdef12345678',
-      assetRef: `${'ab'.repeat(32)}.jpg`,
     });
   });
 

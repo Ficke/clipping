@@ -24,13 +24,10 @@ export function readPhotosBlock(lines) {
       entries.push({ file: unquote(item[1]) });
       continue;
     }
-    const field = line.match(/^\s+(caption|alt|forSale|price|hidden|catalog):\s*(.*)$/);
+    const field = line.match(/^\s+(caption|alt|photoId|price|removed|deleted):\s*(.*)$/);
     if (!field || !entries.length) continue;
     const value = unquote(field[2]);
-    if (field[1] === 'forSale' || field[1] === 'hidden' || field[1] === 'catalog') {
-      entries.at(-1)[field[1]] = value === 'true';
-    }
-    else if (field[1] === 'price') entries.at(-1).price = parsePriceDollars(value);
+    if (field[1] === 'price') entries.at(-1).price = parsePriceDollars(value);
     else entries.at(-1)[field[1]] = value;
   }
   return { entries, span: [start, end] };
@@ -40,14 +37,18 @@ export function serializePhotos(entries) {
   const block = ['photos:'];
   for (const entry of entries) {
     block.push(`  - file: ${entry.file}`);
+    block.push(`    photoId: ${entry.photoId}`);
     if (entry.caption) block.push(`    caption: ${JSON.stringify(entry.caption)}`);
     if (entry.alt) block.push(`    alt: ${JSON.stringify(entry.alt)}`);
-    if (entry.forSale !== undefined) block.push(`    forSale: ${entry.forSale}`);
     if (entry.price !== undefined) block.push(`    price: ${formatPriceDollars(entry.price)}`);
-    if (entry.hidden !== undefined) block.push(`    hidden: ${entry.hidden}`);
-    if (entry.catalog !== undefined) block.push(`    catalog: ${entry.catalog}`);
+    if (entry.removed) block.push(`    removed: ${entry.removed}`);
+    if (entry.deleted) block.push(`    deleted: ${entry.deleted}`);
   }
   return block;
+}
+
+export function today() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 export function replacePhotosBlock(contents, entries, album = 'album') {
@@ -85,6 +86,35 @@ export function unquote(value) {
 export function frontmatterValue(contents, key) {
   const match = contents.match(new RegExp(`^${key}:\\s*(.*)$`, 'm'));
   return match ? unquote(match[1].trim()) : undefined;
+}
+
+export function albumIndexes(albumsRoot) {
+  return readdirSync(albumsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => path.join(albumsRoot, entry.name, 'index.md'))
+    .filter((indexPath) => existsSync(indexPath));
+}
+
+/**
+ * Find one photograph by ID, or by album plus filename. Identity lives in
+ * frontmatter, so this never consults a generated manifest and keeps working
+ * for photographs that have been removed or deleted.
+ */
+export function locatePhoto(albumsRoot, reference, album) {
+  const candidates = album ? [resolveAlbumIndex(albumsRoot, album)] : albumIndexes(albumsRoot);
+  const matches = [];
+  for (const indexPath of candidates) {
+    const contents = readFileSync(indexPath, 'utf8');
+    const { lines } = splitFrontmatter(contents, path.dirname(indexPath));
+    const { entries } = readPhotosBlock(lines);
+    const photo = entries.find((entry) => entry.photoId === reference || entry.file === reference);
+    if (photo) matches.push({ indexPath, contents, entries, photo });
+  }
+  if (!matches.length) throw new Error(`no photograph matches ${JSON.stringify(reference)}`);
+  if (matches.length > 1) {
+    throw new Error(`${reference} appears in more than one album; name the album explicitly`);
+  }
+  return matches[0];
 }
 
 /** Resolve a folder name, path, storyId, or public slug to one album index. */
