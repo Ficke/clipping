@@ -18,7 +18,7 @@ import {
   readPhotosBlock,
   resolveAlbumIndex,
   splitFrontmatter,
-} from './photo-frontmatter.mjs';
+} from './photo-frontmatter';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
@@ -33,7 +33,7 @@ let indexes;
 try {
   indexes = positional.length ? [resolveAlbumIndex(albumsRoot, positional[0])] : albumIndexes(albumsRoot);
 } catch (error) {
-  fail(error.message);
+  fail(error instanceof Error ? error.message : String(error));
 }
 
 let pulled = 0;
@@ -60,13 +60,13 @@ for (const indexPath of indexes) {
 
 console.log(dryRun ? 'Dry run: nothing written' : `Pulled ${pulled} photo${pulled === 1 ? '' : 's'}`);
 
-function aws(commandArgs) {
+function aws(commandArgs: string[]): void {
   const result = spawnSync('aws', commandArgs, { encoding: 'utf8', stdio: ['ignore', 'inherit', 'inherit'] });
   if (result.error) fail(`Could not run aws: ${result.error.message}`);
   if (result.status !== 0) fail(`aws ${commandArgs[1]} failed`);
 }
 
-function fail(message) {
+function fail(message: string): never {
   console.error(`photos:pull: ${message}`);
   process.exit(1);
 }

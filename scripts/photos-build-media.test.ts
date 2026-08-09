@@ -13,8 +13,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import sharp from 'sharp';
+import type { PhotoManifestEntry, PhotoVariant } from '../shared/media';
 
-const temporaryDirectories = [];
+const temporaryDirectories: string[] = [];
 const PHOTO_ID = 'photo_1234567890abcdef12345678';
 const ONE_ID = 'photo_aaaaaaaaaaaaaaaaaaaaaaaa';
 const TWO_ID = 'photo_bbbbbbbbbbbbbbbbbbbbbbbb';
@@ -48,7 +49,7 @@ describe('media manifest builder', () => {
     }));
 
     const result = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-build-media.mjs'),
+      path.join(import.meta.dir, 'photos-build-media.ts'),
       '--source', source,
       '--album', '2026-08-test',
       '--manifest', manifest,
@@ -98,7 +99,7 @@ describe('media manifest builder', () => {
       .jpeg().toFile(path.join(source, 'one.jpg'));
     rmSync(path.join(source, 'two.jpg'));
     buildManifest(source, manifest, previousManifest);
-    const updated = JSON.parse(readFileSync(manifest, 'utf8'));
+    const updated = JSON.parse(readFileSync(manifest, 'utf8')) as { photos: Array<{ file: string; sourceHash: string }> };
 
     expect(updated.photos.map((photo) => photo.file)).toEqual(['one.jpg']);
     expect(updated.photos[0].sourceHash).not.toBe(initialHash);
@@ -126,7 +127,7 @@ describe('media manifest builder', () => {
       .jpeg().toFile(path.join(source, 'photo.jpg'));
 
     const initial = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-build-media.mjs'),
+      path.join(import.meta.dir, 'photos-build-media.ts'),
       '--source', source,
       '--album', '2026-08-test',
       '--manifest', initialManifest,
@@ -150,7 +151,7 @@ fi
     chmodSync(fakeAws, 0o755);
 
     const reused = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-build-media.mjs'),
+      path.join(import.meta.dir, 'photos-build-media.ts'),
       '--source', source,
       '--album', '2026-08-test',
       '--manifest', reusedManifest,
@@ -173,11 +174,11 @@ fi
   });
 });
 
-function buildManifest(source, manifest, previousManifest) {
+function buildManifest(source: string, manifest: string, previousManifest?: string): void {
   const sourceManifest = path.join(path.dirname(manifest), 'build-source.json');
   writeFileSync(sourceManifest, sourceManifestFor({ 'one.jpg': ONE_ID, 'two.jpg': TWO_ID }));
   const result = spawnSync('bun', [
-    path.join(import.meta.dir, 'photos-build-media.mjs'),
+    path.join(import.meta.dir, 'photos-build-media.ts'),
     '--source', source,
     '--album', '2026-08-test',
     '--manifest', manifest,
@@ -188,12 +189,12 @@ function buildManifest(source, manifest, previousManifest) {
   expect(result.status).toBe(0);
 }
 
-function sourceManifestFor(idsByFile) {
+function sourceManifestFor(idsByFile: Record<string, string>): string {
   const photos = Object.entries(idsByFile).map(([file, photoId]) => ({ photoId, file }));
   return JSON.stringify({ version: 1, album: '2026-08-test', photos });
 }
 
-function filesBelow(directory) {
+function filesBelow(directory: string): string[] {
   if (!readdirSync(directory, { withFileTypes: true }).length) return [];
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const child = path.join(directory, entry.name);
@@ -201,7 +202,7 @@ function filesBelow(directory) {
   });
 }
 
-function allVariants(photo) {
+function allVariants(photo: PhotoManifestEntry): PhotoVariant[] {
   return [
     ...Object.values(photo.variants.responsive).flat(),
     photo.variants.lightbox,

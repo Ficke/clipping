@@ -7,7 +7,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { masterKey } from '../src/lib/downloads';
-import { albumIndexes, readPhotosBlock, splitFrontmatter } from './photo-frontmatter.mjs';
+import { albumIndexes, readPhotosBlock, splitFrontmatter } from './photo-frontmatter';
 import { livePrefixes, loadManifests, orphanedTrees } from './photo-media';
 
 interface PhotoLifecycleReference {

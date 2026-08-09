@@ -12,6 +12,14 @@ import { spawnSync } from 'node:child_process';
 import { parseSourceManifest } from '../shared/media.ts';
 import { masterKey, metadataKey } from '../src/lib/downloads.ts';
 
+interface FetchArgs {
+  bucket?: string;
+  album?: string;
+  source: string;
+  metadata: string;
+  manifest: string;
+}
+
 const args = parseArgs(process.argv.slice(2));
 const bucket = args.bucket ?? process.env.MANIFEST_BUCKET;
 const album = args.album ?? process.env.ALBUM_ID;
@@ -43,28 +51,30 @@ for (const { photoId, file } of manifest.photos) {
 
 console.log(`Fetched ${manifest.photos.length} master${manifest.photos.length === 1 ? '' : 's'} for ${album}`);
 
-function parseArgs(values) {
-  const parsed = {};
+function parseArgs(values: string[]): FetchArgs {
+  const parsed: Partial<FetchArgs> = {};
   for (let index = 0; index < values.length; index++) {
     const value = values[index];
     if (['--bucket', '--album', '--source', '--metadata', '--manifest'].includes(value)) {
-      parsed[value.slice(2)] = values[++index];
+      const next = values[++index];
+      if (!next) fail(`${value} requires a value`);
+      parsed[value.slice(2) as keyof FetchArgs] = next;
     }
     else fail(`Unknown argument: ${value}`);
   }
-  for (const field of ['source', 'metadata', 'manifest']) {
+  for (const field of ['source', 'metadata', 'manifest'] as const) {
     if (!parsed[field]) fail(`--${field} is required`);
   }
-  return parsed;
+  return parsed as FetchArgs;
 }
 
-function aws(commandArgs) {
+function aws(commandArgs: string[]): void {
   const result = spawnSync('aws', commandArgs, { encoding: 'utf8', stdio: ['ignore', 'inherit', 'inherit'] });
   if (result.error) fail(`Could not run aws: ${result.error.message}`);
   if (result.status !== 0) fail(`aws ${commandArgs[1]} failed`);
 }
 
-function fail(message) {
+function fail(message: string): never {
   console.error(`photos:fetch-sources: ${message}`);
   process.exit(1);
 }

@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { masterKey, metadataKey } from '../src/lib/downloads.ts';
-import { locatePhoto, replacePhotosBlock, today } from './photo-frontmatter.mjs';
+import { locatePhoto, replacePhotosBlock, today } from './photo-frontmatter';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
@@ -45,7 +45,7 @@ let located;
 try {
   located = locatePhoto(albumsRoot, reference, album);
 } catch (error) {
-  fail(error.message);
+  fail(error instanceof Error ? error.message : String(error));
 }
 const { indexPath, contents, entries, photo } = located;
 
@@ -77,14 +77,14 @@ if (!dryRun) writeFileSync(indexPath, replacePhotosBlock(contents, entries, path
 remove(originalsBucket, masterKey(photo.photoId));
 remove(originalsBucket, metadataKey(photo.photoId));
 
-function remove(bucket, key) {
+function remove(bucket: string, key: string): void {
   console.log(`${dryRun ? 'Would delete' : 'Deleting'} s3://${bucket}/${key}`);
   if (dryRun) return;
   aws(['s3api', 'delete-object', '--bucket', bucket, '--key', key]);
 }
 
 /** Informational only — deletion is the operator's call, not the table's. */
-function countOrders(photoId) {
+function countOrders(photoId: string): number {
   const result = spawnSync('aws', [
     'dynamodb', 'scan', '--table-name', ordersTable,
     '--filter-expression', 'photoId = :p',
@@ -98,7 +98,7 @@ function countOrders(photoId) {
   return Number.parseInt((result.stdout ?? '0').trim(), 10) || 0;
 }
 
-async function confirm(file) {
+async function confirm(file: string): Promise<void> {
   if (!process.stdin.isTTY) fail('deleting needs an interactive confirmation or --yes');
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
@@ -109,13 +109,13 @@ async function confirm(file) {
   }
 }
 
-function aws(commandArgs) {
+function aws(commandArgs: string[]): void {
   const result = spawnSync('aws', commandArgs, { encoding: 'utf8' });
   if (result.error) fail(`could not run aws: ${result.error.message}`);
   if (result.status !== 0) fail((result.stderr ?? '').trim() || `aws ${commandArgs[1]} failed`);
 }
 
-function fail(message) {
+function fail(message: string): never {
   console.error(`photos:delete: ${message}`);
   process.exit(1);
 }

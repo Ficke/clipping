@@ -9,7 +9,7 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { locatePhoto } from './photo-frontmatter.mjs';
+import { locatePhoto } from './photo-frontmatter';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
@@ -28,13 +28,13 @@ let photo;
 try {
   ({ photo } = locatePhoto(albumsRoot, reference, album));
 } catch (error) {
-  fail(error.message);
+  fail(error instanceof Error ? error.message : String(error));
 }
 
 const state = photo.deleted ? `deleted ${photo.deleted}`
   : photo.removed ? `removed ${photo.removed}`
-  : photo.price === undefined ? 'in album, not for sale'
-  : `for sale at $${photo.price}`;
+  : photo.priceDollars === undefined ? 'in album, not for sale'
+  : `for sale at $${photo.priceDollars}`;
 console.log(`${photo.file} (${photo.photoId}) — ${state}`);
 
 const orders = scan(photo.photoId);
@@ -51,7 +51,10 @@ for (const order of orders.sort((left, right) => created(left) - created(right))
   console.log(`  ${date}  ${order.state?.S?.padEnd(8)}  ${amount.padStart(8)}  ${mode}  ${order.orderId?.S}`);
 }
 
-function scan(photoId) {
+type DynamoAttribute = { S?: string; N?: string; BOOL?: boolean };
+type Order = Record<string, DynamoAttribute | undefined>;
+
+function scan(photoId: string): Order[] {
   const result = spawnSync('aws', [
     'dynamodb', 'scan', '--table-name', ordersTable,
     '--filter-expression', 'photoId = :p',
@@ -60,14 +63,14 @@ function scan(photoId) {
   ], { encoding: 'utf8' });
   if (result.error) fail(`could not run aws: ${result.error.message}`);
   if (result.status !== 0) fail((result.stderr ?? '').trim() || 'could not scan the order table');
-  return JSON.parse(result.stdout || '[]') ?? [];
+  return JSON.parse(result.stdout || '[]') as Order[];
 }
 
-function created(order) {
+function created(order: Order): number {
   return Number(order.createdAt?.N ?? 0);
 }
 
-function fail(message) {
+function fail(message: string): never {
   console.error(`photos:sales: ${message}`);
   process.exit(1);
 }

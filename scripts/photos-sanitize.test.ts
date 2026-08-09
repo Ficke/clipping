@@ -3,10 +3,10 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { ExifTool } from 'exiftool-vendored';
+import { ExifTool, type WriteTags } from 'exiftool-vendored';
 import sharp from 'sharp';
 
-const temporaryDirectories = [];
+const temporaryDirectories: string[] = [];
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
@@ -43,10 +43,10 @@ describe('fulfillment metadata sanitizer', () => {
         'EXIF:Copyright': 'Copyright Adam Ficke',
         'EXIF:Artist': 'Adam Ficke',
         'EXIF:UserComment': 'private workflow note',
-      });
+      } as WriteTags);
 
       const result = spawnSync('bun', [
-        path.join(import.meta.dir, 'photos-sanitize.mjs'),
+        path.join(import.meta.dir, 'photos-sanitize.ts'),
         '--source', sourceDirectory,
         '--output', outputDirectory,
         '--metadata', metadataDirectory,
@@ -81,7 +81,7 @@ describe('fulfillment metadata sanitizer', () => {
       const secondOutput = path.join(directory, 'second-output');
       const secondMetadata = path.join(directory, 'second-metadata');
       const second = spawnSync('bun', [
-        path.join(import.meta.dir, 'photos-sanitize.mjs'),
+        path.join(import.meta.dir, 'photos-sanitize.ts'),
         '--source', outputDirectory,
         '--output', secondOutput,
         '--metadata', secondMetadata,

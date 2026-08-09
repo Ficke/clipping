@@ -2,15 +2,15 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { parsePriceDollars } from './photo-frontmatter.mjs';
+import { parsePriceDollars } from './photo-frontmatter';
 
 const repoRoot = path.resolve(import.meta.dir, '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
-const temporaryAlbums = [];
+const temporaryAlbums: string[] = [];
 const PHOTO_ID = 'photo_aaaaaaaaaaaaaaaaaaaaaaaa';
 const OTHER_ID = 'photo_bbbbbbbbbbbbbbbbbbbbbbbb';
 
-function manifestPhoto(photoId, file, sourceHash) {
+function manifestPhoto(photoId: string, file: string, sourceHash: string) {
   const variant = {
     width: 640,
     height: 427,
@@ -68,7 +68,7 @@ function fixture() {
   return { name, index };
 }
 
-function run(script, commandArgs) {
+function run(script: string, commandArgs: string[]) {
   return spawnSync('bun', [path.join(import.meta.dir, script), ...commandArgs], {
     cwd: repoRoot,
     encoding: 'utf8',
@@ -78,8 +78,8 @@ function run(script, commandArgs) {
 describe('photo commerce commands', () => {
   test('lists and reprices an existing photo without touching its caption', () => {
     const { name, index } = fixture();
-    expect(run('photos-store.mjs', [name, 'photo.jpg', '--price', '39.50']).status).toBe(0);
-    expect(run('photos-store.mjs', [name, 'photo.jpg', '--price', '$55']).status).toBe(0);
+    expect(run('photos-store.ts', [name, 'photo.jpg', '--price', '39.50']).status).toBe(0);
+    expect(run('photos-store.ts', [name, 'photo.jpg', '--price', '$55']).status).toBe(0);
 
     const contents = readFileSync(index, 'utf8');
     expect(contents).toContain('caption: "Keep me."\n    price: 55');
@@ -88,8 +88,8 @@ describe('photo commerce commands', () => {
 
   test('delisting leaves the photograph in the album', () => {
     const { name, index } = fixture();
-    run('photos-store.mjs', [name, 'photo.jpg', '--price', '40']);
-    const result = run('photos-store.mjs', [PHOTO_ID, '--delist']);
+    run('photos-store.ts', [name, 'photo.jpg', '--price', '40']);
+    const result = run('photos-store.ts', [PHOTO_ID, '--delist']);
 
     expect(result.status).toBe(0);
     const contents = readFileSync(index, 'utf8');
@@ -100,7 +100,7 @@ describe('photo commerce commands', () => {
 
   test('resolves an opaque photo ID within an explicitly named album', () => {
     const { name, index } = fixture();
-    const result = run('photos-store.mjs', [name, PHOTO_ID, '--price', '45']);
+    const result = run('photos-store.ts', [name, PHOTO_ID, '--price', '45']);
 
     expect(result.status).toBe(0);
     expect(readFileSync(index, 'utf8')).toContain('price: 45');
@@ -108,14 +108,14 @@ describe('photo commerce commands', () => {
 
   test('removing takes a photograph out of the album and the store, reversibly', () => {
     const { name, index } = fixture();
-    run('photos-store.mjs', [name, 'photo.jpg', '--price', '40']);
-    expect(run('photos-remove.mjs', [name, 'photo.jpg']).status).toBe(0);
+    run('photos-store.ts', [name, 'photo.jpg', '--price', '40']);
+    expect(run('photos-remove.ts', [name, 'photo.jpg']).status).toBe(0);
 
     let contents = readFileSync(index, 'utf8');
     expect(contents).toMatch(/removed: \d{4}-\d{2}-\d{2}/);
     expect(contents).not.toContain('price:');
 
-    expect(run('photos-remove.mjs', [name, 'photo.jpg', '--restore']).status).toBe(0);
+    expect(run('photos-remove.ts', [name, 'photo.jpg', '--restore']).status).toBe(0);
     contents = readFileSync(index, 'utf8');
     expect(contents).not.toContain('removed:');
     expect(contents).toContain('caption: "Keep me."');
@@ -123,8 +123,8 @@ describe('photo commerce commands', () => {
 
   test('a removed photograph cannot be put back on sale until it is restored', () => {
     const { name } = fixture();
-    run('photos-remove.mjs', [name, 'photo.jpg']);
-    const result = run('photos-store.mjs', [name, 'photo.jpg', '--price', '40']);
+    run('photos-remove.ts', [name, 'photo.jpg']);
+    const result = run('photos-store.ts', [name, 'photo.jpg', '--price', '40']);
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('restore it before selling it');
@@ -138,14 +138,14 @@ describe('photo commerce commands', () => {
     );
     writeFileSync(index, contents);
 
-    let result = run('photos-remove.mjs', [name, 'photo.jpg']);
+    let result = run('photos-remove.ts', [name, 'photo.jpg']);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('explicit album cover');
 
     contents = readFileSync(index, 'utf8').replace('cover: photo.jpg\n', '');
     writeFileSync(index, contents);
-    expect(run('photos-remove.mjs', [name, 'other.jpg']).status).toBe(0);
-    result = run('photos-remove.mjs', [name, 'photo.jpg']);
+    expect(run('photos-remove.ts', [name, 'other.jpg']).status).toBe(0);
+    result = run('photos-remove.ts', [name, 'photo.jpg']);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('last photograph');
   });
@@ -154,7 +154,7 @@ describe('photo commerce commands', () => {
   test('deleting refuses until the photograph has been removed', () => {
     const { name, index } = fixture();
     const before = readFileSync(index, 'utf8');
-    const result = run('photos-delete.mjs', [name, 'photo.jpg', '--yes']);
+    const result = run('photos-delete.ts', [name, 'photo.jpg', '--yes']);
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('photos:remove');
@@ -180,8 +180,8 @@ describe('photo commerce commands', () => {
   test('dry runs and invalid prices never mutate content', () => {
     const { name, index } = fixture();
     const before = readFileSync(index, 'utf8');
-    expect(run('photos-store.mjs', [name, 'photo.jpg', '--price', '45', '--dry-run']).status).toBe(0);
-    expect(run('photos-store.mjs', [name, 'photo.jpg', '--price', '12.345']).status).not.toBe(0);
+    expect(run('photos-store.ts', [name, 'photo.jpg', '--price', '45', '--dry-run']).status).toBe(0);
+    expect(run('photos-store.ts', [name, 'photo.jpg', '--price', '12.345']).status).not.toBe(0);
     expect(readFileSync(index, 'utf8')).toBe(before);
   });
 

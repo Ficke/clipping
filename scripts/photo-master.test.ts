@@ -2,12 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { checksumBase64, ensureMaster, sha256Hex } from './photo-master.mjs';
+import { checksumBase64, ensureMaster, sha256Hex, type AwsRunner } from './photo-master';
 
 const PHOTO_ID = 'photo_1234567890abcdef12345678';
 const BUCKET = 'originals-test';
 
-function file(contents) {
+function file(contents: string): { target: string; cleanup: () => void } {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'photo-master-test-'));
   const target = path.join(directory, 'photo.jpg');
   writeFileSync(target, contents);
@@ -18,9 +18,9 @@ function file(contents) {
  * Stands in for the aws CLI. `existing` is the SHA-256 the bucket already holds
  * for this key, or undefined when the object is absent.
  */
-function fakeAws(existing) {
-  const calls = [];
-  const aws = (args) => {
+function fakeAws(existing: string | undefined): { aws: AwsRunner; calls: string[][]; puts: () => string[][] } {
+  const calls: string[][] = [];
+  const aws: AwsRunner = (args) => {
     calls.push(args);
     if (args[1] === 'head-object') {
       return existing

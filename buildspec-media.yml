@@ -11,7 +11,7 @@ phases:
       - bun install --frozen-lockfile
       # Masters are keyed by photo ID, so the album's source manifest is what
       # says which objects to fetch and what to name them locally.
-      - bun scripts/photos-fetch-sources.mjs --album "$ALBUM_ID" --source /tmp/photo-source --metadata /tmp/photo-metadata --manifest /tmp/source.json
+      - bun scripts/photos-fetch-sources.ts --album "$ALBUM_ID" --source /tmp/photo-source --metadata /tmp/photo-metadata --manifest /tmp/source.json
   build:
     commands:
-      - PHOTO_SOURCE_DIR=/tmp/photo-source PHOTO_SOURCE_MANIFEST_PATH=/tmp/source.json PHOTO_SOURCE_METADATA_PATH=/tmp/photo-metadata PHOTO_OUTPUT_DIR=/tmp/photo-media PHOTO_MANIFEST_PATH=/tmp/photos.json bun scripts/photos-build-media.mjs
+      - PHOTO_SOURCE_DIR=/tmp/photo-source PHOTO_SOURCE_MANIFEST_PATH=/tmp/source.json PHOTO_SOURCE_METADATA_PATH=/tmp/photo-metadata PHOTO_OUTPUT_DIR=/tmp/photo-media PHOTO_MANIFEST_PATH=/tmp/photos.json bun scripts/photos-build-media.ts

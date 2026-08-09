@@ -8,14 +8,47 @@ import {
   metadataKey,
   normalizeExtension,
 } from '../src/lib/downloads.ts';
+import type { PhotoId } from '../shared/ids';
 
 const missingObject = /404|NoSuchKey|Not Found|does not exist/i;
 
-export function sha256Hex(file) {
+export interface AwsResult {
+  status: number | null;
+  stdout?: string;
+  stderr?: string;
+  error?: Error;
+}
+
+export type AwsRunner = (args: string[]) => AwsResult;
+
+interface EnsureMasterOptions {
+  bucket: string;
+  file: string;
+  photoId: PhotoId;
+  album: string;
+  filename?: string;
+  sourceHash?: string;
+  replace?: boolean;
+  dryRun?: boolean;
+  aws?: AwsRunner;
+}
+
+export type MasterAction = 'reused' | 'differs' | 'replaced' | 'uploaded';
+export interface MasterResult { photoId: PhotoId; key: string; action: MasterAction; existing?: string }
+
+interface PutSidecarOptions {
+  bucket: string;
+  photoId: PhotoId;
+  body: string;
+  dryRun?: boolean;
+  aws?: AwsRunner;
+}
+
+export function sha256Hex(file: string): string {
   return createHash('sha256').update(readFileSync(file)).digest('hex');
 }
 
-export function checksumBase64(sourceHash) {
+export function checksumBase64(sourceHash: string): string {
   if (!/^[a-f0-9]{64}$/.test(sourceHash)) throw new Error('Invalid SHA-256 source hash');
   return Buffer.from(sourceHash, 'hex').toString('base64');
 }
@@ -42,7 +75,7 @@ export function ensureMaster({
   replace = false,
   dryRun = false,
   aws = runAws,
-}) {
+}: EnsureMasterOptions): MasterResult {
   const actualHash = sha256Hex(file);
   if (actualHash !== sourceHash) {
     throw new Error(`Sanitized file hash ${actualHash} does not match expected hash ${sourceHash}`);
@@ -79,7 +112,7 @@ export function ensureMaster({
   return { photoId, key, action: existing.found ? 'replaced' : 'uploaded' };
 }
 
-export function putSidecar({ bucket, photoId, body, dryRun = false, aws = runAws }) {
+export function putSidecar({ bucket, photoId, body, dryRun = false, aws = runAws }: PutSidecarOptions): { key: string; action: 'skipped' | 'uploaded' } {
   const key = metadataKey(photoId);
   if (dryRun) return { key, action: 'skipped' };
   const result = aws([
@@ -96,7 +129,7 @@ export function putSidecar({ bucket, photoId, body, dryRun = false, aws = runAws
   return { key, action: 'uploaded' };
 }
 
-function headChecksum(bucket, key, aws) {
+function headChecksum(bucket: string, key: string, aws: AwsRunner): { found: true; checksum: string } | { found: false } {
   const result = aws([
     's3api', 'head-object',
     '--bucket', bucket,
@@ -111,6 +144,6 @@ function headChecksum(bucket, key, aws) {
   throw new Error((result.stderr ?? '').trim() || `Could not inspect s3://${bucket}/${key}`);
 }
 
-function runAws(args) {
+function runAws(args: string[]): AwsResult {
   return spawnSync('aws', args, { encoding: 'utf8' });
 }

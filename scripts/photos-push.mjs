@@ -12,8 +12,8 @@ import {
   readPhotosBlock,
   serializePhotos,
   splitFrontmatter,
-} from './photo-frontmatter.mjs';
-import { ensureMaster, putSidecar, sha256Hex } from './photo-master.mjs';
+} from './photo-frontmatter.ts';
+import { ensureMaster, putSidecar, sha256Hex } from './photo-master.ts';
 import { generatePhotoId } from '../shared/ids.ts';
 import { parseSourceManifest } from '../shared/media.ts';
 
@@ -183,7 +183,7 @@ function stageAlbum(album, albumDirectory, sourceManifestPath) {
   mkdirSync(metadataDirectory, { recursive: true });
   console.log(`\nPreparing metadata-minimized fulfillment files for ${album}`);
   run('bun', [
-    path.join(repoRoot, 'scripts', 'photos-sanitize.mjs'),
+    path.join(repoRoot, 'scripts', 'photos-sanitize.ts'),
     '--source', albumDirectory,
     '--output', directory,
     '--metadata', metadataDirectory,
@@ -376,7 +376,7 @@ async function publishMediaLocally(album, albumDirectory, stagedDirectory, metad
   const manifestPath = path.join(albumDirectory, 'photos.json');
   console.log(`Building ${album} locally`);
   await runAsync('bun', [
-    path.join(repoRoot, 'scripts', 'photos-build-media.mjs'),
+    path.join(repoRoot, 'scripts', 'photos-build-media.ts'),
     '--source', stagedDirectory,
     '--source-manifest', sourceManifestPath,
     '--source-metadata', metadataDirectory,
@@ -510,7 +510,7 @@ async function askPhotoSale(rl, file) {
     const answer = (await rl.question(`  ${file} sale price USD [not for sale] `)).trim();
     if (!answer || /^n(o)?$/i.test(answer)) return { file, photoId };
     try {
-      return { file, photoId, price: parsePriceDollars(answer) };
+      return { file, photoId, priceDollars: parsePriceDollars(answer) };
     } catch (error) {
       console.log(`  ${error.message}; enter a price such as ${defaultPriceDollars}, or press Enter`);
     }

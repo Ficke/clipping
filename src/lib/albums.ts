@@ -1,5 +1,6 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
 import { parsePhotoManifest } from '../../shared/media';
+import { priceCentsFromDollars } from '../../shared/album';
 import { slugForStoryId } from './downloads';
 import type { PhotoManifest, PhotoManifestEntry } from './photo-manifest';
 
@@ -119,7 +120,7 @@ function imagesIn(album: Album): AlbumPhoto[] {
     image: byId.get(photo.photoId)!,
     caption: photo.caption?.trim() || undefined,
     alt: photo.alt?.trim() || undefined,
-    priceCents: photo.price === undefined ? undefined : Math.round(photo.price * 100),
+    priceCents: photo.priceDollars === undefined ? undefined : priceCentsFromDollars(photo.priceDollars),
   }));
 }
 

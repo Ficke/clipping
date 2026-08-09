@@ -9,7 +9,7 @@ import {
   locatePhoto,
   parsePriceDollars,
   replacePhotosBlock,
-} from './photo-frontmatter.mjs';
+} from './photo-frontmatter';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
@@ -23,7 +23,7 @@ const priceInput = priceAt === -1 ? undefined : args[priceAt + 1];
 const consumed = new Set(['--dry-run', '--delist']);
 if (priceAt !== -1) {
   consumed.add('--price');
-  consumed.add(priceInput);
+  if (priceInput !== undefined) consumed.add(priceInput);
 }
 const positional = args.filter((arg) => !consumed.has(arg));
 
@@ -41,7 +41,7 @@ let located;
 try {
   located = locatePhoto(albumsRoot, reference, album);
 } catch (error) {
-  fail(error.message);
+  fail(error instanceof Error ? error.message : String(error));
 }
 const { indexPath, contents, entries, photo } = located;
 
@@ -53,29 +53,29 @@ const action = priceInput !== undefined
   ? { kind: 'price', price: parsePrice(priceInput) }
   : delist ? { kind: 'delist' } : await promptAction(photo);
 
-if (action.kind === 'price') photo.price = action.price;
-else delete photo.price;
+if (action.kind === 'price') photo.priceDollars = action.price;
+else delete photo.priceDollars;
 
 console.log(`${dryRun ? 'Would update' : 'Updated'} ${path.relative(repoRoot, indexPath)}`);
 console.log(`  ${photo.file} (${photo.photoId}): ${describe(photo)}`);
 if (!dryRun) writeFileSync(indexPath, replacePhotosBlock(contents, entries, path.dirname(indexPath)));
 console.log('Run `bun run build` to validate and preview the change.');
 
-async function promptAction(entry) {
+async function promptAction(entry: import('./photo-frontmatter').FrontmatterPhoto): Promise<{ kind: 'price'; price: number } | { kind: 'delist' }> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
     console.log(`${entry.file}: ${describe(entry)}`);
-    const listed = /^y(es)?$/i.test((await rl.question(`  list in store? [${entry.price ? 'yes' : 'no'}] `)).trim()
-      || (entry.price ? 'yes' : 'no'));
+    const listed = /^y(es)?$/i.test((await rl.question(`  list in store? [${entry.priceDollars ? 'yes' : 'no'}] `)).trim()
+      || (entry.priceDollars ? 'yes' : 'no'));
     if (!listed) return { kind: 'delist' };
     while (true) {
-      const fallback = entry.price ?? defaultPriceDollars;
+      const fallback = entry.priceDollars ?? defaultPriceDollars;
       const answer = (await rl.question(`  price USD [${formatPriceDollars(fallback)}] `)).trim()
         || String(fallback);
       try {
         return { kind: 'price', price: parsePriceDollars(answer) };
       } catch (error) {
-        console.log(`  ${error.message}`);
+        console.log(`  ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   } finally {
@@ -83,21 +83,21 @@ async function promptAction(entry) {
   }
 }
 
-function describe(entry) {
-  return entry.price === undefined
+function describe(entry: import('./photo-frontmatter').FrontmatterPhoto): string {
+  return entry.priceDollars === undefined
     ? 'not for sale'
-    : `for sale at $${formatPriceDollars(entry.price)}`;
+    : `for sale at $${formatPriceDollars(entry.priceDollars)}`;
 }
 
-function parsePrice(value) {
+function parsePrice(value: string): number {
   try {
     return parsePriceDollars(value);
   } catch (error) {
-    fail(error.message);
+    fail(error instanceof Error ? error.message : String(error));
   }
 }
 
-function fail(message) {
+function fail(message: string): never {
   console.error(`photos:store: ${message}`);
   process.exit(1);
 }

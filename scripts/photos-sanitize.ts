@@ -4,9 +4,17 @@ import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, u
 import path from 'node:path';
 import { exiftool } from 'exiftool-vendored';
 import { parseMetadataSidecar, parseSourceManifest } from '../shared/media.ts';
-import { archiveMetadata, fulfillmentMetadataRetain, shotMetadata } from './photo-metadata.mjs';
+import { archiveMetadata, fulfillmentMetadataRetain, shotMetadata } from './photo-metadata';
 
 const supportedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
+
+interface SanitizeArgs {
+  source: string;
+  output: string;
+  metadata: string;
+  sourceManifest?: string;
+}
+
 const args = parseArgs(process.argv.slice(2));
 const sourceDirectory = path.resolve(args.source);
 const outputDirectory = path.resolve(args.output);
@@ -56,32 +64,34 @@ try {
   await exiftool.end();
 }
 
-function parseArgs(values) {
-  const parsed = {};
+function parseArgs(values: string[]): SanitizeArgs {
+  const parsed: Partial<SanitizeArgs> = {};
   for (let index = 0; index < values.length; index++) {
     const value = values[index];
     if (['--source', '--output', '--metadata', '--source-manifest'].includes(value)) {
-      parsed[toCamel(value.slice(2))] = values[++index];
+      const next = values[++index];
+      if (!next) fail(`${value} requires a value`);
+      parsed[toCamel(value.slice(2)) as keyof SanitizeArgs] = next;
     }
     else fail(`Unknown argument: ${value}`);
   }
-  for (const field of ['source', 'output', 'metadata']) {
+  for (const field of ['source', 'output', 'metadata'] as const) {
     if (!parsed[field]) fail(`--${field} is required`);
   }
-  return parsed;
+  return parsed as SanitizeArgs;
 }
 
-function toCamel(value) {
-  return value.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+function toCamel(value: string): string {
+  return value.replace(/-([a-z])/g, (_: string, letter: string) => letter.toUpperCase());
 }
 
-function loadPhotoIds(input) {
+function loadPhotoIds(input: string): Map<string, string> {
   const manifestPath = path.resolve(input);
   const manifest = parseSourceManifest(JSON.parse(readFileSync(manifestPath, 'utf8')), manifestPath);
   return new Map(manifest.photos.map((photo) => [photo.file, photo.photoId]));
 }
 
-function fail(message) {
+function fail(message: string): never {
   console.error(`photos:sanitize: ${message}`);
   process.exit(1);
 }

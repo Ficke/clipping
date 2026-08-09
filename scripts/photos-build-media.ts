@@ -3,10 +3,15 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import sharp from 'sharp';
+import type { Metadata, OutputInfo } from 'sharp';
 import {
   parseMetadataSidecar,
   parsePhotoManifest,
   parseSourceManifest,
+  type PhotoManifest,
+  type PhotoManifestEntry,
+  type PhotoVariant,
+  type ShotMetadata,
 } from '../shared/media.ts';
 import {
   derivativeDefinitions,
@@ -14,7 +19,20 @@ import {
   derivativeUrl,
   photoProfile,
   scaledHeight,
+  type DerivativeDefinition,
 } from './photo-profile.ts';
+
+interface BuildMediaArgs {
+  source?: string;
+  album?: string;
+  output?: string;
+  manifest?: string;
+  sourceManifest?: string;
+  sourceMetadata?: string;
+  previousManifest?: string;
+  noUpload: boolean;
+  manifestOnly: boolean;
+}
 
 const supportedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
 const filenameCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
@@ -48,7 +66,7 @@ const files = readdirSync(sourceDirectory, { withFileTypes: true })
 
 if (!files.length) fail(`No supported photos found in ${sourceDirectory}`);
 
-const photos = [];
+const photos: PhotoManifestEntry[] = [];
 let generatedCount = 0;
 let reusedCount = 0;
 const previousManifest = loadPreviousManifest(args.previousManifest);
@@ -65,9 +83,9 @@ for (const file of files) {
   const dimensions = orientedDimensions(metadata);
   const definitions = derivativeDefinitions(dimensions.width);
   const existingKeys = noUpload || manifestOnly ? new Set() : listExistingKeys(sourceHash);
-  const responsive = { avif: [], webp: [], jpeg: [] };
-  let lightbox;
-  let social;
+  const responsive: PhotoManifestEntry['variants']['responsive'] = { avif: [], webp: [], jpeg: [] };
+  let lightbox: PhotoVariant | undefined;
+  let social: PhotoVariant | undefined;
 
   for (const definition of definitions) {
     const key = derivativeKey(sourceHash, definition);
@@ -107,6 +125,7 @@ for (const file of files) {
   }
 
   const shot = readSidecarShot(file) ?? previousShot.get(file);
+  if (!lightbox || !social) fail(`${file} produced an incomplete derivative set`);
   photos.push({
     photoId: requirePhotoId(file),
     file,
@@ -145,7 +164,7 @@ if (!noUpload) {
 console.log(`Manifest: ${manifestPath}`);
 console.log(`Variants: ${generatedCount} generated, ${reusedCount} reused`);
 
-function loadPreviousManifest(input) {
+function loadPreviousManifest(input?: string): PhotoManifest | undefined {
   if (input) {
     try {
       return parsePhotoManifest(
@@ -153,7 +172,7 @@ function loadPreviousManifest(input) {
         path.resolve(input),
       );
     } catch (error) {
-      fail(`Could not read the previous photo manifest: ${error.message}`);
+      fail(`Could not read the previous photo manifest: ${errorMessage(error)}`);
     }
   }
   if (noUpload) return undefined;
@@ -170,20 +189,20 @@ function loadPreviousManifest(input) {
     fail(error || 'Could not download the previous photo manifest');
   }
 
-  let previous;
+  let previous: PhotoManifest;
   const previousContents = readFileSync(previousPath, 'utf8');
   rmSync(previousPath, { force: true });
   try {
     previous = parsePhotoManifest(JSON.parse(previousContents), previousPath);
   } catch (error) {
-    fail(`Could not read the previous photo manifest: ${error.message}`);
+    fail(`Could not read the previous photo manifest: ${errorMessage(error)}`);
   }
 
   return previous;
 }
 
-function variantsFrom(manifest) {
-  const variants = new Map();
+function variantsFrom(manifest?: PhotoManifest): Map<string, PhotoVariant> {
+  const variants = new Map<string, PhotoVariant>();
   for (const photo of manifest?.photos ?? []) {
     const responsive = Object.values(photo.variants?.responsive ?? {}).flat();
     for (const variant of [...responsive, photo.variants?.lightbox, photo.variants?.social]) {
@@ -195,7 +214,7 @@ function variantsFrom(manifest) {
   return variants;
 }
 
-async function remoteVariantDimensions(key) {
+async function remoteVariantDimensions(key: string): Promise<{ width: number; height: number }> {
   const destination = path.join(outputDirectory, '.existing', path.basename(key));
   mkdirSync(path.dirname(destination), { recursive: true });
   run('aws', ['s3', 'cp', `s3://${mediaBucket}/${key}`, destination, '--only-show-errors']);
@@ -205,25 +224,29 @@ async function remoteVariantDimensions(key) {
   return { width: metadata.width, height: metadata.height };
 }
 
-function parseArgs(values) {
-  const parsed = { noUpload: false, manifestOnly: false };
+function parseArgs(values: string[]): BuildMediaArgs {
+  const parsed: BuildMediaArgs = { noUpload: false, manifestOnly: false };
   for (let index = 0; index < values.length; index++) {
     const value = values[index];
     if (value === '--no-upload') parsed.noUpload = true;
     else if (value === '--manifest-only') parsed.manifestOnly = true;
-    else if (['--source', '--album', '--output', '--manifest', '--source-manifest', '--source-metadata', '--previous-manifest'].includes(value)) parsed[toCamel(value.slice(2))] = values[++index];
+    else if (['--source', '--album', '--output', '--manifest', '--source-manifest', '--source-metadata', '--previous-manifest'].includes(value)) {
+      const next = values[++index];
+      if (!next) fail(`${value} requires a value`);
+      parsed[toCamel(value.slice(2)) as keyof Omit<BuildMediaArgs, 'noUpload' | 'manifestOnly'>] = next;
+    }
     else fail(`Unknown argument: ${value}`);
   }
   if (parsed.manifestOnly) parsed.noUpload = true;
   return parsed;
 }
 
-function toCamel(value) {
-  return value.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+function toCamel(value: string): string {
+  return value.replace(/-([a-z])/g, (_: string, letter: string) => letter.toUpperCase());
 }
 
 /** Identity is authored in album frontmatter, never derived here. */
-function loadSourceManifest(input) {
+function loadSourceManifest(input?: string): Map<string, string> {
   if (!input) fail('A source manifest is required through --source-manifest or PHOTO_SOURCE_MANIFEST_PATH');
   const manifestPath = path.resolve(input);
   if (!existsSync(manifestPath)) fail(`Source manifest does not exist: ${manifestPath}`);
@@ -231,37 +254,37 @@ function loadSourceManifest(input) {
   try {
     parsed = parseSourceManifest(JSON.parse(readFileSync(manifestPath, 'utf8')), manifestPath);
   } catch (error) {
-    fail(`Could not read source manifest: ${error.message}`);
+    fail(`Could not read source manifest: ${errorMessage(error)}`);
   }
   return new Map(parsed.photos.map((photo) => [photo.file, photo.photoId]));
 }
 
-function requirePhotoId(file) {
+function requirePhotoId(file: string): string {
   const photoId = sourceManifest.get(file);
   if (!photoId) fail(`${file} has no photo ID in the source manifest. Rerun photos:push.`);
   return photoId;
 }
 
-function readSidecarShot(file) {
+function readSidecarShot(file: string): ShotMetadata | undefined {
   if (!sidecarDirectory) return undefined;
   const sidecar = path.join(path.resolve(sidecarDirectory), `${file}.json`);
   if (!existsSync(sidecar)) return undefined;
   try {
     return parseMetadataSidecar(JSON.parse(readFileSync(sidecar, 'utf8')), sidecar).shot;
   } catch (error) {
-    fail(`Could not read metadata sidecar for ${file}: ${error.message}`);
+    fail(`Could not read metadata sidecar for ${file}: ${errorMessage(error)}`);
   }
 }
 
-function orientedDimensions(metadata) {
+function orientedDimensions(metadata: Metadata): { width: number; height: number } {
   if (!metadata.width || !metadata.height) fail('Could not read image dimensions');
-  const swapsAxes = [5, 6, 7, 8].includes(metadata.orientation);
+  const swapsAxes = [5, 6, 7, 8].includes(metadata.orientation ?? 1);
   return swapsAxes
     ? { width: metadata.height, height: metadata.width }
     : { width: metadata.width, height: metadata.height };
 }
 
-async function transform(source, destination, definition) {
+async function transform(source: string, destination: string, definition: DerivativeDefinition): Promise<Pick<OutputInfo, 'width' | 'height'>> {
   let pipeline = sharp(source).rotate().resize({ width: definition.width, withoutEnlargement: true });
   if (definition.format === 'avif') pipeline = pipeline.avif({ quality: definition.quality });
   if (definition.format === 'webp') pipeline = pipeline.webp({ quality: definition.quality });
@@ -272,29 +295,38 @@ async function transform(source, destination, definition) {
   return { width: info.width, height: info.height };
 }
 
-function listExistingKeys(sourceHash) {
+function listExistingKeys(sourceHash: string): Set<string> {
+  if (!mediaBucket) fail('MEDIA_BUCKET is required to list existing media');
   const prefix = `media/${photoProfile.version}/${sourceHash.slice(0, 2)}/${sourceHash}/`;
   const result = runCapture('aws', [
     's3api', 'list-objects-v2', '--bucket', mediaBucket, '--prefix', prefix,
     '--query', 'Contents[].Key', '--output', 'json',
   ]);
-  return new Set(JSON.parse(result || '[]') ?? []);
+  const parsed: unknown = JSON.parse(result || '[]');
+  if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === 'string')) {
+    fail('aws returned a malformed media object listing');
+  }
+  return new Set(parsed);
 }
 
-function run(command, commandArgs) {
+function run(command: string, commandArgs: string[]): void {
   const result = spawnSync(command, commandArgs, { stdio: 'inherit' });
   if (result.error) fail(`Could not run ${command}: ${result.error.message}`);
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-function runCapture(command, commandArgs) {
+function runCapture(command: string, commandArgs: string[]): string {
   const result = spawnSync(command, commandArgs, { encoding: 'utf8' });
   if (result.error) fail(`Could not run ${command}: ${result.error.message}`);
   if (result.status !== 0) fail(result.stderr.trim() || `${command} failed`);
   return result.stdout.trim();
 }
 
-function fail(message) {
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function fail(message: string): never {
   console.error(`photos:build-media: ${message}`);
   process.exit(1);
 }

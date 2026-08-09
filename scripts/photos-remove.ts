@@ -16,7 +16,7 @@ import {
   locatePhoto,
   replacePhotosBlock,
   today,
-} from './photo-frontmatter.mjs';
+} from './photo-frontmatter';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
@@ -38,7 +38,7 @@ let located;
 try {
   located = locatePhoto(albumsRoot, reference, album);
 } catch (error) {
-  fail(error.message);
+  fail(error instanceof Error ? error.message : String(error));
 }
 const { indexPath, contents, entries, photo } = located;
 const relative = path.relative(repoRoot, indexPath);
@@ -56,7 +56,7 @@ if (restore) {
     fail("cannot remove the album's last photograph");
   }
   photo.removed = today();
-  delete photo.price;
+  delete photo.priceDollars;
 }
 
 console.log(`${dryRun ? 'Would update' : 'Updated'} ${relative}`);
@@ -66,7 +66,7 @@ console.log(restore
   ? 'Run `bun run photos:push` to rebuild its derivatives, then `bun run build`.'
   : 'Run `bun run build` to validate, then `bun run photos:gc` to stop serving its derivatives.');
 
-function fail(message) {
+function fail(message: string): never {
   console.error(`photos:${restore ? 'restore' : 'remove'}: ${message}`);
   process.exit(1);
 }
