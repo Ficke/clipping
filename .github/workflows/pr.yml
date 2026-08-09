@@ -8,6 +8,7 @@ on:
 # be able to assume the AWS deploy role.
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: pr-${{ github.ref }}
