@@ -11,8 +11,6 @@ const LEGACY_JAVASCRIPT = [
   'scripts/commerce-link.mjs',
   'scripts/commerce-reconcile.mjs',
   'scripts/commerce-restore.mjs',
-  'scripts/photos-push.mjs',
-  'scripts/photos-push.test.mjs',
 ] as const;
 
 describe('source language policy', () => {

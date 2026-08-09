@@ -5,8 +5,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import sharp from 'sharp';
 
-const temporaryDirectories = [];
-const temporaryAlbums = [];
+const temporaryDirectories: string[] = [];
+const temporaryAlbums: string[] = [];
 const PHOTO_ID = 'photo_aaaaaaaaaaaaaaaaaaaaaaaa';
 const OTHER_ID = 'photo_bbbbbbbbbbbbbbbbbbbbbbbb';
 
@@ -33,7 +33,7 @@ describe('photos push', () => {
     chmodSync(fakeAws, 0o755);
 
     const result = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-push.mjs'), album, '--dry-run',
+      path.join(import.meta.dir, 'photos-push.ts'), album, '--dry-run',
     ], {
       cwd: repoRoot,
       env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
@@ -98,7 +98,7 @@ fi
     chmodSync(fakeAws, 0o755);
 
     const result = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-push.mjs'), album,
+      path.join(import.meta.dir, 'photos-push.ts'), album,
     ], {
       cwd: repoRoot,
       env: {
@@ -144,7 +144,7 @@ exit 0
     chmodSync(fakeAws, 0o755);
 
     const result = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local', '--yes',
+      path.join(import.meta.dir, 'photos-push.ts'), album, '--local', '--yes',
     ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
 
     expect(result.status).toBe(0);
@@ -194,7 +194,7 @@ exit 0
     chmodSync(fakeAws, 0o755);
 
     const result = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local', '--yes',
+      path.join(import.meta.dir, 'photos-push.ts'), album, '--local', '--yes',
     ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
 
     expect(result.status).toBe(0);
@@ -245,7 +245,7 @@ exit 0
     chmodSync(fakeAws, 0o755);
 
     const result = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local',
+      path.join(import.meta.dir, 'photos-push.ts'), album, '--local',
     ], {
       cwd: repoRoot,
       env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, PHOTOS_PUSH_PROMPT: '1' },
@@ -304,7 +304,7 @@ exit 0
     chmodSync(fakeAws, 0o755);
 
     const result = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local', '--yes',
+      path.join(import.meta.dir, 'photos-push.ts'), album, '--local', '--yes',
     ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
 
     expect(result.status).toBe(0);
@@ -351,7 +351,7 @@ exit 0
     chmodSync(fakeAws, 0o755);
 
     const result = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-push.mjs'), album, '--dry-run',
+      path.join(import.meta.dir, 'photos-push.ts'), album, '--dry-run',
     ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
 
     expect(result.status).not.toBe(0);
@@ -403,7 +403,7 @@ exit 0
     chmodSync(fakeAws, 0o755);
 
     const result = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local', '--yes',
+      path.join(import.meta.dir, 'photos-push.ts'), album, '--local', '--yes',
     ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
 
     expect(result.status).toBe(0);
@@ -411,7 +411,9 @@ exit 0
     expect(rewritten).toContain(`  - file: b.jpg\n    photoId: ${OTHER_ID}\n    removed: 2099-01-02`);
     expect(rewritten).toMatch(/ {2}- file: c\.jpg\n {4}photoId: photo_[a-f0-9]{24}/);
     // The removed photograph is not rebuilt, so it stays out of the manifest.
-    const manifest = JSON.parse(readFileSync(path.join(album, 'photos.json'), 'utf8'));
+    const manifest = JSON.parse(readFileSync(path.join(album, 'photos.json'), 'utf8')) as {
+      photos: Array<{ file: string }>;
+    };
     expect(manifest.photos.map((photo) => photo.file)).toEqual(['a.jpg', 'c.jpg']);
   });
 
@@ -461,7 +463,7 @@ exit 0
     chmodSync(fakeAws, 0o755);
 
     const result = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-push.mjs'), album, '--local', '--yes',
+      path.join(import.meta.dir, 'photos-push.ts'), album, '--local', '--yes',
     ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
 
     expect(result.status).toBe(0);
@@ -501,7 +503,7 @@ exit 0
     chmodSync(fakeAws, 0o755);
 
     const result = spawnSync('bun', [
-      path.join(import.meta.dir, 'photos-push.mjs'), album, '--dry-run',
+      path.join(import.meta.dir, 'photos-push.ts'), album, '--dry-run',
     ], { cwd: repoRoot, env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8' });
 
     expect(result.status).not.toBe(0);

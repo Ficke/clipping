@@ -18,7 +18,7 @@
     "commerce:link": "bun scripts/commerce-link.mjs",
     "commerce:reconcile": "bun scripts/commerce-reconcile.mjs",
     "commerce:restore": "bun scripts/commerce-restore.mjs",
-    "photos:push": "bun scripts/photos-push.mjs",
+    "photos:push": "bun scripts/photos-push.ts",
     "photos:remove": "bun scripts/photos-remove.ts",
     "photos:restore": "bun scripts/photos-remove.ts --restore",
     "photos:delete": "bun scripts/photos-delete.ts",
