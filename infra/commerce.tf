@@ -226,9 +226,9 @@ resource "aws_lambda_function" "commerce_buyer" {
   architectures = ["arm64"]
   memory_size   = 512
   timeout       = 15
-  # Gate A proceeded against the account's shared ten-unit pool. Enable the
-  # separate 5/3/2 isolation gate once at least 110 account units are applied;
-  # the current applied quota is 1000.
+  # Keep Buyer traffic from consuming the Webhook or Authorizer reservations.
+  # The account needs at least 110 concurrent executions before any function
+  # can reserve capacity; the variable allows bootstrap before that increase.
   reserved_concurrent_executions = var.commerce_reserved_concurrency_enabled ? 5 : null
 
   filename         = data.archive_file.commerce_buyer.output_path
@@ -243,9 +243,9 @@ resource "aws_lambda_function" "commerce_buyer" {
       SITE_BUCKET               = aws_s3_bucket.site.bucket
       SITE_URL                  = "https://${var.domain_name}"
       ORIGIN_VERIFY_HEADER_NAME = var.commerce_origin_verify_header_name
-      # Not a secret store: this only distinguishes CloudFront from direct
-      # execute-api callers, and the REST authorizer is the actual gate. Stripe
-      # keys stay in SSM for the reason config.ts gives.
+      # This value distinguishes CloudFront from direct execute-api callers; the
+      # REST authorizer is the actual gate. Stripe keys remain in SSM because
+      # Lambda environment variables are visible through function configuration.
       ORIGIN_VERIFY_HEADER_VALUES = join(",", local.commerce_origin_verify_accepted)
     }
   }
@@ -406,10 +406,8 @@ resource "aws_api_gateway_rest_api" "commerce_rest" {
   tags = local.tags
 }
 
-# REST API access logging uses the regional API Gateway account singleton.
-# The authenticated prework read confirmed that us-east-1 has no existing
-# cloudWatchRoleArn, so this stack can configure it without taking over an
-# unrelated role. API Gateway validates this account role against the complete
+# REST API access logging uses the regional API Gateway account singleton, which
+# this stack manages. API Gateway validates this account role against the complete
 # AmazonAPIGatewayPushToCloudWatchLogs action set on all log resources, even
 # when the destination group is precreated. Keep that required wildcard policy
 # isolated on this dedicated service role.

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write # OIDC token for assuming the AWS deploy role
+  id-token: write # This token is required to assume the AWS deploy role.
   contents: read
 
 concurrency:

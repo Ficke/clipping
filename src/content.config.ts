@@ -3,7 +3,7 @@ import { glob } from 'astro/loaders';
 import { isPhotoId } from './lib/downloads';
 
 const albumPhoto = z.object({
-  /** Display name and sort position. Cosmetic — renaming changes nothing else. */
+  /** This name controls display and sorting; renaming changes nothing else. */
   file: z.string().min(1),
   /** Permanent identity, minted by photos:push. Joins frontmatter to the
    * manifest, names the S3 master, and is what an order records. */
@@ -13,9 +13,9 @@ const albumPhoto = z.object({
   /** USD, written for humans; converted to integer cents in the catalog.
    * Its presence is what puts the photograph on sale. */
   price: z.number().positive().multipleOf(0.01).optional(),
-  /** Off the album and out of the store, bytes retained. Reversible. */
+  /** This date removes the photo from publication while retaining its bytes. */
   removed: z.coerce.date().optional(),
-  /** Bytes purged. The entry stays behind as the record that it existed. */
+  /** This date records that the bytes were purged; the entry remains as history. */
   deleted: z.coerce.date().optional(),
 }).superRefine((photo, context) => {
   if (photo.price !== undefined && photo.removed) {

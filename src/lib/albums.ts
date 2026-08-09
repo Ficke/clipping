@@ -27,7 +27,7 @@ export interface AlbumPhoto {
   image: PhotoManifestEntry;
   caption: string | undefined;
   alt: string | undefined;
-  /** Set means offered as a download. See `downloads.ts`. */
+  /** A defined value offers the photo as a download. See `downloads.ts`. */
   priceCents: number | undefined;
 }
 
@@ -121,7 +121,7 @@ function imagesIn(album: Album): AlbumPhoto[] {
   }));
 }
 
-/** Card and social image: explicit `cover`, otherwise the first photo. */
+/** Return the explicit cover, or the first live photo by default. */
 export function coverOf(album: Album): PhotoManifestEntry {
   const photos = imagesIn(album);
   if (!photos.length) throw new Error(`Album ${album.id} has no photos left`);
@@ -133,7 +133,7 @@ export function coverOf(album: Album): PhotoManifestEntry {
   return hit.image;
 }
 
-/** Alt text for the cover, falling back to its caption then a generic label. */
+/** Return cover alt text, then its caption, then a generic label. */
 export function coverAltOf(album: Album): string {
   const photos = imagesIn(album);
   const hit = album.data.cover
@@ -142,7 +142,6 @@ export function coverAltOf(album: Album): string {
   return hit?.alt ?? hit?.caption ?? `Cover photograph for ${album.data.title}`;
 }
 
-/** Live photos in frontmatter order. */
 export async function photosOf(album: Album): Promise<AlbumPhoto[]> {
   return imagesIn(album);
 }

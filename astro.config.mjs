@@ -19,7 +19,7 @@ export default defineConfig({
   },
   vite: {
     build: {
-      // keep scripts/styles as external files so CloudFront can serve a strict CSP
+      // Keep scripts and styles external so CloudFront can serve a strict CSP.
       assetsInlineLimit: 0,
     },
   },

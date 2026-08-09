@@ -1,5 +1,5 @@
-/** Stable marker for Sessions created by this store. */
+/** Identify Sessions created by this store with a stable marker. */
 export const INTEGRATION_IDENTIFIER = 'photo-download-qkzvhrmw';
 
-/** Pin requests so a Stripe-side account default cannot alter behavior. */
+/** Pin requests so a Stripe account default cannot alter behavior. */
 export const STRIPE_API_VERSION = '2026-07-29.dahlia';

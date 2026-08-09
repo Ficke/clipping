@@ -65,7 +65,7 @@ for (const album of albums) {
   }
 }
 
-/** Identity comes from frontmatter here too, so a local build never mints one. */
+/** Read identity from frontmatter so a local build never mints one. */
 function sourceManifestFor(albumDir, album) {
   const indexPath = path.join(albumDir, 'index.md');
   const { lines } = splitFrontmatter(readFileSync(indexPath, 'utf8'), albumDir);

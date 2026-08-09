@@ -1,12 +1,12 @@
-# Canonical archive for full-quality photos. The site build syncs these down
-# and derives everything it serves; git holds only the markdown.
+# Canonical archive for full-quality masters. The separate media build reads
+# these objects; the site build reads only manifests committed to Git.
 
 resource "aws_s3_bucket" "originals" {
   bucket = "${var.name}-originals"
   tags   = local.tags
 
-  # Git holds only the markdown, so this bucket is the sole copy of the
-  # photographs. Versioning covers overwrites; this covers the bucket itself.
+  # Git holds no master images, so this bucket is their sole durable location.
+  # Versioning covers object changes; this guard covers the bucket itself.
   lifecycle {
     prevent_destroy = true
   }

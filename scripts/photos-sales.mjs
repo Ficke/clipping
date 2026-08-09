@@ -3,8 +3,7 @@
  *
  * Traceability from an order to its photograph is durable: the order records
  * the photo ID and a snapshot taken at checkout. This is the other direction,
- * and it scans — the order table deliberately carries no secondary index, and
- * a scan stays free at this size.
+ * and it scans. The expected order volume does not justify a secondary index.
  */
 
 import path from 'node:path';

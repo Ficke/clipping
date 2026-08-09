@@ -1,4 +1,4 @@
-/** On-demand recovery for durable commerce orders. */
+/** Reconcile durable commerce orders on demand. */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';

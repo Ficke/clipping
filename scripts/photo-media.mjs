@@ -57,10 +57,8 @@ export function treesFromKeys(keys) {
 /**
  * Trees present in the bucket that no album references.
  *
- * Derived by comparing what exists against what is in use, rather than from a
- * ledger of supersessions. A ledger only ever records what it was told about:
- * it misses the trees of a photograph that left its album entirely, which is
- * precisely the case `photos:remove` creates.
+ * Compare bucket contents with live manifests so every unreferenced tree is
+ * found, including a photograph removed from its album entirely.
  */
 export function orphanedTrees(manifests, keys) {
   const live = livePrefixes(manifests);

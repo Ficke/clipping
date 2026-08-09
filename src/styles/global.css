@@ -30,7 +30,7 @@ html {
   background: var(--paper);
   color: var(--ink);
   font-family: 'Figtree Variable', system-ui, sans-serif;
-  /* 17px at a 16px default, but scales with the reader's font-size setting */
+  /* This is 17px at the default size but follows the reader's font setting. */
   font-size: 106.25%;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
@@ -120,7 +120,7 @@ img {
   color: var(--paper);
 }
 
-/* --- shared bits --- */
+/* Shared components. */
 
 .kicker {
   font-size: 0.7rem;

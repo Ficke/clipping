@@ -4,8 +4,10 @@ export interface PhotoVariant {
   src: string;
 }
 
-/** How the photograph was made. Kept as fields, not a rendered string, so the
- * site can format or filter on them independently. */
+/**
+ * Keep capture metadata as fields so the site can format or filter each value
+ * independently.
+ */
 export interface ShotMetadata {
   camera?: string;
   lens?: string;

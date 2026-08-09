@@ -329,7 +329,7 @@ exit 0
       await sharp({ create: { width: 20, height: 10, channels: 3, background: '#123456' } })
         .jpeg().toFile(path.join(album, file));
     }
-    // Deleting a file used to drop its entry and its archived bytes silently.
+    // A missing live file must not discard its identity or archived bytes.
     rmSync(path.join(album, 'b.jpg'));
     writeFileSync(path.join(album, 'index.md'), [
       '---',

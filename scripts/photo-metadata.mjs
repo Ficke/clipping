@@ -73,9 +73,8 @@ const binaryTags = /(ThumbnailImage|PreviewImage|JpgFromRaw|OtherImage)$/;
  * payloads are dropped: they are large, and a JSON dump cannot round-trip them.
  *
  * exiftool-vendored returns timestamps as ExifDateTime rather than Date, so
- * they have to be serialized explicitly. Dropping every non-Date object, which
- * is the obvious filter, silently loses DateTimeOriginal — the one tag most
- * worth archiving.
+ * they have to be serialized explicitly. Dropping every non-Date object would
+ * silently lose DateTimeOriginal, an essential archive field.
  */
 export async function archiveMetadata(exiftool, file) {
   const tags = await exiftool.read(file);

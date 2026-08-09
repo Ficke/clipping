@@ -36,7 +36,7 @@ export async function loadCatalog(
   return catalog;
 }
 
-/** Resets the module cache. Tests only. */
+/** Reset the module cache between tests. */
 export function forgetCatalog(): void {
   cache = undefined;
 }

@@ -71,8 +71,8 @@ describe('photo media cleanup', () => {
     expect(calls()).not.toContain(liveHash);
   });
 
-  /* A ledger of supersessions never learned about these: the photograph left
-     its album, so nothing was left to record its history on. */
+  /* A bucket diff must find the photograph after it leaves the manifest
+     entirely. */
   test('collects the trees of a photograph that was removed from its album', () => {
     const { run, calls } = fixture(
       [...treeKeys(liveHash), ...treeKeys(deadHash)],

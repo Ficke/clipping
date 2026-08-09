@@ -14,7 +14,7 @@ export interface ReissueDeps {
   now?: number;
 }
 
-/** Trusted recovery from the durable order snapshot after current Stripe checks. */
+/** Reissue from the durable snapshot only after checking current Stripe state. */
 export async function reissueDownload(
   sessionId: string,
   { stripe, orders, siteUrl, downloadTokenKey, now }: ReissueDeps,

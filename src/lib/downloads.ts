@@ -8,18 +8,18 @@ export const CURRENCY = 'usd';
 
 export interface LicenseTier {
   id: string;
-  /** Shown in Checkout as the line-item name, after the photo title. */
+  /** This appears in Checkout after the photo title. */
   name: string;
-  /** Short tag beside the price. The full grant lives in the lists below. */
+  /** This short tag appears beside the price; the lists below define the grant. */
   summary: string;
-  /** The grant itself. The photographs are otherwise all rights reserved — see NOTICE. */
+  /** These are the granted uses; all other rights are reserved under NOTICE. */
   grants: readonly string[];
   restrictions: readonly string[];
 }
 
 export const COPYRIGHT_LINE = 'Copyright remains with Adam Ficke.';
 
-/** Derived, not written twice, so the page and the receipt cannot disagree. */
+/** Derive the terms so the page and receipt cannot disagree. */
 export function licenseTerms(tier: LicenseTier): string {
   return `You may ${tier.grants.join(', ')}. `
     + `You may not ${tier.restrictions.join(', ')}. `
@@ -30,8 +30,9 @@ export function licenseTerms(tier: LicenseTier): string {
  * Most permissive last. Adding a tier here puts it on every photo already for
  * sale — the catalog emits one entry per photo per tier.
  */
-/** The one Stripe Product currently sold. Add another product here only when
- * the rights—not the photograph—differ. */
+/**
+ * Define one Stripe Product per rights package, not per photograph.
+ */
 export const DOWNLOAD_PRODUCTS: readonly LicenseTier[] = [
   {
     id: 'personal',
@@ -83,7 +84,7 @@ export function isPhotoId(value: string): boolean {
   return PHOTO_ID.test(value);
 }
 
-/** The one full-resolution master. Overwritten in place when a photo is re-exported. */
+/** Return the stable master key that a re-export overwrites in place. */
 export function masterKey(photoId: string): string {
   if (!isPhotoId(photoId)) throw new Error('Cannot build a master key from an invalid photo ID');
   return `photos/${photoId}`;
@@ -126,7 +127,7 @@ export function slugForStoryId(storyId: string): string {
   return storyId.replace(/^\d{4}-\d{2}-/, '');
 }
 
-/** Only photographs actually on sale are published, so presence is the offer. */
+/** Catalog presence is the offer; photographs not on sale are omitted. */
 export interface CatalogItem {
   photoId: string;
   storyId: string;

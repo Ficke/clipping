@@ -23,9 +23,8 @@ export interface RestApiEvent {
 }
 
 /**
- * The legacy Function URL, HTTP API, and REST API all use Lambda proxy events.
- * REST proxy v1 is the only format now reaching these handlers. The v2 branch is
- * left over from the HTTP API and Function URL, both since removed, and can go.
+ * Production uses REST proxy v1. The local commerce server and unit tests use
+ * HTTP API v2-shaped events, so shared handlers deliberately accept both.
  */
 export type FunctionUrlEvent = HttpApiEvent | RestApiEvent;
 
@@ -67,8 +66,8 @@ export function query(event: FunctionUrlEvent): URLSearchParams {
 
 /**
  * Stripe signs the exact bytes it sent, so the body must be recovered without
- * re-encoding. Function URLs base64 the body whenever they consider it binary,
- * which includes any request without a recognized text content type.
+ * re-encoding. Proxy integrations may base64-encode bodies they consider
+ * binary, including requests without a recognized text content type.
  */
 export function rawBody(event: FunctionUrlEvent): string {
   if (!event.body) return '';
@@ -134,7 +133,7 @@ export function json(statusCode: number, data: unknown): FunctionUrlResult {
   };
 }
 
-/** 303, so a browser follows a POST-initiated redirect as a GET. */
+/** Use 303 so a browser follows a POST-initiated redirect as a GET. */
 export function redirect(location: string, statusCode = 303): FunctionUrlResult {
   return { statusCode, headers: { location, ...NO_STORE } };
 }

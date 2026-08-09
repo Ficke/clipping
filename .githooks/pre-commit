@@ -2,9 +2,9 @@
 # Refuse to commit a Stripe API key. Key exposure in a repository is the leading
 # cause of API key takeover, and this repo is public — see NOTICE.
 #
-# Keys belong in SSM Parameter Store; see
-# the README's "Selling downloads". Bypass with --no-verify if this ever misfires
-# on documentation, but read what it matched first.
+# Keys belong in SSM Parameter Store; see the commerce operations runbook.
+# Bypass with --no-verify if this ever misfires on documentation, but read what
+# it matched first.
 
 # rk_ (restricted) and sk_ (secret), live or test. whsec_ is the webhook signing
 # secret. Matched on the staged diff only, so unrelated history never trips it.

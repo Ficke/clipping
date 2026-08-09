@@ -1,24 +1,7 @@
 /**
- * Runs the commerce Lambda on localhost so the money path can be exercised
- * without a `terraform apply` between every edit. The local counterpart to the
- * deployed function, the way photos-media-dev.mjs is to the CodeBuild job.
- *
- *   bun run commerce:dev                                  # serves :8787
- *   open http://localhost:8787/store/
- *
- * It runs the real handler, so what passes here is the code that runs in
- * production. Keys come from Parameter Store exactly as they do on the deployed
- * Lambda — nothing is written to disk — so this needs `aws login` first.
- *
- * It reads the *test* parameter (`/adamficke-com/commerce-test`), not the
- * production one. Those are separate parameters on purpose: the deployed
- * Lambda's IAM policy names only the production one, so a laptop never holds a
- * live key and a local checkout can never take real money. Point
- * COMMERCE_SECRET_PARAM elsewhere to override, though it refuses outright to
- * run against a live key.
- *
- * The catalog is read from `dist/`, so `bun run build` has to have happened —
- * but no deploy, which is what lets a photo be put on sale and bought locally.
+ * Serve the built site and production commerce handler on localhost:8787.
+ * The server reads the test SSM parameter, rejects live Stripe keys, and uses a
+ * temporary DynamoDB table. Run `aws login` and `bun run build` first.
  */
 
 import { createServer } from 'node:http';

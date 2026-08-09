@@ -48,8 +48,8 @@ let generatedCount = 0;
 let reusedCount = 0;
 const previousManifest = loadPreviousManifest(args.previousManifest);
 const previousVariants = variantsFrom(previousManifest);
-// Same reason the push guards the sidecar: a rebuild from sanitized sources
-// must not silently drop the gallery's shot line.
+// Sanitized masters contain no capture metadata. Preserve an existing sidecar
+// so rebuilding from one cannot silently drop the gallery's shot line.
 const previousShot = new Map((previousManifest?.photos ?? [])
   .filter((photo) => photo.shot)
   .map((photo) => [photo.file, photo.shot]));

@@ -6,7 +6,7 @@ here touches live money or live infrastructure; read the safety rules first.
 ## Safety rules
 
 - Treat Checkout Session IDs and download links as bearer capabilities. Do not
-  paste them into tickets, chat, commits, logs, or the implementation ledger.
+  paste them into tickets, chat, commits, logs, or operational notes.
 - Never copy API keys or webhook signing secrets into this repository. The
   commands read KMS-encrypted SSM parameters; `commerce:dev` accepts only a test
   Stripe key.
@@ -108,7 +108,7 @@ Both requests must be rejected without a Stripe request in the CLI stream.
    integration currency amount matches the catalog. Inspect this in the sandbox
    Dashboard without copying the Session object into logs.
 4. Follow the download. A `302` to S3 proves token redemption; the final object
-   succeeds only after its immutable fulfillment asset has been uploaded.
+   succeeds only while the photograph's current master exists.
 5. Run `bun run commerce:link -- cs_test_…` from terminal 3. Confirm it prints a
    fresh seven-day link, then clear the terminal if it is recorded.
 6. Run `bun run commerce:reconcile -- --mode test --dry-run`. The paid order
@@ -155,7 +155,7 @@ Use another sandbox purchase with Stripe's documented
 
 Stop `commerce:dev` with Ctrl-C and verify that it prints deletion of the exact
 temporary table. Unset `STRIPE_WEBHOOK_SECRET` and `COMMERCE_TABLE` afterward.
-Record only pass/fail evidence in the implementation ledger—never IDs, tokens,
+Record only pass/fail evidence in operational notes—never IDs, tokens,
 signatures, presigned URLs, or customer data.
 
 ## Reconciliation after an alarm
@@ -244,7 +244,7 @@ Lambda caches successful SSM reads for up to five minutes.
    old Stripe secret remains active. Run reconciliation for any affected order.
 
 Never record either signing secret, an event body, or a full event identifier in
-the implementation ledger.
+operational notes.
 
 The live Buyer key needs only Checkout Sessions write. The separate live
 Webhook/operator read key needs Checkout Sessions, Payment Intents, Charges and

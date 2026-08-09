@@ -129,7 +129,7 @@ resource "aws_cloudfront_function" "rewrite" {
         };
       }
 
-      // Album URLs from the old Squarespace site
+      // Preserve album URLs from the old Squarespace site.
       var legacy = {
         '/photography/salt-point-state-park': '/photography/salt-point/',
         '/photography/grand-canyon-of-the-tuolumne': '/photography/tuolumne/',
@@ -301,8 +301,8 @@ resource "aws_cloudfront_distribution" "site" {
     allowed_methods          = ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"]
     cached_methods           = ["GET", "HEAD"]
     compress                 = true
-    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # managed CachingDisabled
-    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # managed AllViewerExceptHostHeader
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" # AWS-managed CachingDisabled policy.
+    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac" # AWS-managed AllViewerExceptHostHeader policy.
 
     # Deliberately no response_headers_policy: the site's CSP and frame rules
     # describe HTML, and attaching them here would put a CSP on JSON and on

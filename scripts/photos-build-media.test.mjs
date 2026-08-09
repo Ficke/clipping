@@ -102,8 +102,8 @@ describe('media manifest builder', () => {
 
     expect(updated.photos.map((photo) => photo.file)).toEqual(['one.jpg']);
     expect(updated.photos[0].sourceHash).not.toBe(initialHash);
-    /* The manifest records only what is in use. Superseded and departed trees
-       are found by comparing the bucket against it, not by a ledger inside it. */
+    /* The manifest records only live media; bucket comparison finds superseded
+       and departed trees. */
     expect(updated).not.toHaveProperty('obsoleteMedia');
     expect(updated.photos[0]).not.toHaveProperty('previousHashes');
   });
