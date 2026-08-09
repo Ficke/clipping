@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { assertBuildspecsMatch, normalizeBuildspec } from './codebuild-buildspec';
 
 describe('CodeBuild buildspec preflight', () => {
@@ -13,5 +15,13 @@ describe('CodeBuild buildspec preflight', () => {
       'MEDIA_BUCKET="$MEDIA_BUCKET" bun scripts/photos-gc.ts\n',
       'MEDIA_BUCKET="$MEDIA_BUCKET" bun scripts/photos-gc.mjs\n',
     )).toThrow('photos-gc.ts');
+  });
+
+  test('provisions Bun before the deploy preflight invokes it', () => {
+    const workflow = readFileSync(path.resolve(import.meta.dir, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
+    const bunSetup = workflow.indexOf('uses: oven-sh/setup-bun@v2');
+    const preflight = workflow.indexOf('bun scripts/codebuild-buildspec.ts');
+    expect(bunSetup).toBeGreaterThanOrEqual(0);
+    expect(preflight).toBeGreaterThan(bunSetup);
   });
 });
