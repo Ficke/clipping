@@ -4,6 +4,7 @@
   "album": "2025-05-yosemite",
   "photos": [
     {
+      "photoId": "photo_463c990bd7429d819bde3fc8",
       "file": "01-DSCF5408.jpg",
       "sourceHash": "463c990bd7429d819bde3fc8a6ad35097924fc12b6fed3020d2e7356cea7b45b",
       "width": 2000,
@@ -90,6 +91,7 @@
       }
     },
     {
+      "photoId": "photo_4989ab79a50153983087b050",
       "file": "02-DSCF5419.jpg",
       "sourceHash": "4989ab79a50153983087b050379ceccac6764852411d98fb350a53eb1392dcdf",
       "width": 2000,
@@ -176,6 +178,7 @@
       }
     },
     {
+      "photoId": "photo_65f18506973476a69bd09503",
       "file": "03-DSCF5441.jpg",
       "sourceHash": "65f18506973476a69bd09503f48b1bd52ea2fd835a18eb8bd5ee4d2c5d149e63",
       "width": 2000,
@@ -262,6 +265,7 @@
       }
     },
     {
+      "photoId": "photo_71e91d0418e397771af6d735",
       "file": "04-DSCF5454.jpg",
       "sourceHash": "71e91d0418e397771af6d7356f633f10a1e3e96ec386c6045b749493f8c0573f",
       "width": 1333,
@@ -333,6 +337,7 @@
       }
     },
     {
+      "photoId": "photo_e9bce93402fc9b9fd5db163b",
       "file": "05-DSCF5477.jpg",
       "sourceHash": "e9bce93402fc9b9fd5db163b48f71f36e17ff543950c16efbe2ef2f5dcbc1f32",
       "width": 2000,
@@ -419,6 +424,7 @@
       }
     },
     {
+      "photoId": "photo_871fc185ae91da5436be9a08",
       "file": "06-DSCF5528.jpg",
       "sourceHash": "871fc185ae91da5436be9a08dc0221ea3f5029d07fb254e5cc30abd7ef8b8d71",
       "width": 2000,
@@ -505,6 +511,7 @@
       }
     },
     {
+      "photoId": "photo_21eb06ae49ea0a22fdae7570",
       "file": "07-DSCF5574.jpg",
       "sourceHash": "21eb06ae49ea0a22fdae7570667703be742bb9ef654eec05aefb3e58d780bbeb",
       "width": 2000,

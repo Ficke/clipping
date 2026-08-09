@@ -133,15 +133,12 @@ data "aws_iam_policy_document" "media_build" {
   }
 
   statement {
-    sid       = "ReadOriginalsWriteManifests"
+    sid       = "ReadPhotoMasters"
     actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.originals.arn}/albums/*"]
-  }
-
-  statement {
-    sid       = "PublishFulfillmentAssets"
-    actions   = ["s3:GetObject", "s3:PutObject"]
-    resources = ["${aws_s3_bucket.originals.arn}/fulfillment/*"]
+    resources = [
+      "${aws_s3_bucket.originals.arn}/photos/*",
+      "${aws_s3_bucket.originals.arn}/metadata/*",
+    ]
   }
 
   statement {

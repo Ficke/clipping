@@ -4,6 +4,7 @@
   "album": "2024-07-desolation-wilderness",
   "photos": [
     {
+      "photoId": "photo_c3702e114484e1c250e539c9",
       "file": "01-DSCF1292.jpg",
       "sourceHash": "c3702e114484e1c250e539c92ccf0e6225af5d25e6d3b22e1c5eb043784bd2da",
       "width": 2000,
@@ -90,6 +91,7 @@
       }
     },
     {
+      "photoId": "photo_1e47355de50c742dd36c705b",
       "file": "02-DSCF1302.jpg",
       "sourceHash": "1e47355de50c742dd36c705be7c43c184216cc22040ae8fdb548eec54ba79255",
       "width": 2000,
@@ -176,6 +178,7 @@
       }
     },
     {
+      "photoId": "photo_1de4f0fbd0a95a84ce0a6ce0",
       "file": "03-DSCF1347.jpg",
       "sourceHash": "1de4f0fbd0a95a84ce0a6ce072532ebbcd2e9db698334fd09a513b1498ac63bf",
       "width": 2000,
@@ -262,6 +265,7 @@
       }
     },
     {
+      "photoId": "photo_ae0b295eb80c9a8de92b9f0e",
       "file": "04-DSCF1378.jpg",
       "sourceHash": "ae0b295eb80c9a8de92b9f0e365681b1443c75e0b61b50aeed7a60edfce40187",
       "width": 2000,
@@ -348,6 +352,7 @@
       }
     },
     {
+      "photoId": "photo_5502d58f22f56a8fbfa2ee82",
       "file": "05-DSCF1381.jpg",
       "sourceHash": "5502d58f22f56a8fbfa2ee82edd554a97e1bc8d496a915de785927ed5570353e",
       "width": 2000,
@@ -434,6 +439,7 @@
       }
     },
     {
+      "photoId": "photo_96fe5062ddf9fd34bf570f08",
       "file": "06-DSCF1434.jpg",
       "sourceHash": "96fe5062ddf9fd34bf570f08788850159c29176170c4008493e50adf9792fcfd",
       "width": 2000,
@@ -520,6 +526,7 @@
       }
     },
     {
+      "photoId": "photo_87925a61b07008fb0f859bbc",
       "file": "07-DSCF1449.jpg",
       "sourceHash": "87925a61b07008fb0f859bbca0298381754993bf0873744a05300cabca389877",
       "width": 2000,
@@ -606,6 +613,7 @@
       }
     },
     {
+      "photoId": "photo_4fd6c76b46b52e9f1126834b",
       "file": "08-DSCF1463.jpg",
       "sourceHash": "4fd6c76b46b52e9f1126834bada703145892a5129eeaf1ac5bd060cdc188fc3a",
       "width": 2000,
@@ -692,6 +700,7 @@
       }
     },
     {
+      "photoId": "photo_6808f7418767c573347ed141",
       "file": "09-DSCF1469.jpg",
       "sourceHash": "6808f7418767c573347ed141a87f0c9163e4687cbad4e7f7560ce0c795f5c7a2",
       "width": 2000,
@@ -778,6 +787,7 @@
       }
     },
     {
+      "photoId": "photo_c577d4139490463e5766031a",
       "file": "10-DSCF1503.jpg",
       "sourceHash": "c577d4139490463e5766031a78c20d6f3e7b62f9f8590f5975ff97257aaafb28",
       "width": 2000,
@@ -864,6 +874,7 @@
       }
     },
     {
+      "photoId": "photo_0b4aeaad2e2f62028b0585a5",
       "file": "11-DSCF1505.jpg",
       "sourceHash": "0b4aeaad2e2f62028b0585a5260cd74660046c5aeabbc502ccccb128316f4121",
       "width": 2000,
@@ -950,6 +961,7 @@
       }
     },
     {
+      "photoId": "photo_eadda345826a6cef73e837b6",
       "file": "12-DSCF1546.jpg",
       "sourceHash": "eadda345826a6cef73e837b667103b42e49e905aabab8aee4842fc751232b4e0",
       "width": 2000,
@@ -1036,6 +1048,7 @@
       }
     },
     {
+      "photoId": "photo_e16ef232a6832d46ca59942a",
       "file": "13-DSCF1553.jpg",
       "sourceHash": "e16ef232a6832d46ca59942a68c03b553f1fff2ffbdb6ed70f6f47c50a1e8309",
       "width": 2000,
@@ -1122,6 +1135,7 @@
       }
     },
     {
+      "photoId": "photo_81bc20d25b492151a34639a7",
       "file": "14-DSCF1558.jpg",
       "sourceHash": "81bc20d25b492151a34639a7edf281a97879a438593647df091661d3c85d445c",
       "width": 2000,
@@ -1208,6 +1222,7 @@
       }
     },
     {
+      "photoId": "photo_5a646bcfad80377d781c00d2",
       "file": "15-DSCF1567.jpg",
       "sourceHash": "5a646bcfad80377d781c00d2bf6a45f3eba69f6b2e41c73a2559459aa8e26cfd",
       "width": 2000,
@@ -1294,6 +1309,7 @@
       }
     },
     {
+      "photoId": "photo_89db05c983251d930f90f7ed",
       "file": "16-DSCF1570.jpg",
       "sourceHash": "89db05c983251d930f90f7ed79690588eee871cee3b28208c195bc54168868b5",
       "width": 2000,
@@ -1380,6 +1396,7 @@
       }
     },
     {
+      "photoId": "photo_cc300285664e59e79db79cce",
       "file": "17-DSCF1574.jpg",
       "sourceHash": "cc300285664e59e79db79cce2a41aec588e14861cbac928f5d4036f0ea5e6573",
       "width": 2000,
@@ -1466,6 +1483,7 @@
       }
     },
     {
+      "photoId": "photo_dced360d44538a93537d458d",
       "file": "18-DSCF1627.jpg",
       "sourceHash": "dced360d44538a93537d458d3193858d22002f90380c0f428e6833c30ea43a09",
       "width": 2000,
@@ -1552,6 +1570,7 @@
       }
     },
     {
+      "photoId": "photo_5c98dc8410bc0fc3f2064f60",
       "file": "19-DSCF1645.jpg",
       "sourceHash": "5c98dc8410bc0fc3f2064f60736a5d64314d22387f7126c3208a4bdaa8c388c9",
       "width": 2000,

@@ -41,13 +41,16 @@ immutable fulfillment object was uploaded or backfilled.
 
 ### Catalog and fulfillment
 
-- `assetRef` is `<64 lowercase SHA-256 hex>.<lowercase extension>`.
-- The immutable object key is `fulfillment/<assetRef>`.
-- Catalog v2 temporarily carries additive `assetRef`; catalog v3 contains
-  `photoId`, `assetRef`, `forSale`, optional `priceCents`, `albumTitle`, `label`,
-  and optional `previewSrc`.
-- Token version 1 contains only `version`, `orderId`, `photoId`, `assetRef`, and
-  `expiresAt`; redemption reads no catalog, Stripe object, or DynamoDB row.
+- `photoId` is `photo_` followed by 24 lowercase hexadecimal characters, minted
+  once and never derived from the bytes.
+- The master object key is `photos/<photoId>`, and its capture metadata is
+  archived to `metadata/<photoId>.json`.
+- Catalog v3 contains `photoId`, `storyId`, `file`, `priceCents`, `albumTitle`,
+  `label`, `previewSrc`, `width`, and `height`. Only photographs on sale are
+  published, so presence in the catalog is the offer.
+- Token version 1 contains only `version`, `orderId`, `photoId`, and
+  `expiresAt`; redemption reads no catalog, Stripe object, or DynamoDB row. It
+  makes one `HeadObject` so a deleted photograph returns `410`.
 
 ### Orders
 

@@ -22,16 +22,13 @@ for (const [file, manifest] of Object.entries(manifests)) {
 }
 
 export interface AlbumPhoto {
+  photoId: string;
   file: string;
   image: PhotoManifestEntry;
   caption: string | undefined;
   alt: string | undefined;
-  exif: string | undefined;
-  /** Whether this photo is offered as a download. See `downloads.ts`. */
-  forSale: boolean;
+  /** Set means offered as a download. See `downloads.ts`. */
   priceCents: number | undefined;
-  hidden: boolean;
-  inCatalog: boolean;
 }
 
 /**
@@ -66,8 +63,11 @@ export async function getAlbums(): Promise<Album[]> {
 }
 
 /**
- * Frontmatter `photos` joined to the generated manifest. The frontmatter array
- * is authoritative for order; the manifest is authoritative for what exists.
+ * Frontmatter `photos` joined to the generated manifest on `photoId`. The
+ * frontmatter array is authoritative for order; the manifest is authoritative
+ * for what exists. Removed photographs keep their frontmatter entry as the
+ * record that they existed, and are excluded here before the two sides are
+ * required to agree — the manifest only ever describes live photographs.
  */
 function imagesIn(album: Album): AlbumPhoto[] {
   const manifest = manifestsByStoryId.get(album.data.storyId);
@@ -75,48 +75,47 @@ function imagesIn(album: Album): AlbumPhoto[] {
     throw new Error(`Album ${album.id}: no photos.json declares storyId "${album.data.storyId}". Rerun photos:push.`);
   }
 
-  const manifestFiles = manifest.photos.map((photo) => photo.file);
-  const duplicateManifestFiles = manifestFiles
-    .filter((file, index) => manifestFiles.indexOf(file) !== index);
-  if (duplicateManifestFiles.length) {
-    throw new Error(`Album ${album.id}: photos.json has duplicate files: ${[...new Set(duplicateManifestFiles)].join(', ')}`);
+  const manifestIds = manifest.photos.map((photo) => photo.photoId);
+  const duplicateManifestIds = manifestIds
+    .filter((photoId, index) => manifestIds.indexOf(photoId) !== index);
+  if (duplicateManifestIds.length) {
+    throw new Error(`Album ${album.id}: photos.json has duplicate photo IDs: ${[...new Set(duplicateManifestIds)].join(', ')}`);
   }
 
-  const byFile = new Map(manifest.photos.map((photo) => [photo.file, photo]));
-  const listed = album.data.photos.map((photo) => photo.file);
-  const duplicates = listed.filter((file, index) => listed.indexOf(file) !== index);
-  const unknown = listed.filter((file) => !byFile.has(file));
-  const missing = manifestFiles.filter((file) => !listed.includes(file));
+  const byId = new Map(manifest.photos.map((photo) => [photo.photoId, photo]));
+  const live = album.data.photos.filter((photo) => !photo.removed);
+  const listed = live.map((photo) => photo.photoId);
+  const duplicates = listed.filter((photoId, index) => listed.indexOf(photoId) !== index);
+  const unknown = listed.filter((photoId) => !byId.has(photoId));
+  const missing = manifestIds.filter((photoId) => !listed.includes(photoId));
+  // `cover` still names a photo by filename, so live filenames must be unique.
+  const files = live.map((photo) => photo.file);
+  const duplicateFiles = files.filter((file, index) => files.indexOf(file) !== index);
 
-  if (duplicates.length || unknown.length || missing.length) {
+  if (duplicates.length || unknown.length || missing.length || duplicateFiles.length) {
     const problems = [
       duplicates.length && `duplicates: ${[...new Set(duplicates)].join(', ')}`,
       unknown.length && `not in photos.json: ${unknown.join(', ')}`,
       missing.length && `absent from photos: ${missing.join(', ')}`,
+      duplicateFiles.length && `duplicate filenames: ${[...new Set(duplicateFiles)].join(', ')}`,
     ].filter(Boolean);
     throw new Error(`Album ${album.id}: photos does not match photos.json (${problems.join('; ')}). Rerun photos:push.`);
   }
 
-  return album.data.photos.map((photo) => {
-    const image = byFile.get(photo.file)!;
-    return {
-      file: photo.file,
-      image,
-      caption: photo.caption?.trim() || undefined,
-      alt: photo.alt?.trim() || undefined,
-      exif: image.exif,
-      forSale: photo.forSale === true,
-      priceCents: photo.price === undefined ? undefined : Math.round(photo.price * 100),
-      hidden: photo.hidden === true,
-      inCatalog: photo.catalog !== false,
-    };
-  });
+  return live.map((photo) => ({
+    photoId: photo.photoId,
+    file: photo.file,
+    image: byId.get(photo.photoId)!,
+    caption: photo.caption?.trim() || undefined,
+    alt: photo.alt?.trim() || undefined,
+    priceCents: photo.price === undefined ? undefined : Math.round(photo.price * 100),
+  }));
 }
 
 /** Card and social image: explicit `cover`, otherwise the first photo. */
 export function coverOf(album: Album): PhotoManifestEntry {
-  const photos = imagesIn(album).filter((photo) => !photo.hidden);
-  if (!photos.length) throw new Error(`Album ${album.id} has no visible photos`);
+  const photos = imagesIn(album);
+  if (!photos.length) throw new Error(`Album ${album.id} has no photos left`);
   if (!album.data.cover) return photos[0]!.image;
   const hit = photos.find(({ file }) => file === album.data.cover);
   if (!hit) {
@@ -127,20 +126,15 @@ export function coverOf(album: Album): PhotoManifestEntry {
 
 /** Alt text for the cover, falling back to its caption then a generic label. */
 export function coverAltOf(album: Album): string {
-  const photos = imagesIn(album).filter((photo) => !photo.hidden);
+  const photos = imagesIn(album);
   const hit = album.data.cover
     ? photos.find(({ file }) => file === album.data.cover)
     : photos[0];
   return hit?.alt ?? hit?.caption ?? `Cover photograph for ${album.data.title}`;
 }
 
-/** Photos in frontmatter order. */
+/** Live photos in frontmatter order. */
 export async function photosOf(album: Album): Promise<AlbumPhoto[]> {
-  return imagesIn(album).filter((photo) => !photo.hidden);
-}
-
-/** Includes hidden photographs for commerce fulfillment and operator tools. */
-export async function allPhotosOf(album: Album): Promise<AlbumPhoto[]> {
   return imagesIn(album);
 }
 

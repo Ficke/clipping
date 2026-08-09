@@ -4,11 +4,20 @@
   "album": "japan-24",
   "photos": [
     {
+      "photoId": "photo_a84f4fcd71163ebb50a9645d",
       "file": "DSCF3191.jpg",
       "sourceHash": "a84f4fcd71163ebb50a9645d0c75d6c6731875e6e56df91c443657ebf28c6772",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 40mm · f/5 · 1/1000s · ISO 400",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 40.3,
+        "aperture": 5,
+        "shutter": 0.001,
+        "iso": 400,
+        "capturedAt": "2024-12-02"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -91,11 +100,20 @@
       }
     },
     {
+      "photoId": "photo_632c5aa5b71b53ba25e56618",
       "file": "DSCF3289.jpg",
       "sourceHash": "632c5aa5b71b53ba25e56618da43a2b87bf702da7b5b5483c2512a07dc4b45b7",
       "width": 7627,
       "height": 5085,
-      "exif": "X-T5 · 132mm · f/8 · 1/1000s · ISO 640",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "XF70-300mmF4-5.6 R LM OIS WR",
+        "focalLength": 132,
+        "aperture": 8,
+        "shutter": 0.001,
+        "iso": 640,
+        "capturedAt": "2024-12-03"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -178,11 +196,20 @@
       }
     },
     {
+      "photoId": "photo_e767b68824f239d1a5828be7",
       "file": "DSCF3325.jpg",
       "sourceHash": "e767b68824f239d1a5828be707a917f2692e292be06f947858999a807ec7115d",
       "width": 6423,
       "height": 4282,
-      "exif": "X-T5 · 34mm · f/5.6 · 1/1000s · ISO 6400",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 34,
+        "aperture": 5.6,
+        "shutter": 0.001,
+        "iso": 6400,
+        "capturedAt": "2024-12-03"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -265,11 +292,20 @@
       }
     },
     {
+      "photoId": "photo_1114bb28ec022df820659190",
       "file": "DSCF3331.jpg",
       "sourceHash": "1114bb28ec022df82065919004fabd5ae2edc3118a2b6f526df2de62685fce89",
       "width": 7395,
       "height": 4930,
-      "exif": "X-T5 · 50mm · f/8 · 1/250s · ISO 250",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 50,
+        "aperture": 8,
+        "shutter": 0.004,
+        "iso": 250,
+        "capturedAt": "2024-12-03"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -352,11 +388,20 @@
       }
     },
     {
+      "photoId": "photo_e4b35e233710ba57d7634232",
       "file": "DSCF3401.jpg",
       "sourceHash": "e4b35e233710ba57d7634232171079c013d6b3ce62a7186088153658a5571842",
       "width": 7488,
       "height": 4992,
-      "exif": "X-T5 · 22mm · f/4 · 1/125s · ISO 500",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 22.4,
+        "aperture": 4,
+        "shutter": 0.008,
+        "iso": 500,
+        "capturedAt": "2024-12-03"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -439,11 +484,20 @@
       }
     },
     {
+      "photoId": "photo_a6aa00da9cf30074fbe153ab",
       "file": "DSCF3445.jpg",
       "sourceHash": "a6aa00da9cf30074fbe153abad72f33b8e46a1dc30010f32ae35702a34262e8a",
       "width": 5152,
       "height": 7728,
-      "exif": "X-T5 · 70mm · f/4 · 1/1000s · ISO 800",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "XF70-300mmF4-5.6 R LM OIS WR",
+        "focalLength": 70,
+        "aperture": 4,
+        "shutter": 0.001,
+        "iso": 800,
+        "capturedAt": "2024-12-03"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -526,11 +580,20 @@
       }
     },
     {
+      "photoId": "photo_116da657763953f245cb7bd7",
       "file": "DSCF3469.jpg",
       "sourceHash": "116da657763953f245cb7bd7d1eac86d0b867d0a703f2762133bad5c09664fd3",
       "width": 4926,
       "height": 7389,
-      "exif": "X-T5 · 70mm · f/4 · 1/1000s · ISO 500",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "XF70-300mmF4-5.6 R LM OIS WR",
+        "focalLength": 70,
+        "aperture": 4,
+        "shutter": 0.001,
+        "iso": 500,
+        "capturedAt": "2024-12-03"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -613,11 +676,20 @@
       }
     },
     {
+      "photoId": "photo_d61342ed07116251cff0dfdd",
       "file": "DSCF3477.jpg",
       "sourceHash": "d61342ed07116251cff0dfdd489089c93fa34e64f419fdbfdfdd58df7e1bb502",
       "width": 4383,
       "height": 6574,
-      "exif": "X-T5 · 70mm · f/4 · 1/1000s · ISO 1250",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "XF70-300mmF4-5.6 R LM OIS WR",
+        "focalLength": 70,
+        "aperture": 4,
+        "shutter": 0.001,
+        "iso": 1250,
+        "capturedAt": "2024-12-03"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -700,11 +772,20 @@
       }
     },
     {
+      "photoId": "photo_8b229abfcdba564cb6201fd3",
       "file": "DSCF3511.jpg",
       "sourceHash": "8b229abfcdba564cb6201fd3f58ae7173507b3679fbdf2ee970820f5985d9d95",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 42mm · f/4 · 1/250s · ISO 160",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 42,
+        "aperture": 4,
+        "shutter": 0.004,
+        "iso": 160,
+        "capturedAt": "2024-12-03"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -787,11 +868,20 @@
       }
     },
     {
+      "photoId": "photo_28b8e56cf532579d56024e1a",
       "file": "DSCF3574.jpg",
       "sourceHash": "28b8e56cf532579d56024e1a8120efa8b13b471ce1e84f887155102fa69a46bd",
       "width": 7566,
       "height": 5044,
-      "exif": "X-T5 · 10mm · f/5.6 · 1/250s · ISO 6400",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 10-18mm F2.8 DC DN | Contemporary 023",
+        "focalLength": 10,
+        "aperture": 5.6,
+        "shutter": 0.004,
+        "iso": 6400,
+        "capturedAt": "2024-12-04"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -874,11 +964,20 @@
       }
     },
     {
+      "photoId": "photo_91ec2d6a9c7f8c8be5bff731",
       "file": "DSCF3588.jpg",
       "sourceHash": "91ec2d6a9c7f8c8be5bff731b7bdf14e2e164a27425e9e41779cf9b126cbef2c",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 13mm · f/2.8 · 1/60s · ISO 320",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 10-18mm F2.8 DC DN | Contemporary 023",
+        "focalLength": 13.3,
+        "aperture": 2.8,
+        "shutter": 0.016666666666666666,
+        "iso": 320,
+        "capturedAt": "2024-12-04"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -961,11 +1060,20 @@
       }
     },
     {
+      "photoId": "photo_9253b247db81e3a508813c90",
       "file": "DSCF3681.jpg",
       "sourceHash": "9253b247db81e3a508813c902c31fe9c8a5816ebebbb8fe4b0dc5c81ef2a0801",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 40mm · f/4 · 1/125s · ISO 320",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 40.3,
+        "aperture": 4,
+        "shutter": 0.008,
+        "iso": 320,
+        "capturedAt": "2024-12-04"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -1048,11 +1156,20 @@
       }
     },
     {
+      "photoId": "photo_3bdc92b3a64820b540d550ef",
       "file": "DSCF3756.jpg",
       "sourceHash": "3bdc92b3a64820b540d550efcdb2c03ef5ffede01b9f6dbb4d20eda6d66f6912",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 50mm · f/2.8 · 1/125s · ISO 160",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 50,
+        "aperture": 2.8,
+        "shutter": 0.008,
+        "iso": 160,
+        "capturedAt": "2024-12-04"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -1135,11 +1252,20 @@
       }
     },
     {
+      "photoId": "photo_e6a624b74ec422ff42c7985e",
       "file": "DSCF3820.jpg",
       "sourceHash": "e6a624b74ec422ff42c7985e6d1c798d60f70d2067c7f276c2c2faeee13facd8",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 22mm · f/2.8 · 1/250s · ISO 400",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 21.7,
+        "aperture": 2.8,
+        "shutter": 0.004,
+        "iso": 400,
+        "capturedAt": "2024-12-05"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -1222,11 +1348,20 @@
       }
     },
     {
+      "photoId": "photo_54312e5a3aa635b4c15cd6ae",
       "file": "DSCF3826.jpg",
       "sourceHash": "54312e5a3aa635b4c15cd6ae6182289d66065dd5e792ec276b82b6697e799efb",
       "width": 4608,
       "height": 6912,
-      "exif": "X-T5 · 50mm · f/2.8 · 1/30s · ISO 400",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 50,
+        "aperture": 2.8,
+        "shutter": 0.03333333333333333,
+        "iso": 400,
+        "capturedAt": "2024-12-05"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -1309,11 +1444,20 @@
       }
     },
     {
+      "photoId": "photo_9cfa4bfa68a1dd16b5d8787f",
       "file": "DSCF4157.jpg",
       "sourceHash": "9cfa4bfa68a1dd16b5d8787f8fefb59dd55d617686a030046a58da7693ca644b",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 26mm · f/5.6 · 1/800s · ISO 125",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 26.4,
+        "aperture": 5.6,
+        "shutter": 0.00125,
+        "iso": 125,
+        "capturedAt": "2024-12-08"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -1396,11 +1540,20 @@
       }
     },
     {
+      "photoId": "photo_d01e9d7ffbbaab03cad6c220",
       "file": "DSCF4188.jpg",
       "sourceHash": "d01e9d7ffbbaab03cad6c220594d534b67cd89e3fe9571ef285d98307295a381",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 18mm · f/2.8 · 1/60s · ISO 160",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 18,
+        "aperture": 2.8,
+        "shutter": 0.016666666666666666,
+        "iso": 160,
+        "capturedAt": "2024-12-09"
+      },
       "variants": {
         "responsive": {
           "avif": [
@@ -1483,11 +1636,20 @@
       }
     },
     {
+      "photoId": "photo_1533afc60d3251174bc349cf",
       "file": "DSCF4195.jpg",
       "sourceHash": "1533afc60d3251174bc349cffa14524627cf64bd7db83688048f13e158546177",
       "width": 7728,
       "height": 5152,
-      "exif": "X-T5 · 18mm · f/4 · 1/250s · ISO 200",
+      "shot": {
+        "camera": "X-T5",
+        "lens": "SIGMA 18-50mm F2.8 DC DN | Contemporary 021",
+        "focalLength": 18,
+        "aperture": 4,
+        "shutter": 0.004,
+        "iso": 200,
+        "capturedAt": "2024-12-09"
+      },
       "variants": {
         "responsive": {
           "avif": [

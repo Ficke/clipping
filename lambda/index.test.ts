@@ -39,12 +39,11 @@ function runtime(envOverrides: Partial<Env> = {}) {
   const sequence: string[] = [];
   let current: Order | undefined;
   const catalog = {
-    version: 2,
+    version: 3,
     generated: '2026-08-02T00:00:00Z',
     items: [{
       photoId: PHOTO_ID,
-      assetRef: `${'ab'.repeat(32)}.jpg`,
-      storyId: 'lost-coast', file: 'photo.jpg', forSale: true, priceCents: 4_000,
+      storyId: 'lost-coast', file: 'photo.jpg', priceCents: 4_000,
       albumTitle: 'Lost Coast', label: 'Fog', previewSrc: '/media/fog.webp', width: 1, height: 1,
     }],
   };

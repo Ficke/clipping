@@ -18,7 +18,6 @@ function pending(): Order {
     ...createPendingOrder({
       livemode: false,
       photoId: 'photo_1234567890abcdef12345678',
-      assetRef: `${'a'.repeat(64)}.jpg`,
       expectedAmount: 4_000,
       albumTitle: 'Lost Coast',
       label: 'Fog',
@@ -78,7 +77,7 @@ describe('ensureEntitlement', () => {
   test('retrieves current Stripe state, reads the order, and conditionally entitles it', async () => {
     const h = harness();
     const result = await ensureEntitlement(SESSION_ID, { stripe: h.stripe, orders: h.repository });
-    expect(result).toMatchObject({ status: 'entitled', order: { state: 'entitled', assetRef: `${'a'.repeat(64)}.jpg` } });
+    expect(result).toMatchObject({ status: 'entitled', order: { state: 'entitled' } });
     expect(h.gets()).toBe(1);
     expect(h.audits).toEqual([{
       stripePaymentIntentId: 'pi_test_1',

@@ -191,11 +191,12 @@ data "aws_iam_policy_document" "commerce_buyer" {
   }
 
   # Presigning happens locally, but the role must hold the permission carried
-  # by the generated URL.
+  # by the generated URL. HeadObject is what distinguishes a deleted photograph
+  # from a broken link. Deliberately not metadata/*, which holds capture GPS.
   statement {
-    sid       = "PresignFulfillmentAssets"
+    sid       = "PresignPhotoMasters"
     actions   = ["s3:GetObject"]
-    resources = ["${aws_s3_bucket.originals.arn}/fulfillment/*"]
+    resources = ["${aws_s3_bucket.originals.arn}/photos/*"]
   }
 
   statement {

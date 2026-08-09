@@ -244,8 +244,7 @@ Prerequisites:
   read permissions. Keep this key in test mode.
 - Stripe CLI authenticated to the same sandbox.
 - A catalog v3 build with at least one sellable photo. Following the final S3
-  redirect also requires that photo's `fulfillment/<assetRef>` object; do not
-  run the fulfillment backfill merely to complete this code-only checkpoint.
+  redirect also requires that photo's `photos/<photoId>` master.
 
 ### Start the environment
 

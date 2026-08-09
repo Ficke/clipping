@@ -13,17 +13,17 @@ import {
   serializePhotos,
   splitFrontmatter,
 } from './photo-frontmatter.mjs';
-import { ensureFulfillmentAsset, sha256Hex } from './photo-fulfillment.mjs';
+import { ensureMaster, putSidecar, sha256Hex } from './photo-master.mjs';
+import { generatePhotoId } from '../src/lib/downloads.ts';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
-const archiveRoot = 's3://adamficke-com-originals/albums';
 const manifestRoot = 's3://adamficke-com-originals/manifests';
 const buildBucket = 'adamficke-com-builds';
 const mediaProject = 'adamficke-com-media';
 const mediaBucket = 'adamficke-com-media';
 const manifestBucket = 'adamficke-com-originals';
-const fulfillmentBucket = 'adamficke-com-originals';
+const originalsBucket = 'adamficke-com-originals';
 const buildPollInterval = Number.parseInt(process.env.PHOTO_BUILD_POLL_INTERVAL_MS ?? '5000', 10);
 const terminalBuildStatuses = new Set(['FAILED', 'FAULT', 'STOPPED', 'SUCCEEDED', 'TIMED_OUT']);
 const supportedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
@@ -62,75 +62,43 @@ const albumDirectories = source === albumsRoot
 
 const preparedAlbums = [];
 for (const albumDirectory of albumDirectories) {
-  const { images, storyId } = await prepareAlbum(albumDirectory);
-  if (images.length) preparedAlbums.push({ albumDirectory, images, storyId });
+  const prepared = await prepareAlbum(albumDirectory);
+  if (prepared.images.length) preparedAlbums.push({ albumDirectory, ...prepared });
 }
 
 if (!preparedAlbums.length) fail(`No supported images found in ${source}`);
 
 const buildLocally = dryRun ? false : forceLocal || await askWhereToBuild();
 
-const stagingRoot = mkdtempSync(path.join(os.tmpdir(), 'photos-fulfillment-'));
+const stagingRoot = mkdtempSync(path.join(os.tmpdir(), 'photos-master-'));
 let sourceBundle;
 try {
-  for (const { albumDirectory, images, storyId } of preparedAlbums) {
+  for (const { albumDirectory, images, storyId, photoIds } of preparedAlbums) {
     const album = storyId;
-    const { directory: stagedDirectory, metadataPath } = stageAlbum(album, albumDirectory);
-    const destination = `${archiveRoot}/${album}`;
-    const syncArgs = [
-      's3', 'sync', stagedDirectory, destination,
-      '--exclude', '*',
-      '--include', '*.jpg',
-      '--include', '*.jpeg',
-      '--include', '*.png',
-      '--include', '*.webp',
-      '--include', '*.avif',
-      '--delete',
-      '--checksum-algorithm', 'SHA256',
-    ];
-    if (dryRun) syncArgs.push('--dryrun');
+    const { directory: stagedDirectory, metadataDirectory } = stageAlbum(album, albumDirectory);
+    const sourceManifestPath = writeSourceManifest(album, images, photoIds);
 
-    console.log(`\n${dryRun ? 'Previewing' : 'Uploading'} ${images.length} sanitized image${images.length === 1 ? '' : 's'} to ${destination}`);
-    const metadataArgs = [
-      's3', 'cp', metadataPath, `${manifestRoot}/${album}/source-metadata.json`,
+    console.log(`\n${dryRun ? 'Previewing' : 'Publishing'} ${images.length} master${images.length === 1 ? '' : 's'} for ${album}`);
+    // Nothing here deletes. A photograph leaves an album through photos:remove,
+    // and its bytes go only through photos:delete.
+    await publishMasters(stagedDirectory, metadataDirectory, album, images, photoIds);
+
+    const manifestArgs = [
+      's3', 'cp', sourceManifestPath, `${manifestRoot}/${album}/source.json`,
       '--content-type', 'application/json', '--only-show-errors',
     ];
-    if (dryRun) metadataArgs.push('--dryrun');
+    if (dryRun) manifestArgs.push('--dryrun');
+    await runAsync('aws', manifestArgs);
 
     if (dryRun) {
-      await runTogether([
-        runAsync('aws', syncArgs),
-        runAsync('aws', metadataArgs),
-      ]);
-      const sellableCount = sellableFiles(albumDirectory).length;
-      console.log(`Would verify and publish ${sellableCount} immutable fulfillment asset${sellableCount === 1 ? '' : 's'}`);
       console.log(`Would build immutable media and write ${path.relative(repoRoot, albumDirectory)}/photos.json`);
       continue;
     }
 
-    // Do not publish a new manifest until every retained source has a verified
-    // immutable fulfillment object. A later archive/media failure can leave a
-    // harmless content-addressed orphan; the inverse would break fulfillment.
-    await publishFulfillmentAssets(stagedDirectory, albumDirectory, images);
-
     if (buildLocally) {
-      // The local builder consumes staged files, not S3, so archive upload and
-      // derivative generation can safely overlap. Await every child before the
-      // staging directory is cleaned up, even if one of them fails.
-      await runTogether([
-        runAsync('aws', syncArgs),
-        runAsync('aws', metadataArgs),
-        publishMediaLocally(album, albumDirectory, stagedDirectory, metadataPath),
-      ]);
+      await publishMediaLocally(album, albumDirectory, stagedDirectory, metadataDirectory, sourceManifestPath);
       continue;
     }
-
-    // CodeBuild reads the archive and sidecar from S3, so only these two small
-    // independent upload jobs can overlap on the cloud path.
-    await runTogether([
-      runAsync('aws', syncArgs),
-      runAsync('aws', metadataArgs),
-    ]);
     sourceBundle ??= createSourceBundle();
     await publishMedia(album, albumDirectory, sourceBundle);
   }
@@ -139,45 +107,88 @@ try {
   rmSync(stagingRoot, { recursive: true, force: true });
 }
 
-async function publishFulfillmentAssets(stagedDirectory, albumDirectory, images) {
-  const sellable = sellableFiles(albumDirectory);
-  let uploaded = 0;
-  let reused = 0;
-  for (const file of sellable) {
-    if (!images.includes(file)) fail(`Sellable photo is missing from the staged album: ${file}`);
-    const stagedFile = path.join(stagedDirectory, file);
-    const result = ensureFulfillmentAsset({
-      bucket: fulfillmentBucket,
-      file: stagedFile,
-      sourceHash: sha256Hex(stagedFile),
-    });
-    if (result.action === 'uploaded') uploaded++;
-    else reused++;
+/**
+ * One object per photograph, keyed by its permanent ID. Re-exporting overwrites
+ * in place, so an existing object whose bytes differ is a replacement the
+ * operator has to confirm — every issued download link starts serving it.
+ */
+async function publishMasters(stagedDirectory, metadataDirectory, album, images, photoIds) {
+  if (dryRun) {
+    console.log(`Would publish ${images.length} master${images.length === 1 ? '' : 's'} and their metadata sidecars`);
+    return;
   }
-  console.log(`Fulfillment assets: ${uploaded} uploaded, ${reused} verified and reused`);
+
+  const counts = { uploaded: 0, replaced: 0, reused: 0 };
+  for (const file of images) {
+    const photoId = photoIds.get(file);
+    if (!photoId) fail(`${file} has no photoId in index.md`);
+    const stagedFile = path.join(stagedDirectory, file);
+    const call = {
+      bucket: originalsBucket,
+      file: stagedFile,
+      photoId,
+      album,
+      filename: file,
+      sourceHash: sha256Hex(stagedFile),
+    };
+
+    let result = ensureMaster(call);
+    if (result.action === 'differs') {
+      if (!await confirmReplacement(file, photoId, stagedFile)) {
+        fail(`Refusing to replace the master for ${file}`);
+      }
+      result = ensureMaster({ ...call, replace: true });
+    }
+    counts[result.action]++;
+
+    // A pulled album folder holds sanitized masters, whose capture metadata was
+    // stripped on the way up. Re-pushing one must not overwrite the archived
+    // sidecar with the nothing it can read back out.
+    const sidecar = path.join(metadataDirectory, `${file}.json`);
+    if (JSON.parse(readFileSync(sidecar, 'utf8')).shot) {
+      putSidecar({ bucket: originalsBucket, photoId, body: sidecar });
+    }
+  }
+  console.log(`Masters: ${counts.uploaded} uploaded, ${counts.replaced} replaced, ${counts.reused} unchanged`);
 }
 
-function sellableFiles(albumDirectory) {
-  const indexPath = path.join(albumDirectory, 'index.md');
-  if (!existsSync(indexPath)) return [];
-  const { lines } = splitFrontmatter(readFileSync(indexPath, 'utf8'), albumDirectory);
-  const { entries } = readPhotosBlock(lines);
-  return entries.filter((entry) => entry.forSale === true).map((entry) => entry.file);
+async function confirmReplacement(file, photoId, stagedFile) {
+  const size = statSync(stagedFile).size;
+  console.log(`\n${file} (${photoId}) already has a master with different bytes.`);
+  console.log(`  replacing it serves the new file to everyone who has already bought it`);
+  console.log(`  new: ${size} bytes, sha256 ${sha256Hex(stagedFile)}`);
+  console.log('  the previous bytes stay recoverable for 90 days through bucket versioning');
+  if (assumeYes) return true;
+  if (!interactive) return false;
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return /^y(es)?$/i.test((await rl.question('  replace it? [no] ')).trim());
+  } finally {
+    rl.close();
+  }
+}
+
+/** What CodeBuild reads to learn which masters an album is built from. */
+function writeSourceManifest(album, images, photoIds) {
+  const manifestPath = path.join(stagingRoot, `${album}-source.json`);
+  const photos = images.map((file) => ({ photoId: photoIds.get(file), file }));
+  writeFileSync(manifestPath, `${JSON.stringify({ version: 1, album, photos }, null, 2)}\n`);
+  return manifestPath;
 }
 
 function stageAlbum(album, albumDirectory) {
   const directory = path.join(stagingRoot, album);
-  const metadataPath = path.join(stagingRoot, `${album}-source-metadata.json`);
+  const metadataDirectory = path.join(stagingRoot, `${album}-metadata`);
   mkdirSync(directory, { recursive: true });
+  mkdirSync(metadataDirectory, { recursive: true });
   console.log(`\nPreparing metadata-minimized fulfillment files for ${album}`);
   run('bun', [
     path.join(repoRoot, 'scripts', 'photos-sanitize.mjs'),
     '--source', albumDirectory,
     '--output', directory,
-    '--metadata', metadataPath,
-    '--previous-manifest', path.join(albumDirectory, 'photos.json'),
+    '--metadata', metadataDirectory,
   ]);
-  return { directory, metadataPath };
+  return { directory, metadataDirectory };
 }
 
 function resolveSource(input) {
@@ -240,10 +251,10 @@ async function prepareAlbum(albumDirectory) {
 
   const indexPath = path.join(albumDirectory, 'index.md');
   if (!existsSync(indexPath)) {
-    const { contents, storyId } = await scaffoldIndex(albumDirectory, images);
+    const { contents, storyId, entries } = await scaffoldIndex(albumDirectory, images);
     console.log(`${dryRun ? 'Would create' : 'Creating'} ${indexPath}`);
     if (!dryRun) writeFileSync(indexPath, contents);
-    return { images, storyId };
+    return { images, storyId, photoIds: liveIds(entries) };
   }
 
   const existing = readFileSync(indexPath, 'utf8');
@@ -252,26 +263,41 @@ async function prepareAlbum(albumDirectory) {
   assertStoryIdShape(storyId, indexPath);
 
   const reconciled = await reconcilePhotos(existing, images, path.basename(albumDirectory));
-  if (reconciled !== existing) {
+  if (reconciled.contents !== existing) {
     console.log(`${dryRun ? 'Would update' : 'Updating'} photos in ${indexPath}`);
-    if (!dryRun) writeFileSync(indexPath, reconciled);
+    if (!dryRun) writeFileSync(indexPath, reconciled.contents);
   }
 
-  return { images, storyId };
+  return { images, storyId, photoIds: liveIds(reconciled.entries) };
+}
+
+function liveIds(entries) {
+  return new Map(entries.filter((entry) => !entry.removed).map((entry) => [entry.file, entry.photoId]));
 }
 
 /**
- * Rebuild the `photos` list from what is on disk, keeping captions, alt text
- * and any hand-ordered sequence. New files slot into filename order when the
- * album has never been reordered, and append when it has.
+ * Rebuild the `photos` list from what is on disk, keeping captions, alt text,
+ * minted IDs and any hand-ordered sequence. New files slot into filename order
+ * when the album has never been reordered, and append when it has.
+ *
+ * Deleting a file from the album folder is not how a photograph leaves an
+ * album: that would discard the record and orphan the master. Already-removed
+ * entries stay put, and a file that vanishes without being removed stops the
+ * push.
  */
 async function reconcilePhotos(contents, images, album) {
   const { lines, body } = splitFrontmatter(contents, album);
   const { entries, span } = readPhotosBlock(lines);
   const known = new Map(entries.map((entry) => [entry.file, entry]));
 
-  const kept = entries.filter((entry) => images.includes(entry.file));
-  const dropped = entries.filter((entry) => !images.includes(entry.file));
+  const removed = entries.filter((entry) => entry.removed);
+  const live = entries.filter((entry) => !entry.removed);
+  const vanished = live.filter((entry) => !images.includes(entry.file));
+  if (vanished.length) {
+    fail(`${album}: ${vanished.map((entry) => entry.file).join(', ')} ${vanished.length === 1 ? 'is' : 'are'} missing from the album folder. `
+      + 'Run `bun run photos:remove` to take a photograph out of an album, or put the file back.');
+  }
+
   const added = images.filter((file) => !known.has(file));
   const configured = new Map();
   if (interactive && added.length) {
@@ -283,34 +309,25 @@ async function reconcilePhotos(contents, images, album) {
       rl.close();
     }
   }
+  const mint = (file) => configured.get(file) ?? { file, photoId: generatePhotoId() };
 
-  const wasFilenameOrdered = kept.length === 0
-    || kept.map((entry) => entry.file).join('\0') === sortFilenames(kept.map((entry) => entry.file)).join('\0');
+  const wasFilenameOrdered = live.length === 0
+    || live.map((entry) => entry.file).join('\0') === sortFilenames(live.map((entry) => entry.file)).join('\0');
   const next = wasFilenameOrdered
-    ? sortFilenames([...kept.map((entry) => entry.file), ...added])
-        .map((file) => known.get(file) ?? configured.get(file) ?? { file })
-    : [...kept, ...added.map((file) => configured.get(file) ?? { file })];
+    ? sortFilenames([...live.map((entry) => entry.file), ...added])
+        .map((file) => known.get(file) ?? mint(file))
+    : [...live, ...added.map(mint)];
 
-  if (dropped.length) {
-    console.log(`  removing ${dropped.length}: ${dropped.map((entry) => entry.file).join(', ')}`);
-  }
   if (added.length) {
     console.log(`  adding ${added.length}: ${added.join(', ')}${wasFilenameOrdered ? '' : ' (appended — reorder if needed)'}`);
   }
 
   const rebuilt = [...lines];
-  const cover = frontmatterValue(contents, 'cover');
-  if (cover && dropped.some((entry) => entry.file === cover)) {
-    const replacement = next.find((entry) => entry.hidden !== true);
-    if (!replacement) fail(`${album}: deleting cover ${cover} would leave no visible photo`);
-    const coverAt = rebuilt.findIndex((line) => /^cover:\s*/.test(line));
-    rebuilt[coverAt] = `cover: ${replacement.file}`;
-    console.log(`  cover: ${cover} -> ${replacement.file}`);
-  }
-  const block = serializePhotos(next);
+  const entriesOut = [...next, ...removed];
+  const block = serializePhotos(entriesOut);
   if (span) rebuilt.splice(span[0], span[1] - span[0], ...block);
   else rebuilt.push(...block);
-  return `---\n${rebuilt.join('\n')}\n---\n${body}`;
+  return { contents: `---\n${rebuilt.join('\n')}\n---\n${body}`, entries: entriesOut };
 }
 
 function sortFilenames(files) {
@@ -354,13 +371,14 @@ async function askWhereToBuild() {
 }
 
 /** Same generator CodeBuild runs; variant keys derive from the source hash. */
-async function publishMediaLocally(album, albumDirectory, stagedDirectory, metadataPath) {
+async function publishMediaLocally(album, albumDirectory, stagedDirectory, metadataDirectory, sourceManifestPath) {
   const manifestPath = path.join(albumDirectory, 'photos.json');
   console.log(`Building ${album} locally`);
   await runAsync('bun', [
     path.join(repoRoot, 'scripts', 'photos-build-media.mjs'),
     '--source', stagedDirectory,
-    '--source-metadata', metadataPath,
+    '--source-manifest', sourceManifestPath,
+    '--source-metadata', metadataDirectory,
     '--album', album,
     '--manifest', manifestPath,
   ], { MEDIA_BUCKET: mediaBucket, MANIFEST_BUCKET: manifestBucket });
@@ -457,9 +475,10 @@ async function scaffoldIndex(albumDirectory, images) {
   if (answers.cover !== images[0]) lines.push(`cover: ${answers.cover}`);
   if (answers.description) lines.push(`description: ${JSON.stringify(answers.description)}`);
   if (answers.draft) lines.push('draft: true');
-  lines.push(...serializePhotos(answers.photos ?? images.map((file) => ({ file }))));
+  const entries = answers.photos ?? images.map((file) => ({ file, photoId: generatePhotoId() }));
+  lines.push(...serializePhotos(entries));
 
-  return { contents: `---\n${lines.join('\n')}\n---\n`, storyId: answers.storyId };
+  return { contents: `---\n${lines.join('\n')}\n---\n`, storyId: answers.storyId, entries };
 }
 
 async function runForm(albumDirectory, images, defaults) {
@@ -485,11 +504,12 @@ async function runForm(albumDirectory, images, defaults) {
 }
 
 async function askPhotoSale(rl, file) {
+  const photoId = generatePhotoId();
   while (true) {
     const answer = (await rl.question(`  ${file} sale price USD [not for sale] `)).trim();
-    if (!answer || /^n(o)?$/i.test(answer)) return { file };
+    if (!answer || /^n(o)?$/i.test(answer)) return { file, photoId };
     try {
-      return { file, forSale: true, price: parsePriceDollars(answer) };
+      return { file, photoId, price: parsePriceDollars(answer) };
     } catch (error) {
       console.log(`  ${error.message}; enter a price such as ${defaultPriceDollars}, or press Enter`);
     }
@@ -565,9 +585,9 @@ function assertStoryIdShape(storyId, indexPath) {
 
 /** Git is not the whole truth: an id can be free locally but taken in S3. */
 function assertStoryIdAvailable(storyId) {
-  const listing = runCapture('aws', ['s3', 'ls', `${archiveRoot}/${storyId}/`], { allowFailure: true });
+  const listing = runCapture('aws', ['s3', 'ls', `${manifestRoot}/${storyId}/`], { allowFailure: true });
   if (listing) {
-    fail(`s3 already has ${archiveRoot}/${storyId}/ — choose a different storyId or remove the prefix`);
+    fail(`s3 already has ${manifestRoot}/${storyId}/ — choose a different storyId or remove the prefix`);
   }
 }
 
@@ -633,11 +653,6 @@ function runAsync(command, commandArgs, extraEnv) {
   });
 }
 
-async function runTogether(promises) {
-  const results = await Promise.allSettled(promises);
-  const failure = results.find((result) => result.status === 'rejected');
-  if (failure) throw failure.reason;
-}
 
 function runCapture(command, commandArgs, { allowFailure = false } = {}) {
   const result = spawnSync(command, commandArgs, { cwd: repoRoot, encoding: 'utf8' });

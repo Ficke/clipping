@@ -5,7 +5,7 @@ import Stripe from 'stripe';
 import { loadCatalog, NotForSale } from './catalog';
 import { createCheckoutSession } from './checkout';
 import { loadSecrets, readEnv, type Env, type Secrets } from './config';
-import { resolveDownload } from './download';
+import { PhotoUnavailable, resolveDownload } from './download';
 import { EntitlementIntegrityError, EntitlementUnavailable } from './entitlement';
 import { CheckoutReturnExpired, fulfillCheckout } from './fulfill';
 import {
@@ -162,6 +162,10 @@ export async function handleBuyer(
     if (error instanceof InvalidToken) {
       logOutcome('warn', { ...common, outcome: 'token_rejected', status: 410 });
       return problem(410, 'This download link is no longer valid. Reply to your receipt and I will send a fresh one.');
+    }
+    if (error instanceof PhotoUnavailable) {
+      logOutcome('warn', { ...common, outcome: 'photo_unavailable', status: 410 });
+      return problem(410, 'That photograph is no longer available. Reply to your receipt and I will help.');
     }
     if (error instanceof CheckoutReturnExpired || error instanceof EntitlementUnavailable) {
       logOutcome('warn', { ...common, outcome: 'fulfillment_unavailable', status: 410 });

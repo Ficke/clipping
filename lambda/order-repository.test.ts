@@ -10,7 +10,6 @@ function order(state: Order['state'] = 'pending'): Order {
     ...createPendingOrder({
       livemode: false,
       photoId: 'photo_1234567890abcdef12345678',
-      assetRef: `${'a'.repeat(64)}.jpg`,
       expectedAmount: 4_000,
       albumTitle: 'Lost Coast',
       label: 'Fog',

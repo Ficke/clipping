@@ -34,12 +34,10 @@ export async function createCheckoutSession(
   }: CheckoutDeps,
 ): Promise<CheckoutResult> {
   const item = requireItem(catalog, photoId);
-  if (!item.assetRef) throw new Error('Catalog item has no immutable fulfillment asset');
 
   const pending = createPendingOrder({
     livemode,
     photoId,
-    assetRef: item.assetRef,
     expectedAmount: item.priceCents,
     albumTitle: item.albumTitle,
     label: item.label,

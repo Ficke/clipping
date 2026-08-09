@@ -1,9 +1,59 @@
 # Stripe commerce architecture migration
 
-Status: pre-launch. Infrastructure Gates A-D, the six sellable fulfillment
-assets, and the POST storefront are deployed; the production webhook endpoint is
-registered. The live purchase drill has not run, so no order has reached
-`entitled` in production.
+Status: pre-launch. Infrastructure Gates A-D and the POST storefront are
+deployed, and the production webhook endpoint is registered. Every photograph
+now has one master under `photos/<photoId>`; the superseded `albums/` and
+`fulfillment/` prefixes are dropped once a download is verified against it.
+
+## Revision 14 — 2026-08-09
+
+One photograph is now one object under one identifier. `assetRef` is gone, and
+`photoId` is minted at random on first push rather than derived from the bytes.
+
+The two duplications this removes were the same duplication twice.
+`albums/<storyId>/<file>` and `fulfillment/<sha256>.<ext>` held byte-identical
+copies — 71 objects at 323 MB against 6 at 78 MB, with every future sellable
+photograph doubling. `photoId` was `photo_` plus the first 24 hex of the source
+hash and `assetRef` was that same hash plus the extension.
+
+Content addressing was the wrong guarantee, not merely a redundant one. It made
+a paid download immune to *every* later change, including a deliberate
+re-export: replacing an album with higher-resolution files would mint new
+hashes and leave existing buyers on the superseded bytes forever. The intent is
+the opposite — a photograph is a stable fact whose bytes may improve, and
+improving them should reach everyone.
+
+So `photos/<photoId>` is overwritten in place, and the download Lambda presigns
+it from the token's photo ID alone. Redemption still reads no order state. It
+adds one `HeadObject`, so a photograph deleted on purpose returns `410` instead
+of a presigned URL that 404s at S3.
+
+Capture metadata is no longer destroyed at push time. The master keeps only ICC
+and copyright fields, as before, and everything else — including GPS — is
+archived to `metadata/<photoId>.json`. That prefix is deliberately outside the
+buyer Lambda's grant, which narrows from `fulfillment/*` to `photos/*`; it could
+previously presign any album object.
+
+The per-photo flags collapse from three booleans and four cross-field rules to
+one price and one lifecycle date. `forSale` was true exactly when `price` was
+set. `catalog: false` stopped meaning anything once the catalog held only
+photographs on sale, so catalog version 3 publishes just those six and presence
+is the offer. `hidden` becomes `removed`, which also drops the photograph from
+the catalog and marks its derivatives obsolete — a hidden photograph used to
+stay publicly fetchable at its content-hashed CloudFront URL indefinitely.
+
+The lifecycle is three deliberate steps. `photos:remove` takes a photograph out
+of an album and the store, reversibly, keeping the master so existing downloads
+work. `photos:gc` then stops serving its derivatives. `photos:delete` destroys
+the bytes, is reachable only from `removed`, and leaves the frontmatter entry as
+the record; bucket versioning keeps 90 days of undo. Deleting a file from an
+album folder no longer removes anything — the push refuses and names the
+command.
+
+Migration was free. Seeding each existing photograph with the ID the old code
+already derived for it kept all four drill orders resolving, and `s3 sync
+--delete` is gone from the push, so nothing can implicitly remove a master
+again.
 
 ## Revision 13 — 2026-08-08
 
@@ -515,8 +565,7 @@ orderId                  partition key
 state                    pending | entitled | closed | revoked
 closeReason              expired | failed, when state is closed
 livemode
-photoId
-assetRef                 sanitized-file hash plus format
+photoId                  permanent photograph identity; names the S3 master
 stripeSessionId
 stripePaymentIntentId
 stripeChargeId
@@ -558,24 +607,28 @@ requires a trusted operator command recording who restored it, when, and why.
 Conditional writes make duplicate and concurrent transitions idempotent; a
 duplicate observing the intended final state is a success.
 
-### Immutable fulfillment assets
+### Photograph masters
 
-The publishing workflow hashes the sanitized fulfillment bytes and uploads them
-to a content-addressed key:
+One object per photograph, named by its permanent ID, with capture metadata
+archived beside it under a prefix the buyer Lambda cannot reach:
 
 ```text
-fulfillment/<sha256>.<extension>
+photos/<photoId>            full-resolution sanitized master
+metadata/<photoId>.json     full capture metadata, including GPS
 ```
 
-Catalog version 3 carries the resulting `assetRef`; checkout snapshots it into
-the order. Upload tooling must refuse to overwrite an existing hash-derived key
-with different bytes, which catches a key derived from the wrong hash.
+The key carries no extension, so `Content-Type` and `Content-Disposition` are
+stored on the object at upload time and the presign needs no override.
 
-Note that `catalog.ts` and `src/lib/downloads.ts` both hard-pin version 2 — two
-places to change.
+Re-exporting a photograph overwrites its master, which is the point: every
+already-issued download link starts serving the better file. Because that
+reaches past buyers, `photos:push` reports the old and new size and hash and
+requires confirmation before replacing bytes. Bucket versioning is the undo.
 
-The buyer Lambda's `s3:GetObject` grant narrows from `albums/*` to
-`fulfillment/*`.
+Note that `catalog.ts` and `src/lib/downloads.ts` both hard-pin the catalog
+version — two places to change.
+
+The buyer Lambda's `s3:GetObject` grant narrows from `albums/*` to `photos/*`.
 
 ### Download tokens
 
@@ -583,7 +636,6 @@ The buyer Lambda's `s3:GetObject` grant narrows from `albums/*` to
 version
 orderId
 photoId
-assetRef
 expiresAt
 ```
 
@@ -592,9 +644,12 @@ key. The format is versioned so a key ring can be introduced later; there is no
 rotation procedure today, and rotating voids live links by design. Recovery from
 a rotation is the existing `commerce:link` reissue.
 
-**Redemption reads nothing.** The S3 key comes from `assetRef` and the filename
-from `photoId`, so no catalog lookup and no DynamoDB read are involved. A token
-is a seven-day bearer capability that expires on its own.
+**Redemption reads no order state.** The S3 key is the photo ID and the
+attachment filename is stored on the object, so no catalog lookup and no
+DynamoDB read are involved. A token is a seven-day bearer capability that
+expires on its own. The one `HeadObject` before presigning exists so a
+deliberately deleted photograph reports `410` rather than handing over a URL
+that fails at S3.
 
 This is deliberate, and it was briefly reversed in revision 2. A revocation
 check at redemption protects almost nothing — the buyer downloaded the file when
@@ -705,7 +760,8 @@ order costs slightly more than the sale price.
 Three Lambdas with separate roles, behind the origin-authorized REST API:
 
 - **Buyer API**: catalog read, Checkout Session create, order read/write, token
-  key read, `s3:GetObject` signing limited to `fulfillment/*`.
+  key read, `s3:GetObject` signing limited to `photos/*`. Not `metadata/*`,
+  which holds capture GPS.
 - **Webhook**: webhook secret read, Stripe read credential, order read/write. It
   cannot mint tokens, read originals, or create Sessions.
 - **Authorizer**: CloudWatch Logs write only. It cannot read SSM, DynamoDB, S3,
@@ -869,8 +925,12 @@ legacy-token decoder, or extended rollback window.
 - A Session retrieved immediately after creation resolves without a stale read.
 - Session ID, Checkout mode, metadata, live/test mode, amount, and currency
   mismatches are all rejected.
-- Repricing, delisting, renaming, or catalog removal after Checkout creation
-  does not alter the purchased asset.
+- Repricing, delisting, renaming, or moving a photograph between albums after
+  Checkout creation does not alter what a paid order resolves to. A deliberate
+  re-export does, by design, and reaches links issued before it.
+- Removing a photograph keeps existing downloads working and stops its
+  derivatives being served; deleting it returns `410`. Neither loses the record
+  that the photograph existed, and only `photos:delete` destroys bytes.
 - An external refund or dispute revokes the order and blocks return and reissue,
   while an already-issued token keeps working until it expires.
 - Redemption succeeds with DynamoDB unreachable.

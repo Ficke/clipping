@@ -9,7 +9,6 @@ function entitlement(overrides: Partial<Parameters<typeof mintToken>[0]> = {}) {
     version: 1 as const,
     orderId: 'ord_1234567890abcdef1234567890abcdef',
     photoId: 'photo_1234567890abcdef12345678',
-    assetRef: `${'ab'.repeat(32)}.jpg`,
     expiresAt: Math.floor(NOW / 1000) + DOWNLOAD_WINDOW_SECONDS,
     ...overrides,
   };
@@ -63,11 +62,11 @@ describe('download tokens', () => {
     expect(() => readToken(`${payload}.AAAA`, KEY, NOW)).toThrow(InvalidToken);
   });
 
-  test('rejects signed payloads with an unsupported version or malformed asset', () => {
+  test('rejects signed payloads with an unsupported version or malformed photo ID', () => {
     const unsupported = mintToken(entitlement(), KEY);
     const [payload] = unsupported.split('.');
     const decoded = JSON.parse(Buffer.from(payload!, 'base64url').toString('utf8'));
-    const invalid = entitlement({ assetRef: '../albums/private.jpg' });
+    const invalid = entitlement({ photoId: '../photos/private.jpg' });
     expect(() => mintToken(invalid, KEY)).not.toThrow();
     expect(() => readToken(mintToken(invalid, KEY), KEY, NOW)).toThrow(/incomplete/);
 

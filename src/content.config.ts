@@ -1,29 +1,28 @@
 import { defineCollection, z } from 'astro:content';
 import { glob } from 'astro/loaders';
+import { isPhotoId } from './lib/downloads';
 
 const albumPhoto = z.object({
+  /** Display name and sort position. Cosmetic — renaming changes nothing else. */
   file: z.string().min(1),
+  /** Permanent identity, minted by photos:push. Joins frontmatter to the
+   * manifest, names the S3 master, and is what an order records. */
+  photoId: z.string().refine(isPhotoId, 'must look like photo_<24 hex characters>'),
   caption: z.string().optional(),
   alt: z.string().optional(),
-  forSale: z.boolean().optional(),
-  /** USD, written for humans; converted to integer cents in the catalog. */
+  /** USD, written for humans; converted to integer cents in the catalog.
+   * Its presence is what puts the photograph on sale. */
   price: z.number().positive().multipleOf(0.01).optional(),
-  /** Reversible removal from public pages; fulfillment still retains it. */
-  hidden: z.boolean().optional(),
-  /** Explicit false removes the private fulfillment mapping. */
-  catalog: z.boolean().optional(),
+  /** Off the album and out of the store, bytes retained. Reversible. */
+  removed: z.coerce.date().optional(),
+  /** Bytes purged. The entry stays behind as the record that it existed. */
+  deleted: z.coerce.date().optional(),
 }).superRefine((photo, context) => {
-  if (photo.forSale === true && photo.price === undefined) {
-    context.addIssue({ code: 'custom', path: ['price'], message: 'a photo for sale needs a price' });
+  if (photo.price !== undefined && photo.removed) {
+    context.addIssue({ code: 'custom', path: ['price'], message: 'a removed photo cannot be for sale' });
   }
-  if (photo.forSale !== true && photo.price !== undefined) {
-    context.addIssue({ code: 'custom', path: ['price'], message: 'price is only valid when forSale is true' });
-  }
-  if (photo.forSale === true && photo.hidden === true) {
-    context.addIssue({ code: 'custom', path: ['forSale'], message: 'a hidden photo cannot be for sale' });
-  }
-  if (photo.forSale === true && photo.catalog === false) {
-    context.addIssue({ code: 'custom', path: ['catalog'], message: 'a photo for sale must remain in the catalog' });
+  if (photo.deleted && !photo.removed) {
+    context.addIssue({ code: 'custom', path: ['deleted'], message: 'a photo must be removed before it is deleted' });
   }
 });
 

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { isAssetRef, isPhotoId } from '../src/lib/downloads';
+import { isPhotoId } from '../src/lib/downloads';
 
 export const CLOSED_ORDER_TTL_SECONDS = 30 * 24 * 60 * 60;
 
@@ -14,7 +14,6 @@ export interface Order {
   closeReason?: CloseReason;
   livemode: boolean;
   photoId: string;
-  assetRef: string;
   stripeSessionId?: string;
   stripePaymentIntentId?: string;
   stripeChargeId?: string;
@@ -42,7 +41,6 @@ export interface Order {
 export interface PendingOrderInput {
   livemode: boolean;
   photoId: string;
-  assetRef: string;
   expectedAmount: number;
   albumTitle: string;
   label: string;
@@ -106,7 +104,6 @@ export function createPendingOrder(
 ): Order {
   if (!isOrderId(orderId)) throw new InvalidOrder('Order ID is malformed');
   if (!isPhotoId(input.photoId)) throw new InvalidOrder('Photo ID is malformed');
-  if (!isAssetRef(input.assetRef)) throw new InvalidOrder('Asset reference is malformed');
   if (!Number.isInteger(input.expectedAmount) || input.expectedAmount <= 0) {
     throw new InvalidOrder('Expected amount must be a positive integer');
   }
@@ -118,7 +115,6 @@ export function createPendingOrder(
     state: 'pending',
     livemode: input.livemode,
     photoId: input.photoId,
-    assetRef: input.assetRef,
     expectedAmount: input.expectedAmount,
     albumTitle: input.albumTitle,
     label: input.label,

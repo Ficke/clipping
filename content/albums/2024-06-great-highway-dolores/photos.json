@@ -4,6 +4,7 @@
   "album": "2024-06-great-highway-dolores",
   "photos": [
     {
+      "photoId": "photo_20d185bcb3e919bf12d606c2",
       "file": "01-DSCF0865.jpg",
       "sourceHash": "20d185bcb3e919bf12d606c2159cc59c923a469b78979697ff0dfeb7ce0c2159",
       "width": 2500,
@@ -90,6 +91,7 @@
       }
     },
     {
+      "photoId": "photo_d70c8ef78789f75db7446f08",
       "file": "02-DSCF0888.jpg",
       "sourceHash": "d70c8ef78789f75db7446f08d19400e6b86c19b93fa1d8683a8ca8be26b90a25",
       "width": 2000,
@@ -176,6 +178,7 @@
       }
     },
     {
+      "photoId": "photo_ccab672fca5a1a7589143efb",
       "file": "03-DSCF0867.jpg",
       "sourceHash": "ccab672fca5a1a7589143efbe489bbbc8f6cdf0d9f79397a298bac36414fa9c8",
       "width": 2500,

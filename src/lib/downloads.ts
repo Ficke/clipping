@@ -63,42 +63,59 @@ export function formatPrice(cents: number): string {
   return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`;
 }
 
-const SOURCE_HASH = /^[a-f0-9]{64}$/;
 const PHOTO_ID = /^photo_[a-f0-9]{24}$/;
-const ASSET_REF = /^[a-f0-9]{64}\.(?:jpg|jpeg|png|webp|avif)$/;
+const PHOTO_ID_BYTES = 12;
 
-/** Opaque, stable identity for the exact published image bytes (96 hash bits). */
-export function photoIdFor(sourceHash: string): string {
-  if (!SOURCE_HASH.test(sourceHash)) throw new Error('Cannot build a photo ID from an invalid source hash');
-  return `photo_${sourceHash.slice(0, 24)}`;
+export const SUPPORTED_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'avif'] as const;
+
+/**
+ * Opaque, permanent identity for one photograph, minted once and written to
+ * album frontmatter. Deliberately *not* derived from the bytes: re-exporting a
+ * photograph at a higher resolution has to keep every issued download link
+ * pointed at the same photograph.
+ */
+export function generatePhotoId(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(PHOTO_ID_BYTES));
+  return `photo_${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
 export function isPhotoId(value: string): boolean {
   return PHOTO_ID.test(value);
 }
 
-/** Stable identity for the exact sanitized fulfillment bytes and their format. */
-export function assetRefFor(sourceHash: string, file: string): string {
-  if (!SOURCE_HASH.test(sourceHash)) throw new Error('Cannot build an asset reference from an invalid source hash');
+/** The one full-resolution master. Overwritten in place when a photo is re-exported. */
+export function masterKey(photoId: string): string {
+  if (!isPhotoId(photoId)) throw new Error('Cannot build a master key from an invalid photo ID');
+  return `photos/${photoId}`;
+}
+
+/**
+ * Full capture metadata, including GPS. A separate prefix from the masters so
+ * the buyer Lambda's `photos/*` grant cannot reach it.
+ */
+export function metadataKey(photoId: string): string {
+  if (!isPhotoId(photoId)) throw new Error('Cannot build a metadata key from an invalid photo ID');
+  return `metadata/${photoId}.json`;
+}
+
+export function normalizeExtension(file: string): string {
   const extension = file.match(/\.([^.]+)$/)?.[1]?.toLowerCase();
-  if (!extension || !['jpg', 'jpeg', 'png', 'webp', 'avif'].includes(extension)) {
-    throw new Error('Cannot build an asset reference from an unsupported file extension');
+  if (!extension || !(SUPPORTED_FORMATS as readonly string[]).includes(extension)) {
+    throw new Error('Unsupported file extension');
   }
-  return `${sourceHash}.${extension}`;
+  return extension;
 }
 
-export function isAssetRef(value: string): boolean {
-  return ASSET_REF.test(value);
+export function contentTypeFor(extension: string): string {
+  return extension === 'jpg' || extension === 'jpeg' ? 'image/jpeg' : `image/${extension}`;
 }
 
-export function fulfillmentKey(assetRef: string): string {
-  if (!isAssetRef(assetRef)) throw new Error('Cannot build a fulfillment key from an invalid asset reference');
-  return `fulfillment/${assetRef}`;
-}
-
-/** Mirrors the layout `photos:push` writes; change one and change the other. */
-export function originalKey({ storyId, file }: { storyId: string; file: string }): string {
-  return `albums/${storyId}/${file}`;
+/**
+ * Stored as `Content-Disposition` on the master at upload time, because the key
+ * carries no extension for the download Lambda to derive one from.
+ */
+export function downloadFilename(photoId: string, extension: string): string {
+  return `adam-ficke-${photoId}.${extension}`;
 }
 
 /**
@@ -109,19 +126,17 @@ export function slugForStoryId(storyId: string): string {
   return storyId.replace(/^\d{4}-\d{2}-/, '');
 }
 
+/** Only photographs actually on sale are published, so presence is the offer. */
 export interface CatalogItem {
   photoId: string;
-  /** Additive in catalog v2 during the durable-commerce deployment bridge. */
-  assetRef?: string;
   storyId: string;
   file: string;
-  forSale: boolean;
   albumTitle: string;
   /** Human label for this photo within the album. */
   label: string;
   /** Public derivative used to confirm visually what the buyer purchased. */
   previewSrc: string;
-  priceCents?: number;
+  priceCents: number;
   width: number;
   height: number;
 }
@@ -132,7 +147,7 @@ export interface CatalogItem {
  * makes putting an album on sale a content deploy instead of a Lambda deploy.
  */
 export interface DownloadCatalog {
-  version: 2;
+  version: 3;
   generated: string;
   items: CatalogItem[];
 }
