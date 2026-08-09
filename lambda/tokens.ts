@@ -1,6 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { isPhotoId } from '../src/lib/downloads';
-import { isOrderId } from './orders';
+import { isOrderId, isPhotoId } from '../shared/ids';
 
 /**
  * Download entitlements, as self-contained signed tokens.

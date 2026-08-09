@@ -1,9 +1,9 @@
-import { randomBytes } from 'node:crypto';
 import { isPhotoId } from '../src/lib/downloads';
+import { generateOrderId, isOrderId } from '../shared/ids';
+
+export { generateOrderId, isOrderId } from '../shared/ids';
 
 export const CLOSED_ORDER_TTL_SECONDS = 30 * 24 * 60 * 60;
-
-const ORDER_ID = /^ord_[a-f0-9]{32}$/;
 
 export type OrderState = 'pending' | 'entitled' | 'closed' | 'revoked';
 export type CloseReason = 'expired' | 'failed';
@@ -88,14 +88,6 @@ export class InvalidOrderTransition extends Error {
 }
 
 export class RestorationNotAllowed extends Error {}
-
-export function generateOrderId(random = randomBytes): string {
-  return `ord_${random(16).toString('hex')}`;
-}
-
-export function isOrderId(value: string): boolean {
-  return ORDER_ID.test(value);
-}
 
 export function createPendingOrder(
   input: PendingOrderInput,

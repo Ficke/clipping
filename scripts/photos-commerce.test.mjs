@@ -10,6 +10,26 @@ const temporaryAlbums = [];
 const PHOTO_ID = 'photo_aaaaaaaaaaaaaaaaaaaaaaaa';
 const OTHER_ID = 'photo_bbbbbbbbbbbbbbbbbbbbbbbb';
 
+function manifestPhoto(photoId, file, sourceHash) {
+  const variant = {
+    width: 640,
+    height: 427,
+    src: `/media/photo-v1/${sourceHash.slice(0, 2)}/${sourceHash}/responsive-640-q80.webp`,
+  };
+  return {
+    photoId,
+    file,
+    sourceHash,
+    width: 640,
+    height: 427,
+    variants: {
+      responsive: { avif: [variant], webp: [variant], jpeg: [variant] },
+      lightbox: variant,
+      social: variant,
+    },
+  };
+}
+
 afterEach(() => {
   for (const album of temporaryAlbums.splice(0)) rmSync(album, { recursive: true, force: true });
 });
@@ -37,12 +57,12 @@ function fixture() {
     '',
   ].join('\n'));
   writeFileSync(path.join(album, 'photos.json'), JSON.stringify({
-    version: 1,
+    version: 2,
     profile: 'photo-v1',
     album: name,
     photos: [
-      { photoId: PHOTO_ID, file: 'photo.jpg', sourceHash: 'a'.repeat(64) },
-      { photoId: OTHER_ID, file: 'other.jpg', sourceHash: 'b'.repeat(64) },
+      manifestPhoto(PHOTO_ID, 'photo.jpg', 'a'.repeat(64)),
+      manifestPhoto(OTHER_ID, 'other.jpg', 'b'.repeat(64)),
     ],
   }));
   return { name, index };

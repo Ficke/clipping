@@ -24,7 +24,7 @@
     "photos:delete": "bun scripts/photos-delete.mjs",
     "photos:sales": "bun scripts/photos-sales.mjs",
     "photos:store": "bun scripts/photos-store.mjs",
-    "photos:gc": "bun scripts/photos-gc.mjs",
+    "photos:gc": "bun scripts/photos-gc.ts",
     "photos:build-media": "bun scripts/photos-build-media.mjs",
     "photos:build-media:local": "bun scripts/photos-media-dev.mjs",
     "photos:pull": "bun scripts/photos-pull.mjs",
@@ -44,10 +44,12 @@
     "exifr": "^7.1.3",
     "exiftool-vendored": "37.0.0",
     "sharp": "^0.35.3",
-    "stripe": "22.4.0"
+    "stripe": "22.4.0",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",
-    "playwright-core": "^1.61.1"
+    "playwright-core": "^1.61.1",
+    "typescript": "6.0.2"
   }
 }

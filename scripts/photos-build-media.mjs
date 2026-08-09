@@ -4,12 +4,17 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import sharp from 'sharp';
 import {
+  parseMetadataSidecar,
+  parsePhotoManifest,
+  parseSourceManifest,
+} from '../shared/media.ts';
+import {
   derivativeDefinitions,
   derivativeKey,
   derivativeUrl,
   photoProfile,
   scaledHeight,
-} from './photo-profile.mjs';
+} from './photo-profile.ts';
 
 const supportedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
 const filenameCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
@@ -114,12 +119,12 @@ for (const file of files) {
   console.log(`${file}: ${definitions.length} variants (${generatedCount} generated total)`);
 }
 
-const manifest = {
+const manifest = parsePhotoManifest({
   version: 2,
   profile: photoProfile.version,
   album,
   photos,
-};
+}, 'generated photo manifest');
 writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
 if (!noUpload) {
@@ -143,7 +148,10 @@ console.log(`Variants: ${generatedCount} generated, ${reusedCount} reused`);
 function loadPreviousManifest(input) {
   if (input) {
     try {
-      return JSON.parse(readFileSync(path.resolve(input), 'utf8'));
+      return parsePhotoManifest(
+        JSON.parse(readFileSync(path.resolve(input), 'utf8')),
+        path.resolve(input),
+      );
     } catch (error) {
       fail(`Could not read the previous photo manifest: ${error.message}`);
     }
@@ -166,7 +174,7 @@ function loadPreviousManifest(input) {
   const previousContents = readFileSync(previousPath, 'utf8');
   rmSync(previousPath, { force: true });
   try {
-    previous = JSON.parse(previousContents);
+    previous = parsePhotoManifest(JSON.parse(previousContents), previousPath);
   } catch (error) {
     fail(`Could not read the previous photo manifest: ${error.message}`);
   }
@@ -221,12 +229,9 @@ function loadSourceManifest(input) {
   if (!existsSync(manifestPath)) fail(`Source manifest does not exist: ${manifestPath}`);
   let parsed;
   try {
-    parsed = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    parsed = parseSourceManifest(JSON.parse(readFileSync(manifestPath, 'utf8')), manifestPath);
   } catch (error) {
     fail(`Could not read source manifest: ${error.message}`);
-  }
-  if (parsed.version !== 1 || !Array.isArray(parsed.photos)) {
-    fail(`Source manifest must be a version 1 photo list: ${manifestPath}`);
   }
   return new Map(parsed.photos.map((photo) => [photo.file, photo.photoId]));
 }
@@ -242,7 +247,7 @@ function readSidecarShot(file) {
   const sidecar = path.join(path.resolve(sidecarDirectory), `${file}.json`);
   if (!existsSync(sidecar)) return undefined;
   try {
-    return JSON.parse(readFileSync(sidecar, 'utf8')).shot;
+    return parseMetadataSidecar(JSON.parse(readFileSync(sidecar, 'utf8')), sidecar).shot;
   } catch (error) {
     fail(`Could not read metadata sidecar for ${file}: ${error.message}`);
   }

@@ -14,7 +14,7 @@ import {
   parameterNames,
   parseRestoreArgs,
   tableForMode,
-} from './commerce-operator.mjs';
+} from './commerce-operator.ts';
 
 const { orderId, actor, reason, mode } = input(() => parseRestoreArgs(process.argv.slice(2)));
 const tableName = input(() => tableForMode(mode));

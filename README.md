@@ -98,6 +98,8 @@ this README:
 
 - `src/` contains the Astro site and browser code. The output is static HTML,
   CSS, and JavaScript.
+- `shared/` contains runtime-neutral TypeScript primitives used by the site,
+  Lambdas, and operator commands.
 - `lambda/` contains the Buyer, Webhook, and origin Authorizer Lambdas. DynamoDB
   stores durable order state; signed download tokens redeem against private S3
   masters.
@@ -106,6 +108,9 @@ this README:
   `photos.json` manifests. Full-resolution images are ignored by Git.
 - `infra/` contains Terraform for S3, CloudFront, Route 53, CodeBuild, Lambda,
   API Gateway, DynamoDB, logging, and alarms.
+
+The source-language and dependency rules are documented in
+[Code architecture](docs/code-architecture.md).
 
 Photo media and site publishing are separate pipelines. A media build reads
 private masters and creates immutable, content-addressed derivatives. The fast

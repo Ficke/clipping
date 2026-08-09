@@ -14,7 +14,8 @@ import {
   splitFrontmatter,
 } from './photo-frontmatter.mjs';
 import { ensureMaster, putSidecar, sha256Hex } from './photo-master.mjs';
-import { generatePhotoId } from '../src/lib/downloads.ts';
+import { generatePhotoId } from '../shared/ids.ts';
+import { parseSourceManifest } from '../shared/media.ts';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const albumsRoot = path.join(repoRoot, 'content', 'albums');
@@ -170,7 +171,8 @@ async function confirmReplacement(file, photoId, stagedFile) {
 function writeSourceManifest(album, photoIds) {
   const manifestPath = path.join(stagingRoot, `${album}-source.json`);
   const photos = [...photoIds].map(([file, photoId]) => ({ photoId, file }));
-  writeFileSync(manifestPath, `${JSON.stringify({ version: 1, album, photos }, null, 2)}\n`);
+  const manifest = parseSourceManifest({ version: 1, album, photos }, 'generated source manifest');
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   return manifestPath;
 }
 

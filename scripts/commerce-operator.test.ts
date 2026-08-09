@@ -6,7 +6,7 @@ import {
   parseReconcileArgs,
   parseRestoreArgs,
   tableForMode,
-} from './commerce-operator.mjs';
+} from './commerce-operator';
 
 const ORDER_ID = `ord_${'1'.repeat(32)}`;
 

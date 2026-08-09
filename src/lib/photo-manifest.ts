@@ -1,51 +1,11 @@
-export interface PhotoVariant {
-  width: number;
-  height: number;
-  src: string;
-}
+import type { PhotoManifestEntry, PhotoVariant, ShotMetadata } from '../../shared/media';
 
-/**
- * Keep capture metadata as fields so the site can format or filter each value
- * independently.
- */
-export interface ShotMetadata {
-  camera?: string;
-  lens?: string;
-  /** Millimeters. */
-  focalLength?: number;
-  /** The f-number itself, so `2` means f/2. */
-  aperture?: number;
-  /** Exposure time in seconds. */
-  shutter?: number;
-  iso?: number;
-  /** Capture date as YYYY-MM-DD, in the camera's own wall clock. */
-  capturedAt?: string;
-}
-
-export interface PhotoManifestEntry {
-  photoId: string;
-  file: string;
-  sourceHash: string;
-  width: number;
-  height: number;
-  shot?: ShotMetadata;
-  variants: {
-    responsive: {
-      avif: PhotoVariant[];
-      webp: PhotoVariant[];
-      jpeg: PhotoVariant[];
-    };
-    lightbox: PhotoVariant;
-    social: PhotoVariant;
-  };
-}
-
-export interface PhotoManifest {
-  version: 2;
-  profile: string;
-  album: string;
-  photos: PhotoManifestEntry[];
-}
+export type {
+  PhotoManifest,
+  PhotoManifestEntry,
+  PhotoVariant,
+  ShotMetadata,
+} from '../../shared/media';
 
 export function srcset(variants: PhotoVariant[]): string {
   return variants.map((variant) => `${variant.src} ${variant.width}w`).join(', ');

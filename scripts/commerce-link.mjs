@@ -13,7 +13,7 @@ import {
   parameterNames,
   parseLinkArgs,
   tableForMode,
-} from './commerce-operator.mjs';
+} from './commerce-operator.ts';
 
 const { sessionId, mode } = input(() => parseLinkArgs(process.argv.slice(2)));
 const tableName = input(() => tableForMode(mode));

@@ -4,7 +4,7 @@ import {
   derivativeKey,
   photoProfile,
   scaledHeight,
-} from './photo-profile.mjs';
+} from './photo-profile';
 
 describe('photo profile', () => {
   test('defines stable responsive, lightbox, and social variants', () => {
@@ -30,14 +30,16 @@ describe('photo profile', () => {
   });
 
   test('uses immutable content-addressed keys', () => {
-    const definition = derivativeDefinitions(6000)[0];
+    const definition = derivativeDefinitions(6000)[0]!;
     const hash = 'ab'.repeat(32);
     expect(derivativeKey(hash, definition)).toBe(
       `media/${photoProfile.version}/ab/${hash}/responsive-640-q60.avif`,
     );
+    expect(() => derivativeKey('short', definition)).toThrow(/invalid source hash/);
   });
 
-  test('preserves aspect ratio', () => {
+  test('preserves aspect ratio and rejects invalid dimensions', () => {
     expect(scaledHeight(6000, 4000, 1200)).toBe(800);
+    expect(() => scaledHeight(0, 4000, 1200)).toThrow(/positive integers/);
   });
 });

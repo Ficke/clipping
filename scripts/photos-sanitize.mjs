@@ -3,6 +3,7 @@
 import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { exiftool } from 'exiftool-vendored';
+import { parseMetadataSidecar, parseSourceManifest } from '../shared/media.ts';
 import { archiveMetadata, fulfillmentMetadataRetain, shotMetadata } from './photo-metadata.mjs';
 
 const supportedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
@@ -32,9 +33,13 @@ try {
     // Read the archive record from the source, before anything is stripped.
     const archive = await archiveMetadata(exiftool, source);
     const shot = await shotMetadata(source);
+    const sidecar = parseMetadataSidecar(
+      { version: 1, photoId: photoIds.get(file), file, shot, archive },
+      `generated metadata sidecar for ${file}`,
+    );
     writeFileSync(
       path.join(metadataDirectory, `${file}.json`),
-      `${JSON.stringify({ version: 1, photoId: photoIds.get(file), file, shot, archive }, null, 2)}\n`,
+      `${JSON.stringify(sidecar, null, 2)}\n`,
     );
 
     copyFileSync(source, destination);
@@ -71,7 +76,8 @@ function toCamel(value) {
 }
 
 function loadPhotoIds(input) {
-  const manifest = JSON.parse(readFileSync(path.resolve(input), 'utf8'));
+  const manifestPath = path.resolve(input);
+  const manifest = parseSourceManifest(JSON.parse(readFileSync(manifestPath, 'utf8')), manifestPath);
   return new Map(manifest.photos.map((photo) => [photo.file, photo.photoId]));
 }
 

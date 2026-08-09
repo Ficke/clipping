@@ -12,7 +12,7 @@ import {
   resolveDevTable,
   TemporaryTableLifecycle,
   validateDevSecrets,
-} from './commerce-dev-support.mjs';
+} from './commerce-dev-support.ts';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.COMMERCE_PORT ?? process.env.PORT ?? 8787);

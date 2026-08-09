@@ -9,6 +9,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { parseSourceManifest } from '../shared/media.ts';
 import { masterKey, metadataKey } from '../src/lib/downloads.ts';
 
 const args = parseArgs(process.argv.slice(2));
@@ -25,10 +26,10 @@ mkdirSync(sourceDirectory, { recursive: true });
 mkdirSync(metadataDirectory, { recursive: true });
 
 aws(['s3', 'cp', `s3://${bucket}/manifests/${album}/source.json`, manifestPath, '--only-show-errors']);
-const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-if (manifest.version !== 1 || !Array.isArray(manifest.photos)) {
-  fail(`s3://${bucket}/manifests/${album}/source.json is not a version 1 photo list`);
-}
+const manifest = parseSourceManifest(
+  JSON.parse(readFileSync(manifestPath, 'utf8')),
+  `s3://${bucket}/manifests/${album}/source.json`,
+);
 
 for (const { photoId, file } of manifest.photos) {
   aws(['s3', 'cp', `s3://${bucket}/${masterKey(photoId)}`, path.join(sourceDirectory, file), '--only-show-errors']);

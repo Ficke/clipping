@@ -1,10 +1,11 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
+import { parsePhotoManifest } from '../../shared/media';
 import { slugForStoryId } from './downloads';
 import type { PhotoManifest, PhotoManifestEntry } from './photo-manifest';
 
 export type Album = CollectionEntry<'albums'>;
 
-const manifests = import.meta.glob<PhotoManifest>(
+const manifestInputs = import.meta.glob<unknown>(
   '/content/albums/*/photos.json',
   { eager: true, import: 'default' }
 );
@@ -15,7 +16,8 @@ const manifests = import.meta.glob<PhotoManifest>(
  * part of an album's identity.
  */
 const manifestsByStoryId = new Map<string, PhotoManifest>();
-for (const [file, manifest] of Object.entries(manifests)) {
+for (const [file, input] of Object.entries(manifestInputs)) {
+  const manifest = parsePhotoManifest(input, file);
   const existing = manifestsByStoryId.get(manifest.album);
   if (existing) throw new Error(`Two manifests claim storyId ${manifest.album}: ${file}`);
   manifestsByStoryId.set(manifest.album, manifest);

@@ -12,7 +12,7 @@ declare global {
  * `bun run preview` cannot write localhost traffic into the real property.
  *
  * The host is read from the canonical link rather than hardcoded, because
- * that link is emitted from `site` in astro.config.mjs -- a future domain
+ * that link is emitted from `site` in astro.config.ts -- a future domain
  * change follows automatically instead of silently killing analytics against
  * a stale constant. `?ga-debug` opts a non-production host back in, which is
  * how the preview-check harness verifies the tag.

@@ -4,6 +4,10 @@
  * `albums.ts`; anything needing a secret belongs in the Lambda.
  */
 
+import { isPhotoId } from '../../shared/ids';
+
+export { generatePhotoId, isPhotoId, type PhotoId } from '../../shared/ids';
+
 export const CURRENCY = 'usd';
 
 export interface LicenseTier {
@@ -64,25 +68,7 @@ export function formatPrice(cents: number): string {
   return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`;
 }
 
-const PHOTO_ID = /^photo_[a-f0-9]{24}$/;
-const PHOTO_ID_BYTES = 12;
-
 export const SUPPORTED_FORMATS = ['jpg', 'jpeg', 'png', 'webp', 'avif'] as const;
-
-/**
- * Opaque, permanent identity for one photograph, minted once and written to
- * album frontmatter. Deliberately *not* derived from the bytes: re-exporting a
- * photograph at a higher resolution has to keep every issued download link
- * pointed at the same photograph.
- */
-export function generatePhotoId(): string {
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(PHOTO_ID_BYTES));
-  return `photo_${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
-}
-
-export function isPhotoId(value: string): boolean {
-  return PHOTO_ID.test(value);
-}
 
 /** Return the stable master key that a re-export overwrites in place. */
 export function masterKey(photoId: string): string {

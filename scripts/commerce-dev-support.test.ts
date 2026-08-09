@@ -3,7 +3,7 @@ import {
   resolveDevTable,
   TemporaryTableLifecycle,
   validateDevSecrets,
-} from './commerce-dev-support.mjs';
+} from './commerce-dev-support';
 
 describe('local commerce environment', () => {
   test('generates a collision-resistant owned table or accepts an explicit sandbox table', () => {
@@ -23,7 +23,7 @@ describe('local commerce environment', () => {
   });
 
   test('creates, waits for, and deletes its table exactly once', async () => {
-    const calls = [];
+    const calls: string[] = [];
     const table = new TemporaryTableLifecycle({
       tableName: 'temporary',
       create: async (name) => { calls.push(`create:${name}`); },
@@ -36,7 +36,7 @@ describe('local commerce environment', () => {
   });
 
   test('attempts cleanup when readiness fails after creation', async () => {
-    const calls = [];
+    const calls: string[] = [];
     const table = new TemporaryTableLifecycle({
       tableName: 'temporary',
       create: async () => { calls.push('create'); },
@@ -48,7 +48,7 @@ describe('local commerce environment', () => {
   });
 
   test('attempts cleanup when table creation has an uncertain result', async () => {
-    const calls = [];
+    const calls: string[] = [];
     const table = new TemporaryTableLifecycle({
       tableName: 'temporary',
       create: async () => { calls.push('create'); throw new Error('response lost'); },

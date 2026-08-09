@@ -13,7 +13,7 @@ import {
   parameterNames,
   parseReconcileArgs,
   tableForMode,
-} from './commerce-operator.mjs';
+} from './commerce-operator.ts';
 
 const { mode, orderId, dryRun } = input(() => parseReconcileArgs(process.argv.slice(2)));
 const tableName = input(() => tableForMode(mode));
