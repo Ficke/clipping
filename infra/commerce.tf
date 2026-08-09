@@ -1,6 +1,6 @@
 # Stripe commerce infrastructure: durable orders, isolated request-path
 # functions, and an origin-authorized REST API behind the existing CloudFront
-# distribution. The previously deployed HTTP API remains as a rollback rail.
+# distribution.
 
 # Proof that a request arrived through CloudFront rather than straight at
 # execute-api. The gateway authorizer rejects before Buyer is ever invoked,
@@ -386,140 +386,6 @@ resource "aws_lambda_function" "commerce_authorizer" {
   depends_on = [aws_cloudwatch_log_group.commerce_authorizer]
 }
 
-# ---------- Deployed HTTP API rollback rail ----------
-
-resource "aws_apigatewayv2_api" "commerce" {
-  name                         = "${var.name}-commerce"
-  protocol_type                = "HTTP"
-  disable_execute_api_endpoint = var.commerce_http_api_dormant
-  tags                         = local.tags
-
-  lifecycle {
-    precondition {
-      condition     = !var.commerce_http_api_dormant || var.commerce_rest_cutover_enabled
-      error_message = "The HTTP API may become dormant only after CloudFront is configured for the REST API."
-    }
-  }
-}
-
-resource "aws_apigatewayv2_integration" "commerce_buyer" {
-  api_id                 = aws_apigatewayv2_api.commerce.id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.commerce_buyer.invoke_arn
-  integration_method     = "POST"
-  payload_format_version = "2.0"
-  timeout_milliseconds   = 15000
-}
-
-resource "aws_apigatewayv2_integration" "commerce_webhook" {
-  api_id                 = aws_apigatewayv2_api.commerce.id
-  integration_type       = "AWS_PROXY"
-  integration_uri        = aws_lambda_function.commerce_webhook.invoke_arn
-  integration_method     = "POST"
-  payload_format_version = "2.0"
-  timeout_milliseconds   = 15000
-}
-
-locals {
-  commerce_buyer_routes = {
-    checkout_post = "POST /api/checkout"
-    fulfill       = "GET /api/fulfill"
-    download      = "GET /api/download"
-  }
-}
-
-resource "aws_apigatewayv2_route" "commerce_buyer" {
-  for_each = local.commerce_buyer_routes
-
-  api_id    = aws_apigatewayv2_api.commerce.id
-  route_key = each.value
-  target    = "integrations/${aws_apigatewayv2_integration.commerce_buyer.id}"
-}
-
-resource "aws_apigatewayv2_route" "commerce_webhook" {
-  api_id    = aws_apigatewayv2_api.commerce.id
-  route_key = "POST /api/stripe-webhook"
-  target    = "integrations/${aws_apigatewayv2_integration.commerce_webhook.id}"
-}
-
-resource "aws_cloudwatch_log_group" "commerce_api" {
-  name              = "/aws/apigateway/${var.name}-commerce"
-  retention_in_days = 30
-  tags              = local.tags
-}
-
-resource "aws_apigatewayv2_stage" "commerce" {
-  api_id      = aws_apigatewayv2_api.commerce.id
-  name        = "$default"
-  auto_deploy = true
-  tags        = local.tags
-
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.commerce_api.arn
-    format = jsonencode({
-      requestId         = "$context.requestId"
-      routeKey          = "$context.routeKey"
-      status            = "$context.status"
-      integrationStatus = "$context.integration.status"
-      latency           = "$context.responseLatency"
-      responseSize      = "$context.responseLength"
-    })
-  }
-
-  route_settings {
-    route_key              = "POST /api/checkout"
-    throttling_rate_limit  = 2
-    throttling_burst_limit = 5
-  }
-
-  route_settings {
-    route_key              = "GET /api/checkout"
-    throttling_rate_limit  = 2
-    throttling_burst_limit = 5
-  }
-
-  route_settings {
-    route_key              = "POST /api/stripe-webhook"
-    throttling_rate_limit  = 10
-    throttling_burst_limit = 20
-  }
-
-  route_settings {
-    route_key              = "GET /api/fulfill"
-    throttling_rate_limit  = 5
-    throttling_burst_limit = 10
-  }
-
-  route_settings {
-    route_key              = "GET /api/download"
-    throttling_rate_limit  = 10
-    throttling_burst_limit = 20
-  }
-
-  depends_on = [
-    aws_apigatewayv2_route.commerce_buyer,
-    aws_apigatewayv2_route.commerce_webhook,
-  ]
-}
-
-resource "aws_lambda_permission" "commerce_buyer_api" {
-  for_each = local.commerce_buyer_routes
-
-  statement_id  = "AllowCommerceHttpApi-${each.key}"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.commerce_buyer.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.commerce.execution_arn}/*/${split(" ", each.value)[0]}${split(" ", each.value)[1]}"
-}
-
-resource "aws_lambda_permission" "commerce_webhook_api" {
-  statement_id  = "AllowCommerceHttpApi"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.commerce_webhook.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_apigatewayv2_api.commerce.execution_arn}/*/POST/api/stripe-webhook"
-}
-
 # ---------- Origin-authorized REST API ----------
 
 resource "aws_api_gateway_rest_api" "commerce_rest" {
@@ -852,27 +718,6 @@ locals {
   }
 }
 
-resource "aws_cloudwatch_metric_alarm" "commerce_api_5xx" {
-  alarm_name        = "${var.name}-commerce-api-5xx"
-  alarm_description = "The commerce HTTP API returned a server error."
-  namespace         = "AWS/ApiGateway"
-  metric_name       = "5xx"
-  dimensions = {
-    ApiId = aws_apigatewayv2_api.commerce.id
-    Stage = aws_apigatewayv2_stage.commerce.name
-  }
-
-  statistic           = "Sum"
-  period              = 300
-  evaluation_periods  = 1
-  threshold           = 0
-  comparison_operator = "GreaterThanThreshold"
-  treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_sns_topic.commerce_alarms.arn]
-  ok_actions          = [aws_sns_topic.commerce_alarms.arn]
-  tags                = local.tags
-}
-
 resource "aws_cloudwatch_metric_alarm" "commerce_rest_api_5xx" {
   alarm_name        = "${var.name}-commerce-rest-api-5xx"
   alarm_description = "The origin-authorized commerce REST API returned a server error."
@@ -931,10 +776,6 @@ output "commerce_test_secret_param" {
 
 output "commerce_orders_table" {
   value = aws_dynamodb_table.commerce_orders.name
-}
-
-output "commerce_api_endpoint" {
-  value = aws_apigatewayv2_api.commerce.api_endpoint
 }
 
 output "commerce_rest_api_endpoint" {

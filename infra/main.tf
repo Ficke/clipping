@@ -270,13 +270,10 @@ resource "aws_cloudfront_distribution" "site" {
     origin_access_control_id = aws_cloudfront_origin_access_control.site.id
   }
 
-  # First apply the REST API additively with this origin still targeting the
-  # deployed HTTP API. After direct ingress verification, a separate exact-plan
-  # gate flips this origin to REST. Both APIs remain managed as rollback rails.
   origin {
     origin_id   = "commerce"
-    domain_name = var.commerce_rest_cutover_enabled ? "${aws_api_gateway_rest_api.commerce_rest.id}.execute-api.us-east-1.amazonaws.com" : replace(aws_apigatewayv2_api.commerce.api_endpoint, "https://", "")
-    origin_path = var.commerce_rest_cutover_enabled ? "/${aws_api_gateway_stage.commerce_rest.stage_name}" : null
+    domain_name = "${aws_api_gateway_rest_api.commerce_rest.id}.execute-api.us-east-1.amazonaws.com"
+    origin_path = "/${aws_api_gateway_stage.commerce_rest.stage_name}"
 
     custom_origin_config {
       origin_protocol_policy = "https-only"
