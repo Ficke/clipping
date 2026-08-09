@@ -2,14 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
-/**
- * Temporary migration allowlist. Every conversion should remove an entry;
- * adding a new authored JavaScript file must fail CI.
- */
-const LEGACY_JAVASCRIPT = [] as const;
-
 describe('source language policy', () => {
-  test('authored JavaScript is limited to the shrinking migration allowlist', () => {
+  test('authored executable code contains no JavaScript', () => {
     const repoRoot = path.resolve(import.meta.dir, '..');
     const result = Bun.spawnSync(['git', 'ls-files', '*.js', '*.mjs', '*.cjs'], {
       cwd: repoRoot,
@@ -24,6 +18,6 @@ describe('source language policy', () => {
       // Repository-assistant skills are vendored tooling, not application source.
       .filter((file) => file && !file.startsWith('.claude/') && existsSync(path.join(repoRoot, file)))
       .sort();
-    expect(tracked).toEqual([...LEGACY_JAVASCRIPT].sort());
+    expect(tracked).toEqual([]);
   });
 });

@@ -28,7 +28,10 @@ jobs:
       - name: Test
         run: bun test
 
-      - name: Typecheck
+      - name: Reject authored JavaScript
+        run: bun run check:typescript-policy
+
+      - name: Check Astro and TypeScript
         run: bun run typecheck
 
       - name: Build

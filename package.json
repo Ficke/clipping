@@ -8,7 +8,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "test": "bun test",
-    "typecheck": "astro sync && tsc --noEmit",
+    "typecheck": "astro check && tsc --noEmit",
+    "check:typescript-policy": "bun test scripts/typescript-policy.test.ts",
     "preview": "astro preview",
     "lambda:build": "bun run lambda:build:buyer && bun run lambda:build:webhook && bun run lambda:build:authorizer",
     "lambda:build:buyer": "bun build lambda/index.ts --target=node --outfile=dist-lambda/buyer/index.mjs --minify",
@@ -48,6 +49,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.10",
     "@types/bun": "^1.3.14",
     "playwright-core": "^1.61.1",
     "typescript": "6.0.2"

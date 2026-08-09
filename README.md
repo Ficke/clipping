@@ -28,6 +28,8 @@ bun run typecheck
 bun run build
 ```
 
+`typecheck` runs both Astro's template/content checker and strict TypeScript.
+
 ## Publishing an album
 
 1. Put exported images in a new directory under `content/albums/`. A
