@@ -446,8 +446,9 @@ creation bursts. Reserved-concurrency throttles are intentional backpressure,
 and any resulting availability failure plus every DynamoDB failure that
 exhausts SDK retries already reaches the API `5xx` alarm. At this volume the
 duplicate alarms would cost more than the rest of the request path and tell you
-less than the API alarm and reconciliation do. Seven standard-resolution
-commerce alarms remain.
+less than the API alarm and reconciliation do. Five standard-resolution alarms
+remain: the REST stage's `5xx`, Lambda errors for Buyer, Webhook and Authorizer,
+and Webhook throttles.
 
 ### Recovery
 
