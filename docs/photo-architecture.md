@@ -12,7 +12,8 @@ That single decision determines most of what follows. Astro's own image
 pipeline — `astro:assets`, `<Picture />`, `getImage()` — resolves and transforms
 sources at site-build time. The site build never has them. So derivative
 generation has to happen somewhere that does, which is why there are two build
-jobs instead of one, and why a generated manifest sits between them.
+jobs instead of one, and why a generated file listing the results has to sit
+between them.
 
 Everything else here is either a consequence of that, or a consequence of
 selling some of the photographs.
@@ -25,12 +26,58 @@ Four layers, each with one job. Nothing is authoritative in two places.
 | --- | --- | --- |
 | **Content**, authored | `content/albums/<dir>/index.md` | album fields; ordered membership with `photoId`, `file`, `caption`, `alt`, `price`, `removed`/`deleted` |
 | **Build contract**, generated | `content/albums/<dir>/photos.json` | `sourceHash`, dimensions, `shot`, variant URLs |
+| **Build inputs** | S3 `manifests/<storyId>/` | `source.json`, the photoId-to-filename list a media build reads |
 | **Bytes** | S3 `adamficke-com-originals` | `photos/<photoId>`, `metadata/<photoId>.json` |
 | **Store** | generated + runtime | `downloads-catalog.json`; DynamoDB orders |
 
-Album membership is authored; everything derived from the pixels is generated.
-The manifest is a build artifact, not content — it is never hand-edited, and its
-only reader is `src/lib/albums.ts`.
+### What `photos.json` is
+
+Each album has one, and it is the list of image files that were generated for
+that album, written down so the site build can emit `<img>` tags without ever
+seeing an image.
+
+Building an `<img srcset>` requires knowing which sizes exist, what their URLs
+are, and how wide each one is. Normally you learn that by handing Astro the
+source file. Here the source file is in S3 and the site build never downloads
+it, so the media build writes down what it produced and the site build reads
+that list. One photograph's entry:
+
+```jsonc
+{
+  "photoId": "photo_1102a3b7d1e5554314cc5f91",
+  "file": "DSCF7556.jpg",
+  "sourceHash": "1102a3b7…",       // which bytes these were made from
+  "width": 7728, "height": 5152,   // of the master, for aspect ratios
+  "shot": { "camera": "X-T5", "focalLength": 70, … },
+  "variants": {                     // 14 files: 4 widths × 3 formats, + 2
+    "responsive": { "webp": [{ "width": 640, "height": 427,
+      "src": "/media/photo-v1/11/1102a3b7…/responsive-640-q80.webp" }, … ] },
+    "lightbox": { … }, "social": { … }
+  }
+}
+```
+
+Two files get called a manifest, which is worth untangling once. This one,
+`photos.json`, is the media build's *output* and is committed to git. The other,
+`manifests/<storyId>/source.json` in S3, is its *input* — the list of photo IDs
+and filenames `photos:push` writes so a media build knows which masters to fetch.
+They travel in opposite directions.
+
+### Why that makes it an artifact rather than content
+
+The test is simple: **could you regenerate this file from the photographs
+alone?**
+
+For `photos.json`, yes — delete it and re-running the media build reproduces it
+exactly. It records facts *about* the photographs that a machine measured.
+
+For `index.md`, no. Nothing can re-derive that an album is called "Olympics",
+that this photograph comes third, that its caption reads "Morning fog", or that
+it sells for $50. Those are decisions, and only a person makes them.
+
+So `index.md` is content and belongs in a content collection, which is where it
+is. `photos.json` is a build artifact and is read through `import.meta.glob` in
+`src/lib/albums.ts`, its only reader.
 
 Two values are denormalized on purpose, as provenance rather than truth: each
 master carries `x-amz-meta-album` and `x-amz-meta-file`, so a lone S3 object is
@@ -89,7 +136,7 @@ way bytes leave it is a presigned URL minted per download.
 
 `photoId` is `photo_` plus 24 random hex characters, minted once by
 `photos:push` and written to album frontmatter. It names the S3 master, joins
-frontmatter to the manifest, and is what an order records.
+frontmatter to `photos.json`, and is what an order records.
 
 It is deliberately **not** derived from the bytes. A photograph is a stable fact
 whose pixels may improve: re-exporting at a higher resolution overwrites
