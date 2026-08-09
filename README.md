@@ -126,6 +126,11 @@ More detail is available in the subsystem guides:
 - [Store design](docs/commerce.md)
 - [Store operations](docs/commerce-operations.md)
 
+When a change is merged to `main`, GitHub Actions packages that exact commit and
+sends it to CodeBuild. CodeBuild uses the `buildspec-site.yml` from the same
+commit, so the deployment steps always match the code being deployed. A local
+pre-push hook blocks direct pushes to `main`. Open a pull request instead.
+
 ## License
 
 The code is available under the [MIT License](LICENSE). The photographs are all

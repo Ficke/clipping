@@ -65,6 +65,17 @@ the contents of an existing photo, `photos:push` asks you to confirm the change.
 Past buyers will receive the new master. S3 keeps the previous version for 90
 days.
 
+## Deploying site changes
+
+The site deploys whenever a change reaches `main`. The build reads `index.md`
+and `photos.json`, publishes the static pages, and refreshes any cached pages
+that may have changed.
+
+Once the new site is available, the deployment tries to remove public images
+that are no longer used by an album. If that cleanup fails, the site remains
+deployed and CodeBuild records a warning. The next deployment tries the cleanup
+again.
+
 ## Removing a photo
 
 Removing a photo from an album is different from deleting its master. Use:

@@ -26,26 +26,33 @@ jobs:
 
       - uses: actions/checkout@v5
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: Build and deploy in AWS CodeBuild
         run: |
+          set -euo pipefail
           git archive --format=zip --output=source.zip HEAD
           aws s3 cp source.zip "s3://adamficke-com-builds/source/${GITHUB_SHA}.zip" --only-show-errors
           BUILD_ID=$(aws codebuild start-build \
             --project-name adamficke-com-site \
             --source-type-override S3 \
             --source-location-override "adamficke-com-builds/source/${GITHUB_SHA}.zip" \
+            --buildspec-override buildspec-site.yml \
             --query 'build.id' --output text)
           echo "CodeBuild: ${BUILD_ID}"
           while true; do
             STATUS=$(aws codebuild batch-get-builds --ids "${BUILD_ID}" --query 'builds[0].buildStatus' --output text)
             case "${STATUS}" in
               SUCCEEDED) break ;;
-              FAILED|FAULT|STOPPED|TIMED_OUT) exit 1 ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT)
+                aws codebuild batch-get-builds --ids "${BUILD_ID}" \
+                  --query 'builds[0].phases[?phaseStatus==`FAILED`].contexts[].message' \
+                  --output text
+                exit 1
+                ;;
             esac
             sleep 5
           done
