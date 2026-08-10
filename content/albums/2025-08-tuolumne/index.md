@@ -5,6 +5,7 @@ date: 2025-08-25
 published: 2025-08-25
 location: "Yosemite National Park"
 description: "Three days down the canyon."
+cover: photo_47b7b81d3b27fbecdc207ce9
 photos:
   - file: 01-DSCF6608.jpg
     photoId: photo_2edcbfc50d97c7a83b466cbd
