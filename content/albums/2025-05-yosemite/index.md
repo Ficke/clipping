@@ -1,5 +1,5 @@
 ---
-storyId: "2025-05-yosemite"
+storyId: "yosemite"
 title: "Yosemite"
 date: 2025-05-01
 published: 2025-05-01

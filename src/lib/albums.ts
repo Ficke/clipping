@@ -1,7 +1,6 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
 import { parsePhotoManifest } from '../../shared/media';
 import { priceCentsFromDollars } from '../../shared/album';
-import { slugForStoryId } from './downloads';
 import type { PhotoManifest, PhotoManifestEntry } from './photo-manifest';
 
 export type Album = CollectionEntry<'albums'>;
@@ -32,14 +31,6 @@ export interface AlbumPhoto {
   alt: string | undefined;
   /** A defined value offers the photo as a download. See `downloads.ts`. */
   priceCents: number | undefined;
-}
-
-/**
- * URL slug, derived from storyId rather than the folder so albums can be
- * reorganized on disk.
- */
-export function slugOf(album: Album): string {
-  return slugForStoryId(album.data.storyId);
 }
 
 /**

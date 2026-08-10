@@ -84,7 +84,9 @@ export function assertTableMode(mode: CommerceMode, tableName: string): void {
 }
 
 export function assertStripeKeyMode(key: unknown, mode: CommerceMode): string {
-  if (typeof key !== 'string' || !new RegExp(`^(?:sk|rk)_${mode}_`).test(key)) {
+  const matchesMode = typeof key === 'string'
+    && (key.startsWith(`sk_${mode}_`) || key.startsWith(`rk_${mode}_`));
+  if (!matchesMode) {
     throw new OperatorInputError(`Configured Stripe key is not ${mode} mode.`);
   }
   return key;

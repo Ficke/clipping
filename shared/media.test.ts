@@ -69,6 +69,18 @@ describe('media contracts', () => {
     expect(() => parseMetadataSidecar({ version: 2, file: 'fog.jpg' })).toThrow(/version/);
   });
 
+  test.each(['../fog.jpg', 'nested/fog.jpg', String.raw`nested\fog.jpg`, 'fog..jpg', 'fog.tiff']) (
+    'rejects unsafe or unsupported filename %s',
+    (file) => {
+      expect(() => parseSourceManifest({
+        version: 1,
+        album: 'lost-coast',
+        photos: [{ photoId: PHOTO_ID, file }],
+      })).toThrow(/basename/);
+      expect(() => parseMetadataSidecar({ version: 1, file })).toThrow(/basename/);
+    },
+  );
+
   test('accepts the legacy sidecar shape without a photo ID', () => {
     expect(parseMetadataSidecar({ version: 1, file: 'fog.jpg' })).toEqual({
       version: 1,

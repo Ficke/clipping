@@ -14,7 +14,9 @@ describe('site deployment contract', () => {
   });
 
   test('uses the Node 24 AWS credential action', () => {
-    expect(workflow).toContain('uses: aws-actions/configure-aws-credentials@v6');
+    expect(workflow).toContain(
+      'uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3',
+    );
   });
 
   test('reports media cleanup separately from site deployment', () => {

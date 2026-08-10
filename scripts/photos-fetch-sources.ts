@@ -11,6 +11,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parseSourceManifest } from '../shared/media.ts';
 import { masterKey, metadataKey } from '../src/lib/downloads.ts';
+import { resolvePhotoDestination } from './photo-path';
 
 interface FetchArgs {
   bucket?: string;
@@ -40,8 +41,9 @@ const manifest = parseSourceManifest(
 );
 
 for (const { photoId, file } of manifest.photos) {
-  aws(['s3', 'cp', `s3://${bucket}/${masterKey(photoId)}`, path.join(sourceDirectory, file), '--only-show-errors']);
-  const sidecar = path.join(metadataDirectory, `${file}.json`);
+  const source = resolvePhotoDestination(sourceDirectory, file);
+  const sidecar = `${resolvePhotoDestination(metadataDirectory, file)}.json`;
+  aws(['s3', 'cp', `s3://${bucket}/${masterKey(photoId)}`, source, '--only-show-errors']);
   const fetched = spawnSync('aws', [
     's3', 'cp', `s3://${bucket}/${metadataKey(photoId)}`, sidecar, '--only-show-errors',
   ], { encoding: 'utf8' });

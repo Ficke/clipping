@@ -19,6 +19,8 @@ import type { FunctionUrlEvent, FunctionUrlResult } from '../lambda/http';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.COMMERCE_PORT ?? process.env.PORT ?? 8787);
+const HOST = '127.0.0.1';
+const MAX_REQUEST_BODY_BYTES = 1_048_576;
 
 /*
  * The handler reads its environment at import time, so all of this has to be set
@@ -68,7 +70,7 @@ try {
   /* SSM returns ParameterNotFound with no message body, so lead with the name. */
   const missing = typeof error === 'object' && error !== null && 'name' in error && error.name === 'ParameterNotFound';
   const message = error instanceof Error ? error.message : 'unknown error';
-  console.error(`commerce:dev: could not read ${secretParam} — ${missing ? 'no such parameter' : message}`);
+  console.error(`commerce:dev: could not read the configured SSM parameter — ${missing ? 'no such parameter' : message}`);
   console.error(missing
     ? '             `cd infra && terraform apply` creates it holding {}, then put\n'
       + '             test keys in it — see docs/commerce-operations.md.'
@@ -77,7 +79,7 @@ try {
 }
 
 if (/^[sr]k_live/.test(fields?.stripeApiKey ?? '')) {
-  console.error(`commerce:dev: ${secretParam} holds a LIVE Stripe key — refusing to run.`);
+  console.error('commerce:dev: the configured SSM parameter holds a LIVE Stripe key — refusing to run.');
   console.error(secretParam === DEFAULT_SECRET_PARAM
     ? `             Put test keys in ${DEFAULT_SECRET_PARAM}, and roll that live key: it is in the wrong parameter.`
     : `             Unset COMMERCE_SECRET_PARAM to use ${DEFAULT_SECRET_PARAM}.`);
@@ -93,7 +95,7 @@ try {
 Object.assign(SSMClient.prototype, {
   send: async () => ({ Parameter: { Value: JSON.stringify(fields) } }),
 });
-console.log(`commerce:dev: secrets from ${secretParam}`);
+console.log('commerce:dev: secrets loaded from the configured SSM parameter');
 
 const {
   CreateTableCommand,
@@ -226,8 +228,22 @@ const originHeaderValues = process.env.ORIGIN_VERIFY_HEADER_VALUES!.split(',');
 
 const activeServer = server = createServer((request, response) => {
   const chunks: Buffer[] = [];
-  request.on('data', (chunk) => chunks.push(chunk));
+  let receivedBytes = 0;
+  let bodyTooLarge = false;
+  request.on('data', (chunk: Buffer) => {
+    if (bodyTooLarge) return;
+    receivedBytes += chunk.length;
+    if (receivedBytes > MAX_REQUEST_BODY_BYTES) {
+      bodyTooLarge = true;
+      chunks.length = 0;
+      response.writeHead(413, { 'content-type': 'text/plain; charset=utf-8', connection: 'close' });
+      response.end('Request body too large.');
+      return;
+    }
+    chunks.push(chunk);
+  });
   request.on('end', async () => {
+    if (bodyTooLarge) return;
     const url = new URL(request.url ?? '/', `http://localhost:${PORT}`);
     const body = Buffer.concat(chunks);
 
@@ -274,12 +290,12 @@ const activeServer = server = createServer((request, response) => {
 await new Promise<void>((resolve, reject) => {
   const startupError = (error: Error) => reject(error);
   activeServer.once('error', startupError);
-  activeServer.listen(PORT, () => {
+  activeServer.listen(PORT, HOST, () => {
     activeServer.off('error', startupError);
     resolve();
   });
 });
-console.log(`commerce:dev serving dist/ and the store on http://localhost:${PORT}`);
+console.log(`commerce:dev serving dist/ and the store on http://${HOST}:${PORT}`);
 if (!existsSync(path.join(repoRoot, 'dist', 'index.html'))) {
   console.log('  note:      dist/ is empty — run `bun run build`');
 }

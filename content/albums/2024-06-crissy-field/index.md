@@ -1,5 +1,5 @@
 ---
-storyId: "2024-06-crissy-field"
+storyId: "crissy-field"
 title: "Crissy Field"
 date: 2024-06-15
 published: 2024-06-15

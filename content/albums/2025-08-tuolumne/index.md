@@ -1,5 +1,5 @@
 ---
-storyId: "2025-08-tuolumne"
+storyId: "tuolumne"
 title: "Grand Canyon of the Tuolumne"
 date: 2025-08-25
 published: 2025-08-25
