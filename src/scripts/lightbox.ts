@@ -61,6 +61,7 @@ function start(dialog: HTMLDialogElement, links: HTMLAnchorElement[]) {
     img.sizes = sizesFor(link);
     img.srcset = link.dataset.srcset ?? '';
     img.src = link.href;
+    document.dispatchEvent(new CustomEvent('photo-open', { detail: { link } }));
 
     if (pushedHistory) history.replaceState(null, '', `#${fragmentFor(current)}`);
 

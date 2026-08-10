@@ -71,6 +71,21 @@ commands confirm that the production content security policy allows one page
 view and that ordinary local visits send no analytics. These checks use Chrome
 and expect the preview server to be running.
 
+Google Analytics records one privacy-sanitized page view for every production
+page, grouped as Photography, Store, About, License, or Other. The Store group
+includes both `/store/` and the post-Checkout `/purchase/` page. Query strings
+are excluded so checkout session IDs and other arbitrary URL values cannot be
+sent to Google. GA's random first-party browser ID supports new-versus-returning
+and same-browser journey reports; the site does not set a User-ID or send names,
+emails, order IDs, or checkout identifiers. Google Signals and
+ad-personalization signals are disabled in the tag.
+
+On album and store pages, a `view_item` event records a photograph after at
+least 40% of it remains visible for 750ms. A `select_item` event records each
+photograph shown in the lightbox, including arrow or swipe navigation. Both use
+the permanent photo ID, a display label, the album story ID, and a Gallery or
+Store context; they contain no visitor or order data.
+
 ## Publishing an album
 
 Create a folder under `content/albums/` and add your exported images. A folder
