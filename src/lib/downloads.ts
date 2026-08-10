@@ -105,11 +105,3 @@ export function contentTypeFor(extension: string): string {
 export function downloadFilename(photoId: string, extension: string): string {
   return `adam-ficke-${photoId}.${extension}`;
 }
-
-/**
- * URL slug for an album. The YYYY-MM- prefix is legacy: ids minted before the
- * folder name stopped being load-bearing carry one, newer ids do not.
- */
-export function slugForStoryId(storyId: string): string {
-  return storyId.replace(/^\d{4}-\d{2}-/, '');
-}

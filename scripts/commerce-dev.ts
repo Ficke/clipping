@@ -70,7 +70,7 @@ try {
   /* SSM returns ParameterNotFound with no message body, so lead with the name. */
   const missing = typeof error === 'object' && error !== null && 'name' in error && error.name === 'ParameterNotFound';
   const message = error instanceof Error ? error.message : 'unknown error';
-  console.error(`commerce:dev: could not read ${secretParam} — ${missing ? 'no such parameter' : message}`);
+  console.error(`commerce:dev: could not read the configured SSM parameter — ${missing ? 'no such parameter' : message}`);
   console.error(missing
     ? '             `cd infra && terraform apply` creates it holding {}, then put\n'
       + '             test keys in it — see docs/commerce-operations.md.'
@@ -79,7 +79,7 @@ try {
 }
 
 if (/^[sr]k_live/.test(fields?.stripeApiKey ?? '')) {
-  console.error(`commerce:dev: ${secretParam} holds a LIVE Stripe key — refusing to run.`);
+  console.error('commerce:dev: the configured SSM parameter holds a LIVE Stripe key — refusing to run.');
   console.error(secretParam === DEFAULT_SECRET_PARAM
     ? `             Put test keys in ${DEFAULT_SECRET_PARAM}, and roll that live key: it is in the wrong parameter.`
     : `             Unset COMMERCE_SECRET_PARAM to use ${DEFAULT_SECRET_PARAM}.`);
@@ -95,7 +95,7 @@ try {
 Object.assign(SSMClient.prototype, {
   send: async () => ({ Parameter: { Value: JSON.stringify(fields) } }),
 });
-console.log(`commerce:dev: secrets from ${secretParam}`);
+console.log('commerce:dev: secrets loaded from the configured SSM parameter');
 
 const {
   CreateTableCommand,
