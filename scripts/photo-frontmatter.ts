@@ -134,7 +134,7 @@ export function locatePhoto(albumsRoot: string, reference: string, album?: strin
   return matches[0];
 }
 
-/** Resolve a folder name, path, storyId, or public slug to one album index. */
+/** Resolve a folder name, path, or storyId to one album index. */
 export function resolveAlbumIndex(albumsRoot: string, input: string): string {
   if (!input) throw new Error('album is required');
   const direct = path.resolve(input);
@@ -150,8 +150,7 @@ export function resolveAlbumIndex(albumsRoot: string, input: string): string {
     if (!existsSync(index)) continue;
     const contents = readFileSync(index, 'utf8');
     const storyId = frontmatterValue(contents, 'storyId');
-    const slug = storyId?.replace(/^\d{4}-\d{2}-/, '');
-    if (input === entry.name || input === storyId || input === slug) matches.push(index);
+    if (input === entry.name || input === storyId) matches.push(index);
   }
   if (!matches.length) throw new Error(`no album matches ${JSON.stringify(input)}`);
   if (matches.length > 1) throw new Error(`album ${JSON.stringify(input)} is ambiguous`);
