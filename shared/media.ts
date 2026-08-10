@@ -6,6 +6,13 @@ export const mediaProfileSchema = z.string().regex(
   /^[a-z0-9][a-z0-9-]*$/,
   'must contain lowercase letters, numbers, and hyphens',
 );
+export const photoFilenameSchema = z.string()
+  .min(1)
+  .max(255)
+  .regex(
+    /^(?!.*\.\.)(?!.*[\/\\\u0000-\u001f\u007f])[^\/\\]+\.(?:jpe?g|png|webp|avif)$/i,
+    'must be a basename with a JPEG, PNG, WebP, or AVIF extension',
+  );
 
 export const shotMetadataSchema = z.object({
   camera: z.string().min(1).optional(),
@@ -25,7 +32,7 @@ export const photoVariantSchema = z.object({
 
 export const photoManifestEntrySchema = z.object({
   photoId: z.string().refine((value) => isPhotoId(value), 'must be a photo ID'),
-  file: z.string().min(1),
+  file: photoFilenameSchema,
   sourceHash: sourceHashSchema,
   width: z.number().int().positive(),
   height: z.number().int().positive(),
@@ -54,7 +61,7 @@ export const photoManifestSchema = z.object({
 
 export const sourceManifestPhotoSchema = z.object({
   photoId: z.string().refine((value) => isPhotoId(value), 'must be a photo ID'),
-  file: z.string().min(1),
+  file: photoFilenameSchema,
 });
 
 export const sourceManifestSchema = z.object({
@@ -71,7 +78,7 @@ export const metadataSidecarSchema = z.object({
   version: z.literal(1),
   /** Masters created before permanent photo IDs have no `photoId`. */
   photoId: z.string().refine((value) => isPhotoId(value), 'must be a photo ID').optional(),
-  file: z.string().min(1),
+  file: photoFilenameSchema,
   shot: shotMetadataSchema.optional(),
   archive: z.record(z.string(), z.unknown()).optional(),
 });

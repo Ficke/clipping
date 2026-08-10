@@ -1,23 +1,24 @@
 #!/bin/sh
-# Refuse to commit a Stripe API key. Key exposure in a repository is the leading
-# cause of API key takeover, and this repo is public — see NOTICE.
+# Refuse common credentials and private keys before they enter Git history.
 #
 # Keys belong in SSM Parameter Store; see the commerce operations runbook.
 # Bypass with --no-verify if this ever misfires on documentation, but read what
 # it matched first.
 
-# rk_ (restricted) and sk_ (secret), live or test. whsec_ is the webhook signing
-# secret. Matched on the staged diff only, so unrelated history never trips it.
-pattern='(sk|rk)_(live|test)_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{16,}'
+# This is a fast local guard; the PR workflow runs Gitleaks for broader coverage.
+pattern='(sk|rk)_(live|test)_[A-Za-z0-9]{16,}|whsec_[A-Za-z0-9]{16,}|(AKIA|ASIA)[A-Z0-9]{16}|github_pat_[A-Za-z0-9_]{40,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN ([A-Z0-9 ]+ )?PRIVATE KEY-----'
 
-hits=$(git diff --cached --no-color -U0 -G"$pattern" --name-only)
+hits=$(git diff --cached --no-color -U0 --no-ext-diff | awk -v pattern="$pattern" '
+  /^\+\+\+ b\// { file = substr($0, 7); next }
+  /^\+[^+]/ && $0 ~ pattern { print file }
+' | sort -u)
 
 if [ -n "$hits" ]; then
-  echo "pre-commit: refusing to commit — a Stripe key or signing secret appears in:" >&2
+  echo "pre-commit: refusing to commit — a likely credential or private key appears in:" >&2
   echo "$hits" | sed 's/^/          /' >&2
   echo "" >&2
-  echo "          Store it in SSM Parameter Store, not in the repo." >&2
-  echo "          If the key was ever real, roll it: https://dashboard.stripe.com/apikeys" >&2
+  echo "          Store secrets in SSM Parameter Store, not in the repo." >&2
+  echo "          If the value was ever real, revoke or rotate it before continuing." >&2
   exit 1
 fi
 

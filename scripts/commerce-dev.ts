@@ -19,6 +19,8 @@ import type { FunctionUrlEvent, FunctionUrlResult } from '../lambda/http';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.COMMERCE_PORT ?? process.env.PORT ?? 8787);
+const HOST = '127.0.0.1';
+const MAX_REQUEST_BODY_BYTES = 1_048_576;
 
 /*
  * The handler reads its environment at import time, so all of this has to be set
@@ -226,8 +228,22 @@ const originHeaderValues = process.env.ORIGIN_VERIFY_HEADER_VALUES!.split(',');
 
 const activeServer = server = createServer((request, response) => {
   const chunks: Buffer[] = [];
-  request.on('data', (chunk) => chunks.push(chunk));
+  let receivedBytes = 0;
+  let bodyTooLarge = false;
+  request.on('data', (chunk: Buffer) => {
+    if (bodyTooLarge) return;
+    receivedBytes += chunk.length;
+    if (receivedBytes > MAX_REQUEST_BODY_BYTES) {
+      bodyTooLarge = true;
+      chunks.length = 0;
+      response.writeHead(413, { 'content-type': 'text/plain; charset=utf-8', connection: 'close' });
+      response.end('Request body too large.');
+      return;
+    }
+    chunks.push(chunk);
+  });
   request.on('end', async () => {
+    if (bodyTooLarge) return;
     const url = new URL(request.url ?? '/', `http://localhost:${PORT}`);
     const body = Buffer.concat(chunks);
 
@@ -274,12 +290,12 @@ const activeServer = server = createServer((request, response) => {
 await new Promise<void>((resolve, reject) => {
   const startupError = (error: Error) => reject(error);
   activeServer.once('error', startupError);
-  activeServer.listen(PORT, () => {
+  activeServer.listen(PORT, HOST, () => {
     activeServer.off('error', startupError);
     resolve();
   });
 });
-console.log(`commerce:dev serving dist/ and the store on http://localhost:${PORT}`);
+console.log(`commerce:dev serving dist/ and the store on http://${HOST}:${PORT}`);
 if (!existsSync(path.join(repoRoot, 'dist', 'index.html'))) {
   console.log('  note:      dist/ is empty — run `bun run build`');
 }

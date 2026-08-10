@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { isPhotoId, type PhotoId } from './ids';
+import { photoFilenameSchema } from './media';
 
 export const albumLifecycleStates = ['live', 'removed', 'deleted'] as const;
 export type AlbumLifecycleState = (typeof albumLifecycleStates)[number];
@@ -16,7 +17,7 @@ const priceDollarsSchema = z.number()
  * cents.
  */
 export const albumPhotoSchema = z.object({
-  file: z.string().min(1),
+  file: photoFilenameSchema,
   photoId: z.string().refine(isPhotoId, 'must look like photo_<24 hex characters>'),
   caption: z.string().optional(),
   alt: z.string().optional(),
