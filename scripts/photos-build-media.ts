@@ -4,10 +4,13 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import sharp from 'sharp';
 import type { Metadata, OutputInfo } from 'sharp';
+import { z } from 'zod';
 import {
+  mediaProfileSchema,
   parseMetadataSidecar,
   parsePhotoManifest,
   parseSourceManifest,
+  photoManifestEntrySchema,
   type PhotoManifest,
   type PhotoManifestEntry,
   type PhotoVariant,
@@ -36,6 +39,25 @@ interface BuildMediaArgs {
 
 const supportedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
 const filenameCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
+const legacyPhotoManifestSchema = z.object({
+  version: z.literal(1),
+  profile: mediaProfileSchema,
+  album: z.string().min(1),
+  photos: z.array(photoManifestEntrySchema.omit({ photoId: true })),
+}).superRefine((manifest, context) => {
+  const files = new Set<string>();
+  for (const [index, photo] of manifest.photos.entries()) {
+    if (files.has(photo.file)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['photos', index, 'file'],
+        message: `duplicates file ${photo.file}`,
+      });
+    }
+    files.add(photo.file);
+  }
+});
+type PreviousManifest = PhotoManifest | z.infer<typeof legacyPhotoManifestSchema>;
 const args = parseArgs(process.argv.slice(2));
 const sourceInput = args.source ?? process.env.PHOTO_SOURCE_DIR;
 if (!sourceInput) fail('Photo source directory is required through --source or PHOTO_SOURCE_DIR');
@@ -164,13 +186,11 @@ if (!noUpload) {
 console.log(`Manifest: ${manifestPath}`);
 console.log(`Variants: ${generatedCount} generated, ${reusedCount} reused`);
 
-function loadPreviousManifest(input?: string): PhotoManifest | undefined {
+function loadPreviousManifest(input?: string): PreviousManifest | undefined {
   if (input) {
+    const inputPath = path.resolve(input);
     try {
-      return parsePhotoManifest(
-        JSON.parse(readFileSync(path.resolve(input), 'utf8')),
-        path.resolve(input),
-      );
+      return parsePreviousManifest(JSON.parse(readFileSync(inputPath, 'utf8')), inputPath);
     } catch (error) {
       fail(`Could not read the previous photo manifest: ${errorMessage(error)}`);
     }
@@ -189,11 +209,11 @@ function loadPreviousManifest(input?: string): PhotoManifest | undefined {
     fail(error || 'Could not download the previous photo manifest');
   }
 
-  let previous: PhotoManifest;
+  let previous: PreviousManifest;
   const previousContents = readFileSync(previousPath, 'utf8');
   rmSync(previousPath, { force: true });
   try {
-    previous = parsePhotoManifest(JSON.parse(previousContents), previousPath);
+    previous = parsePreviousManifest(JSON.parse(previousContents), previousPath);
   } catch (error) {
     fail(`Could not read the previous photo manifest: ${errorMessage(error)}`);
   }
@@ -201,7 +221,23 @@ function loadPreviousManifest(input?: string): PhotoManifest | undefined {
   return previous;
 }
 
-function variantsFrom(manifest?: PhotoManifest): Map<string, PhotoVariant> {
+function parsePreviousManifest(input: unknown, source: string): PreviousManifest {
+  if (input && typeof input === 'object' && !Array.isArray(input)
+    && (input as Record<string, unknown>).version === 1) {
+    const legacy = legacyPhotoManifestSchema.safeParse(input);
+    if (!legacy.success) {
+      const details = legacy.error.issues
+        .map((issue) => `${issue.path.join('.') || 'value'}: ${issue.message}`)
+        .join('; ');
+      throw new Error(`${source} is invalid (${details})`);
+    }
+    console.warn(`Using legacy version 1 previous photo manifest: ${source}; output will migrate to version 2`);
+    return legacy.data;
+  }
+  return parsePhotoManifest(input, source);
+}
+
+function variantsFrom(manifest?: PreviousManifest): Map<string, PhotoVariant> {
   const variants = new Map<string, PhotoVariant>();
   for (const photo of manifest?.photos ?? []) {
     const responsive = Object.values(photo.variants?.responsive ?? {}).flat();
@@ -302,7 +338,8 @@ function listExistingKeys(sourceHash: string): Set<string> {
     's3api', 'list-objects-v2', '--bucket', mediaBucket, '--prefix', prefix,
     '--query', 'Contents[].Key', '--output', 'json',
   ]);
-  const parsed: unknown = JSON.parse(result || '[]');
+  const parsed: unknown = JSON.parse(result || 'null');
+  if (parsed === null) return new Set();
   if (!Array.isArray(parsed) || !parsed.every((value) => typeof value === 'string')) {
     fail('aws returned a malformed media object listing');
   }
