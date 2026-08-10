@@ -1,9 +1,10 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import sharp from 'sharp';
+import { createPushPrompts } from './photos-push-prompts';
 
 const temporaryDirectories: string[] = [];
 const temporaryAlbums: string[] = [];
@@ -16,6 +17,28 @@ afterEach(() => {
 });
 
 describe('photos push', () => {
+  test('shows both master sizes before confirming a replacement', async () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), 'photos-push-prompt-test-'));
+    const stagedFile = path.join(directory, 'photo.jpg');
+    const logs = spyOn(console, 'log').mockImplementation(() => undefined);
+    temporaryDirectories.push(directory);
+    writeFileSync(stagedFile, 'new master bytes');
+
+    try {
+      const prompts = createPushPrompts({
+        interactive: false,
+        assumeYes: false,
+        albumsRoot: path.join(directory, 'albums'),
+      });
+      expect(await prompts.confirmReplacement('photo.jpg', PHOTO_ID, stagedFile, 331_873)).toBe(false);
+      const output = logs.mock.calls.map((call) => call.join(' ')).join('\n');
+      expect(output).toContain('current: 331873 bytes');
+      expect(output).toContain('new: 16 bytes');
+    } finally {
+      logs.mockRestore();
+    }
+  });
+
   test('previews authoritative album updates without starting CodeBuild', async () => {
     const repoRoot = path.resolve(import.meta.dir, '..');
     const album = path.join(repoRoot, 'content', 'albums', `2099-01-update-test-${process.pid}`);

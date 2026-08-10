@@ -87,7 +87,8 @@ export function createPushStaging({
         };
         let result = ensureMaster(call);
         if (result.action === 'differs') {
-          if (!await prompts.confirmReplacement(file, photoId, stagedFile)) {
+          if (!result.existing) throw new Error(`Missing metadata for the existing master for ${file}`);
+          if (!await prompts.confirmReplacement(file, photoId, stagedFile, result.existing.size)) {
             throw new Error(`Refusing to replace the master for ${file}`);
           }
           result = ensureMaster({ ...call, replace: true });

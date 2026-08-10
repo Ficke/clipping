@@ -5,7 +5,7 @@ date: 2024-06-15
 published: 2024-06-15
 location: "San Francisco"
 photos:
-  - file: 01-DSCF0162.jpg
+  - file: DSCF0162.jpg
     photoId: photo_73019606ee9614aa8213da37
     caption: "Late-day light on the Golden Gate, from Crissy Field."
 ---

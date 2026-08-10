@@ -172,6 +172,106 @@ fi
     expect(readFileSync(reusedManifest, 'utf8')).toBe(readFileSync(initialManifest, 'utf8'));
     expect(filesBelow(reusedOutput)).toHaveLength(0);
   });
+
+  test('rebuilds when the remote previous manifest uses the legacy format', async () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), 'photo-media-legacy-test-'));
+    temporaryDirectories.push(directory);
+    const source = path.join(directory, 'album');
+    const manifest = path.join(directory, 'photos.json');
+    const output = path.join(directory, 'output');
+    const sourceManifest = path.join(directory, 'source.json');
+    const legacyManifest = path.join(directory, 'legacy.json');
+    const seedManifest = path.join(directory, 'seed.json');
+    const seedOutput = path.join(directory, 'seed-output');
+    const bin = path.join(directory, 'bin');
+    mkdirSync(source);
+    mkdirSync(bin);
+    await sharp({ create: { width: 1200, height: 800, channels: 3, background: '#abcdef' } })
+      .jpeg().toFile(path.join(source, 'photo.jpg'));
+    writeFileSync(sourceManifest, sourceManifestFor({ 'photo.jpg': PHOTO_ID }));
+    const seeded = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-build-media.ts'),
+      '--source', source,
+      '--album', '2026-08-test',
+      '--manifest', seedManifest,
+      '--output', seedOutput,
+      '--source-manifest', sourceManifest,
+      '--no-upload',
+    ], { encoding: 'utf8' });
+    expect(seeded.status).toBe(0);
+    const legacy = JSON.parse(readFileSync(seedManifest, 'utf8'));
+    legacy.version = 1;
+    for (const photo of legacy.photos) delete photo.photoId;
+    writeFileSync(legacyManifest, JSON.stringify(legacy));
+
+    const fakeAws = path.join(bin, 'aws');
+    writeFileSync(fakeAws, `#!/bin/sh
+if [ "$1 $2" = "s3 cp" ] && printf '%s' "$3" | grep -q '/manifests/'; then
+  cp ${JSON.stringify(legacyManifest)} "$4"
+elif [ "$1 $2" = "s3api list-objects-v2" ]; then
+  printf 'null\n'
+fi
+`);
+    chmodSync(fakeAws, 0o755);
+
+    const result = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-build-media.ts'),
+      '--source', source,
+      '--album', '2026-08-test',
+      '--manifest', manifest,
+      '--output', output,
+      '--source-manifest', sourceManifest,
+    ], {
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        MEDIA_BUCKET: 'media-bucket',
+        MANIFEST_BUCKET: 'manifest-bucket',
+      },
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain('Using legacy version 1 previous photo manifest');
+    expect(result.stderr).toContain('output will migrate to version 2');
+    expect(JSON.parse(readFileSync(manifest, 'utf8'))).toMatchObject({
+      version: 2,
+      photos: [{ photoId: PHOTO_ID, file: 'photo.jpg' }],
+    });
+  });
+
+  test('rejects a malformed legacy previous manifest', async () => {
+    const directory = mkdtempSync(path.join(os.tmpdir(), 'photo-media-bad-legacy-test-'));
+    temporaryDirectories.push(directory);
+    const source = path.join(directory, 'album');
+    const manifest = path.join(directory, 'photos.json');
+    const sourceManifest = path.join(directory, 'source.json');
+    const previousManifest = path.join(directory, 'legacy.json');
+    mkdirSync(source);
+    await sharp({ create: { width: 1200, height: 800, channels: 3, background: '#abcdef' } })
+      .jpeg().toFile(path.join(source, 'photo.jpg'));
+    writeFileSync(sourceManifest, sourceManifestFor({ 'photo.jpg': PHOTO_ID }));
+    writeFileSync(previousManifest, JSON.stringify({
+      version: 1,
+      profile: 'photo-v1',
+      album: '2026-08-test',
+      photos: [{ file: 'photo.jpg', sourceHash: 'a'.repeat(64) }],
+    }));
+
+    const result = spawnSync('bun', [
+      path.join(import.meta.dir, 'photos-build-media.ts'),
+      '--source', source,
+      '--album', '2026-08-test',
+      '--manifest', manifest,
+      '--source-manifest', sourceManifest,
+      '--previous-manifest', previousManifest,
+      '--manifest-only',
+    ], { encoding: 'utf8' });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Could not read the previous photo manifest');
+    expect(result.stderr).toContain('photos.0.width');
+  });
 });
 
 function buildManifest(source: string, manifest: string, previousManifest?: string): void {

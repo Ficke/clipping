@@ -18,13 +18,17 @@ function file(contents: string): { target: string; cleanup: () => void } {
  * Stands in for the aws CLI. `existing` is the SHA-256 the bucket already holds
  * for this key, or undefined when the object is absent.
  */
-function fakeAws(existing: string | undefined): { aws: AwsRunner; calls: string[][]; puts: () => string[][] } {
+function fakeAws(existing: string | undefined, existingSize = 1234): {
+  aws: AwsRunner;
+  calls: string[][];
+  puts: () => string[][];
+} {
   const calls: string[][] = [];
   const aws: AwsRunner = (args) => {
     calls.push(args);
     if (args[1] === 'head-object') {
       return existing
-        ? { status: 0, stdout: `${checksumBase64(existing)}\n` }
+        ? { status: 0, stdout: `${JSON.stringify([checksumBase64(existing), existingSize])}\n` }
         : { status: 1, stderr: 'An error occurred (404) when calling HeadObject: Not Found' };
     }
     return { status: 0, stdout: '' };
@@ -78,6 +82,7 @@ describe('publishing a master', () => {
       });
 
       expect(result.action).toBe('differs');
+      expect(result.existing?.size).toBe(1234);
       expect(puts()).toHaveLength(0);
     } finally {
       cleanup();

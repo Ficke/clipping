@@ -21,7 +21,7 @@ export interface AlbumFormAnswers extends AlbumFormDefaults {
 
 export interface PushPrompts {
   configureNewPhotos(files: string[]): Promise<Map<string, FrontmatterPhoto>>;
-  confirmReplacement(file: string, photoId: string, stagedFile: string): Promise<boolean>;
+  confirmReplacement(file: string, photoId: string, stagedFile: string, existingSize: number): Promise<boolean>;
   askWhereToBuild(photoCount: number): Promise<boolean>;
   runAlbumForm(albumDirectory: string, images: string[], defaults: AlbumFormDefaults): Promise<AlbumFormAnswers>;
 }
@@ -125,10 +125,11 @@ export function createPushPrompts({
       return configured;
     },
 
-    async confirmReplacement(file, photoId, stagedFile) {
+    async confirmReplacement(file, photoId, stagedFile, existingSize) {
       const size = statSync(stagedFile).size;
       console.log(`\n${file} (${photoId}) already has a master with different bytes.`);
       console.log('  replacing it serves the new file to everyone who has already bought it');
+      console.log(`  current: ${existingSize} bytes`);
       console.log(`  new: ${size} bytes, sha256 ${sha256Hex(stagedFile)}`);
       console.log('  the previous bytes stay recoverable for 90 days through bucket versioning');
       if (assumeYes) return true;

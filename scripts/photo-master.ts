@@ -34,7 +34,8 @@ interface EnsureMasterOptions {
 }
 
 export type MasterAction = 'reused' | 'differs' | 'replaced' | 'uploaded';
-export interface MasterResult { photoId: PhotoId; key: string; action: MasterAction; existing?: string }
+export interface ExistingMaster { checksum: string; size: number }
+export interface MasterResult { photoId: PhotoId; key: string; action: MasterAction; existing?: ExistingMaster }
 
 interface PutSidecarOptions {
   bucket: string;
@@ -83,10 +84,17 @@ export function ensureMaster({
 
   const key = masterKey(photoId);
   const expectedChecksum = checksumBase64(sourceHash);
-  const existing = headChecksum(bucket, key, aws);
+  const existing = headMaster(bucket, key, aws);
   if (existing.found) {
     if (existing.checksum === expectedChecksum) return { photoId, key, action: 'reused' };
-    if (!replace) return { photoId, key, action: 'differs', existing: existing.checksum };
+    if (!replace) {
+      return {
+        photoId,
+        key,
+        action: 'differs',
+        existing: { checksum: existing.checksum, size: existing.size },
+      };
+    }
   }
   if (dryRun) return { photoId, key, action: existing.found ? 'replaced' : 'uploaded' };
 
@@ -129,17 +137,30 @@ export function putSidecar({ bucket, photoId, body, dryRun = false, aws = runAws
   return { key, action: 'uploaded' };
 }
 
-function headChecksum(bucket: string, key: string, aws: AwsRunner): { found: true; checksum: string } | { found: false } {
+function headMaster(bucket: string, key: string, aws: AwsRunner):
+  { found: true; checksum: string; size: number } | { found: false } {
   const result = aws([
     's3api', 'head-object',
     '--bucket', bucket,
     '--key', key,
     '--checksum-mode', 'ENABLED',
-    '--query', 'ChecksumSHA256',
-    '--output', 'text',
+    '--query', '[ChecksumSHA256,ContentLength]',
+    '--output', 'json',
   ]);
   if (result.error) throw new Error(`Could not run aws: ${result.error.message}`);
-  if (result.status === 0) return { found: true, checksum: (result.stdout ?? '').trim() };
+  if (result.status === 0) {
+    let fields: unknown;
+    try {
+      fields = JSON.parse((result.stdout ?? '').trim());
+    } catch {
+      throw new Error(`Could not parse metadata for s3://${bucket}/${key}`);
+    }
+    if (!Array.isArray(fields) || (fields[0] !== null && typeof fields[0] !== 'string')
+      || typeof fields[1] !== 'number' || !Number.isFinite(fields[1]) || fields[1] < 0) {
+      throw new Error(`Could not parse metadata for s3://${bucket}/${key}`);
+    }
+    return { found: true, checksum: fields[0] ?? '', size: fields[1] };
+  }
   if (missingObject.test(result.stderr ?? '')) return { found: false };
   throw new Error((result.stderr ?? '').trim() || `Could not inspect s3://${bucket}/${key}`);
 }

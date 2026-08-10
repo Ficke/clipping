@@ -4,6 +4,7 @@ title: "Yosemite"
 date: 2025-05-01
 published: 2025-05-01
 location: "Yosemite National Park"
+cover: photo_21eb06ae49ea0a22fdae7570
 photos:
   - file: 01-DSCF5408.jpg
     photoId: photo_463c990bd7429d819bde3fc8
