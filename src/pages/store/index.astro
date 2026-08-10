@@ -25,7 +25,10 @@ const total = albums.reduce((count, { photos }) => count + photos.length, 0);
       <p class="empty">Nothing is for sale at the moment — check back before long.</p>
     ) : (
       albums.map(({ album, slug, photos }) => (
-        <section class="group">
+        <section
+          class="group"
+          data-story-id={album.data.storyId}
+        >
           <h2>
             <a href={`/photography/${slug}/`}>{album.data.title}</a>
             <span class="location">{album.data.location}</span>
