@@ -1,4 +1,4 @@
-import { getAlbums, photosOf, slugOf, type Album, type AlbumPhoto } from './albums';
+import { getAlbums, photosOf, type Album, type AlbumPhoto } from './albums';
 import {
   DOWNLOAD_PRODUCTS,
   type CatalogItem,
@@ -94,7 +94,7 @@ export async function albumsWithDownloads(): Promise<AlbumDownloads[]> {
         offers: offersFor(photo, positionLabel(album, index, all.length)),
       }))
       .filter(({ offers }) => offers.length > 0);
-    if (photos.length) results.push({ album, slug: slugOf(album), photos });
+    if (photos.length) results.push({ album, slug: album.data.storyId, photos });
   }
   return results;
 }

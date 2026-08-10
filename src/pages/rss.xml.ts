@@ -1,6 +1,6 @@
 import rss from '@astrojs/rss';
 import type { APIContext } from 'astro';
-import { formatDate, getAlbums, publishedAt, slugOf } from '../lib/albums';
+import { formatDate, getAlbums, publishedAt } from '../lib/albums';
 
 export async function GET(context: APIContext) {
   const albums = await getAlbums();
@@ -11,7 +11,7 @@ export async function GET(context: APIContext) {
     items: albums.map((album) => ({
       title: album.data.title,
       pubDate: publishedAt(album),
-      link: `/photography/${slugOf(album)}/`,
+      link: `/photography/${album.data.storyId}/`,
       description: album.data.description
         ?? `${album.data.title} — ${album.data.location}, ${formatDate(album.data.date)}.`,
     })),
