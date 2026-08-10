@@ -1,7 +1,7 @@
 ---
 import PhotoPicture from '../components/PhotoPicture.astro';
 import Layout from '../layouts/Layout.astro';
-import { coverAltOf, coverOf, formatDate, getAlbums, slugOf } from '../lib/albums';
+import { coverAltOf, coverOf, formatDate, getAlbums } from '../lib/albums';
 
 const albums = await getAlbums();
 const latest = albums[0];
@@ -26,7 +26,7 @@ const latestCoverAlt = latest ? coverAltOf(latest) : undefined;
         const cover = coverOf(album);
         return (
           <li class="album rise" style={`animation-delay: ${Math.min(i * 90, 360)}ms`}>
-            <a href={`/photography/${slugOf(album)}/`}>
+            <a href={`/photography/${album.data.storyId}/`}>
               <PhotoPicture
                 photo={cover}
                 alt={coverAltOf(album)}

@@ -3,12 +3,12 @@ import { render } from 'astro:content';
 import Lightbox from '../../components/Lightbox.astro';
 import StoryPhoto from '../../components/StoryPhoto.astro';
 import Layout from '../../layouts/Layout.astro';
-import { coverAltOf, coverOf, formatDate, getAlbums, photosOf, publishedAt, slugOf } from '../../lib/albums';
+import { coverAltOf, coverOf, formatDate, getAlbums, photosOf, publishedAt } from '../../lib/albums';
 
 export async function getStaticPaths() {
   const albums = await getAlbums();
   return albums.map((album, index) => ({
-    params: { slug: slugOf(album) },
+    params: { slug: album.data.storyId },
     props: {
       album,
       newer: albums[index - 1] ?? null,
@@ -101,14 +101,14 @@ function altFor(index: number): string {
       (newer || older) && (
         <nav class="story-nav" aria-label="More photo stories">
           {newer ? (
-            <a class="story-nav-link newer" href={`/photography/${slugOf(newer)}/`} rel="prev">
+            <a class="story-nav-link newer" href={`/photography/${newer.data.storyId}/`} rel="prev">
               <span class="kicker">Newer story</span>
               <strong>{newer.data.title}</strong>
               <span>{newer.data.location}</span>
             </a>
           ) : <span />}
           {older && (
-            <a class="story-nav-link older" href={`/photography/${slugOf(older)}/`} rel="next">
+            <a class="story-nav-link older" href={`/photography/${older.data.storyId}/`} rel="next">
               <span class="kicker">Older story</span>
               <strong>{older.data.title}</strong>
               <span>{older.data.location}</span>

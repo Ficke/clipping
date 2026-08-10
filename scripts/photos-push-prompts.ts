@@ -106,7 +106,7 @@ export function createPushPrompts({
         console.log(`  "${answer}" is already used by another album`);
         continue;
       }
-      console.log(`               → /photography/${answer.replace(/^\d{4}-\d{2}-/, '')}/`);
+      console.log(`               → /photography/${answer}/`);
       return answer;
     }
   }
