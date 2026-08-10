@@ -1,5 +1,5 @@
 ---
-storyId: "2025-10-salt-point"
+storyId: "salt-point"
 title: "Salt Point State Park"
 date: 2025-10-25
 published: 2025-10-25

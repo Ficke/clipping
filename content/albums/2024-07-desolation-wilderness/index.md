@@ -1,5 +1,5 @@
 ---
-storyId: "2024-07-desolation-wilderness"
+storyId: "desolation-wilderness"
 title: "Desolation Wilderness"
 date: 2024-07-05
 published: 2024-07-05

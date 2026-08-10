@@ -1,5 +1,5 @@
 ---
-storyId: "2024-06-great-highway-dolores"
+storyId: "great-highway-dolores"
 title: "Great Highway & Dolores"
 date: 2024-06-28
 published: 2024-06-28
