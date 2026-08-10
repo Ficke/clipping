@@ -41,7 +41,11 @@ await runCli('preview:analytics', async () => {
     await page.route('**://*.analytics.google.com/**', stubCollection);
     await page.route('**://www.google.com/**', stubCollection);
     page.on('request', (request) => {
-      if (request.url().includes('googletagmanager.com')) loadedTags.push(request.url());
+      const requestUrl = new URL(request.url());
+      if (requestUrl.hostname === 'googletagmanager.com'
+        || requestUrl.hostname.endsWith('.googletagmanager.com')) {
+        loadedTags.push(request.url());
+      }
     });
 
     await page.goto(previewUrl(route, !reportingOff), { waitUntil: 'networkidle' });
